@@ -95,7 +95,7 @@ More rules:
 - **History:** `.queue/history.jsonl` keeps the dollar cost of every run (a resumed run's less the part before its
   pause) and its rise in each window, from its log's first and last usage reading. The page shows typical times and
   costs from it; the dispatcher does not read it.
-- **Usage:** per account in `.queue/usage.json`, from the runs' logs. When it is older than 30 minutes, the script reads
+- **Usage:** per account in the PC's `usage.json` (Settings, The PC's files), from the runs' logs. When it is older than 30 minutes, the script reads
   it again with a one-word Haiku request. That reading is the account's, so the front desk's and the owner's own use
   count too. Each reading keeps the login's email; when a login folder is signed in to another account, its reading
   counts as none. A save keeps each window from the stored reading where that one is further on (a later reset, or the
@@ -129,7 +129,7 @@ a pattern.
 efforts a run can have (`efforts`), and for each complexity its candidates, best first (answer and rebase jobs run on
 their ticket's complexity). A run takes the
 first candidate that its account was not refused. A start that the plan refuses ("requires usage credits") costs
-nothing, goes into `.queue/access.json` for a day, and the job starts again on the next candidate. After the day the
+nothing, goes into the PC's `access.json` for a day, and the job starts again on the next candidate. After the day the
 model is tried again, so a plan that gains it finds it. With no candidate left, the ticket waits in the queue for that
 day (An account that is out).
 
@@ -162,8 +162,13 @@ The run costs by model are in `.queue/history.jsonl`. Change `updated` with it.
 
 ## Settings
 
-The main checkout's `.queue/settings.json`, not in git, is read before every decision and run, so a change applies from
-the next. Setup writes a first one.
+Two files, neither in git, are read before every decision and run, so a change applies from the next. Setup writes
+the first ones.
+
+- **The PC's:** `%LOCALAPPDATA%\Scriptorium\settings.json`, one for every project that Scriptorium runs on the PC.
+  It holds `accounts`, `keep` and `workers`: the logins and their limits are the same for each project, and a worker's
+  number is the PC's.
+- **The project's own:** the main checkout's `.queue/settings.json`, with every other key.
 
 ```json
 {
@@ -171,12 +176,28 @@ the next. Setup writes a first one.
     "main": { "uses": ["worker:1", "frontdesk", "personal"] },
     "second": { "configDir": "C:/Users/<you>/.claude-second", "uses": ["worker:2"] }
   },
-  "model": "claude-sonnet-5-5", "workers": { "2": { "ghConfigDir": "..." } },
-  "plugins": { "unity": { "editors": "D:/Unity" } }
+  "workers": { "2": { "ghConfigDir": "..." } }
 }
 ```
 
-- `accounts`: **the account register**, which login each use runs on: `worker:N` (several workers may share one),
+```json
+{ "model": "claude-sonnet-5-5", "plugins": { "unity": { "editors": "D:/Unity" } } }
+```
+
+**The PC's files.** The same folder holds the accounts' records, which the workers of every project write:
+`usage.json`, `out.json` and `access.json`. So two projects stop at the same lines of an account, and a reading of one
+project's worker serves the other. The scripts read the two settings files as one object and save each key into its
+file (`Read-ProjectSettings`, `Save-ProjectSettings` in [pc.ps1](../pc.ps1)). The page's server holds one lock of the
+PC from an action's read to its save, so two projects' pages do not undo each other's change. A file that does not
+parse stops the read with an error: it never reads as an empty one.
+
+A PC key or an account record that a project's folder still holds (a project from before the PC's files, or an edit
+by hand) moves to the PC's files at the next read (`Move-PcSettings`, `Move-PcRecords`). An account is one login
+folder, not one name: an entry of a folder that the PC has adds its uses and only the fields that the PC's entry
+lacks. A script from before the PC's files that still works on a run reads default lines until it restarts, so update
+between runs.
+
+- `accounts` (the PC's): **the account register**, which login each use runs on: `worker:N` (several workers may share one),
   `frontdesk`, `personal`. To move a use, move its entry: a worker runs on the account listed with it from its next run
   (a paused run resumes on the one it started on). For `frontdesk` and `personal`, the owner signs that login in where
   they work, and the entry tells the budget which account keeps room for them. `configDir` is a Claude Code config
@@ -190,7 +211,7 @@ the next. Setup writes a first one.
 - `accounts.<name>.pickUp`: the account's pick-up limits, for example `{ "five_hour": { "L": 0.6 } }`. Left out: S 0.9,
   M 0.75, L 0.5. `seven_day_overage_included.design`: the Fable week's design line, from which no new `design` ticket
   starts (The Fable limit; left out: 0.9). The page's meters set it.
-- `keep`: the share of a whole week that each human use's usage guard holds on its account, for example
+- `keep` (the PC's): the share of a whole week that each human use's usage guard holds on its account, for example
   `{ "frontdesk": 0.1, "personal": 0.15 }` (the defaults). The guard keeps the part of it for the time left; 0 keeps
   nothing. The page's guard sliders set it.
 - `complexities.<name>.compactAt`: the compact size of a complexity's runs on this PC, for example
@@ -209,7 +230,8 @@ the next. Setup writes a first one.
 - `merger.ghConfigDir`: the same for the merger, which then merges as that bot.
 - `plugins.<name>`: settings of a plugin for this PC, over its entry in `scriptorium.json` ([PLUGINS.md](PLUGINS.md)).
 - `ntfy.topic`, `ntfy.server`: the page's pushes ([APP.md](APP.md), Notifications).
-- `workers.<id>`: `model` or `ghConfigDir` for that worker only, `enabled`, `assignedOnly` and `complexity`.
+- `workers.<id>` (the PC's): `model` or `ghConfigDir` for that worker only, `enabled`, `assignedOnly` and
+  `complexity`.
 - `workers.<id>.complexity`: the worker's complexity switches, for example `{ "design": false }`: it takes no ticket of
   a complexity set to false (Dispatching). Left out: every complexity is on. The worker's Config sets it.
 - `workers.<id>.assignedOnly: true` keeps a worker to the tickets labelled `worker:<id>` and their PRs: no worker gives
@@ -225,7 +247,7 @@ the next. Setup writes a first one.
 ## The usage limit
 
 The worker script reads the plan's usage from the run's log while it works, and shares it with the other workers in
-the main checkout's `.queue/usage.json`, per account. When the account reaches the workers' ceiling, the script writes a
+the PC's `usage.json`, per account. When the account reaches the workers' ceiling, the script writes a
 note for the run (`limit.md`). The run ends at its next checkpoint, with its work pushed and a handoff comment, and opens
 no PR ([PLAYBOOK.md](../PLAYBOOK.md), Usage limit). The script withdraws the note if the account has room again before
 the run ends.
@@ -248,7 +270,7 @@ Fable, not the account, so it is not one of the budget's windows.
 - **The reading:** only a Fable run or a refusal updates it; no probe reads it. The page shows its share
   ([APP.md](APP.md), Accounts).
 - **Two lines,** each the account's own (the page's Fable week meter), else a default in [limits.ps1](../limits.ps1)
-  (`Get-FableLines`, `Test-FableOut`). `.queue/usage.json` keeps the window's last reading. Both hold until the reset.
+  (`Get-FableLines`, `Test-FableOut`). The PC's `usage.json` keeps the window's last reading. Both hold until the reset.
   - **The design line** (`pickUp.seven_day_overage_included.design`, 90 %): no new Fable run starts on the account, so
     no dispatcher gives a worker on it a `design` ticket, and the Queue tab gives the reason. A PR's job of a `design`
     ticket still runs on Fable. The line is below the stop line, so the Fable runs in flight end under it and the
@@ -267,7 +289,7 @@ Fable, not the account, so it is not one of the budget's windows.
 ## An account that is out
 
 An account is out when it takes no runs: a subscription that ends, a sign-out while a ticket works. The fact is the
-account's, not a ticket's: `.queue/out.json` holds it for every worker and for the page, per account the kind, the
+account's, not a ticket's: the PC's `out.json` holds it for every worker of every project and for the page, per account the kind, the
 service's text and the time of the last test.
 
 - **Kinds** (`Get-Refusal` in [limits.ps1](../limits.ps1), checked with real result lines): `login` (the account is

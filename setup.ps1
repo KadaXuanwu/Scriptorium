@@ -8,7 +8,8 @@ Sets up Scriptorium for one project on this PC (README.md). Safe to run again.
    of plugins.json whose detect patterns match a file in the project (or -Plugins).
 3. Installs the plugins (clones a git source into plugins\<name>, or pulls it) and checks what each requires.
 4. Adds .queue/ to the project's .gitignore, and the ticket skill when the project has none.
-5. Writes the PC's .queue/settings.json when there is none: the default login runs the workers.
+5. Writes the settings: the project's .queue/settings.json (a push topic), and the PC's part (the workers of the
+   project on the command-line login, each with a number that no other project of the PC has).
 6. Runs each plugin's Setup.
 7. Lists the files it added to the project. Workers clone origin, so these must be committed and pushed: -Commit does it.
 8. Makes a copy of the repo for each worker beside the main checkout, and runs each plugin's PrepareCopy in it.
@@ -22,7 +23,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Tools\Scriptorium\setup.p
 param(
     # The project's main checkout: a git repo whose origin is on GitHub.
     [Parameter(Mandatory = $true)] [string] $Project,
-    # The workers to set up. The page adds more later.
+    # The workers that the project has after the setup: the ones it has, and new ones up to this count. The page adds
+    # more later.
     [int] $Workers = 1,
     # The plugins of a new scriptorium.json, in place of the ones plugins.json detects. Added to an existing one.
     [string[]] $Plugins,
@@ -196,27 +198,58 @@ if (-not (Test-Path $skill)) {
     $added += '.claude/skills/ticket/SKILL.md'
 }
 
-# 5. The PC's settings (docs/QUEUE.md, Settings): the default login runs the workers and is the owner's own; a private
-# ntfy topic.
+# 5. The settings (docs/QUEUE.md, Settings). The project's own: a private ntfy topic. The PC's (pc.ps1): the workers of
+# this project on the command-line login, which is also the owner's own.
+# The project's workers: the ones it has, then new ones up to -Workers, each with the lowest number that no worker of
+# the PC has (a worker's number is the PC's).
+$ids = @(Get-ChildItem (Join-Path $main '.queue\worker-*.json') -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName.Substring(7) }) +
+    @(Get-ScheduledTask -TaskName (Get-WorkerTaskName $config.name '*') -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName.Split(' ')[-1] })
+$ids = @($ids | Sort-Object { [int]$_ } -Unique)
+$taken = @(Get-ScheduledTask -TaskName (Get-WorkerTaskName '*' '*') -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName.Split(' ')[-1] })
+while ($ids.Count -lt $Workers) {
+    $ids += Get-FreeWorkerId ($taken + $ids)
+}
 $settingsFile = Join-Path $main '.queue\settings.json'
-$settings = if (Test-Path $settingsFile) { Get-Content $settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
-$changed = $false
-if (-not $settings.accounts) {
-    $uses = @(1..[math]::Max(1, $Workers) | ForEach-Object { "worker:$_" }) + 'personal'
-    $settings | Add-Member -NotePropertyName accounts -NotePropertyValue ([pscustomobject]@{ main = [pscustomobject]@{ uses = $uses } }) -Force
-    $changed = $true
-}
-if (-not $settings.ntfy -or -not $settings.ntfy.topic) {
-    $topic = "$($config.name.ToLowerInvariant())-" + (-join ((48..57) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ }))
-    $settings | Add-Member -NotePropertyName ntfy -NotePropertyValue ([pscustomobject]@{ topic = $topic }) -Force
-    $changed = $true
-}
-if ($changed) {
-    $text = $settings | ConvertTo-Json -Depth 8
-    Invoke-Step "Write the PC's settings: $settingsFile" {
-        New-Item -ItemType Directory -Force (Split-Path $settingsFile) | Out-Null
-        Set-Content $settingsFile $text -Encoding utf8
+$lock = Enter-PcLock 'Settings'
+try {
+    # -WhatIf changes nothing: not the move of an older project's account keys to the PC's file either.
+    if ($WhatIf) {
+        $settings = Read-JsonFile $settingsFile
+    } else {
+        Initialize-Pc $main
+        $settings = Read-ProjectSettings $main
     }
+    if (-not $settings) {
+        $settings = [pscustomobject]@{}
+    }
+    $changed = $false
+    $uses = @($ids | ForEach-Object { "worker:$_" })
+    if (-not $settings.accounts) {
+        Set-JsonProperty $settings 'accounts' ([pscustomobject]@{ main = [pscustomobject]@{ uses = [object[]]($uses + 'personal') } })
+        $changed = $true
+    } else {
+        # A PC with accounts: a new worker goes to the entry of the command-line login. With no such entry it is in
+        # none, and it runs on that login all the same.
+        $claimed = @($settings.accounts.PSObject.Properties | ForEach-Object { $_.Value.uses })
+        $new = @($uses | Where-Object { $claimed -notcontains $_ })
+        $login = $settings.accounts.PSObject.Properties | Where-Object { -not $_.Value.configDir } | Select-Object -First 1
+        if ($new.Count -and $login) {
+            Set-JsonProperty $login.Value 'uses' ([object[]](@($login.Value.uses | Where-Object { $_ }) + $new))
+            $changed = $true
+        }
+    }
+    if (-not $settings.ntfy -or -not $settings.ntfy.topic) {
+        $topic = "$($config.name.ToLowerInvariant())-" + (-join ((48..57) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ }))
+        Set-JsonProperty $settings 'ntfy' ([pscustomobject]@{ topic = $topic })
+        $changed = $true
+    }
+    if ($changed) {
+        Invoke-Step "Write the settings: $settingsFile, and the PC's part in $PcDir" {
+            Save-ProjectSettings $main $settings
+        }
+    }
+} finally {
+    Exit-PcLock $lock
 }
 
 # 6. The plugins' Setup: what the project itself must hold.
@@ -260,10 +293,8 @@ if ($pending) {
 }
 
 # 8. A copy of the repo for each worker, prepared by the plugins.
-$clones = @()
-for ($i = 1; $i -le $Workers; $i++) {
+foreach ($i in $ids) {
     $clone = "$main-w$i"
-    $clones += $clone
     if (-not (Test-Path $clone)) {
         Invoke-Step "Clone the repo for worker $i into $clone" { Invoke-Native 'git' @('clone', '--quiet', $url, $clone) | Out-Null }
     }
@@ -295,7 +326,7 @@ $labels = [ordered]@{
 foreach ($complexity in $complexities) {
     $labels["complexity:$($complexity.name)"] = @('d4c5f9', $complexity.description)
 }
-for ($i = 1; $i -le $Workers; $i++) {
+foreach ($i in $ids) {
     $labels["worker:$i"] = @('0e8a16', "Claimed by worker $i")
 }
 $prLabels = @('needs-owner', 'needs-rebase', 'answered') + @($labels.Keys | Where-Object { $_ -like 'worker:*' })
@@ -317,7 +348,7 @@ foreach ($other in @($config.repos)) {
 
 # The bots get no GitHub notifications from the queue's repos: their mail would reach the owner's inbox, and the page
 # tells the owner what matters.
-$botDirs = @(@($settings.workers.PSObject.Properties | ForEach-Object { $_.Value.ghConfigDir }) + @($settings.merger.ghConfigDir) |
+$botDirs = @(@($settings.workers.PSObject.Properties | Where-Object { $ids -contains $_.Name } | ForEach-Object { $_.Value.ghConfigDir }) + @($settings.merger.ghConfigDir) |
     Where-Object { $_ } | Sort-Object -Unique)
 foreach ($dir in $botDirs) {
     Invoke-Step "Turn off the GitHub notifications of the bot in $dir" {
@@ -334,8 +365,8 @@ $tasks = [ordered]@{
     (Get-TaskName $config.name 'merger') = "-File `"$PSScriptRoot\merge.ps1`" $(Get-ProjectArg $main)"
     (Get-TaskName $config.name 'app') = "-File `"$PSScriptRoot\app\server.ps1`" $(Get-ProjectArg $main)"
 }
-for ($i = 1; $i -le $Workers; $i++) {
-    $tasks[(Get-WorkerTaskName $config.name $i)] = Get-WorkerArguments $main $i $clones[$i - 1]
+foreach ($i in $ids) {
+    $tasks[(Get-WorkerTaskName $config.name $i)] = Get-WorkerArguments $main $i "$main-w$i"
 }
 Invoke-Step "Register the logon tasks: $($tasks.Keys -join ', ')$(if ($Start) { ', and start them' })" {
     foreach ($task in $tasks.Keys) {

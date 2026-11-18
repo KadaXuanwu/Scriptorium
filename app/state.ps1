@@ -59,17 +59,6 @@ function Set-WorkerAccount($settings, [string] $worker, [string] $account) {
     return $settings
 }
 
-# The lowest worker number nothing holds (the queue app's Add a worker): $taken are the numbers with a state file
-# here or a task in any project of the PC. A removed worker's number comes back, and with it its clone.
-function Get-FreeWorkerId($taken) {
-    $numbers = @($taken | ForEach-Object { [string]$_ })
-    $id = 1
-    while ($numbers -contains [string]$id) {
-        $id++
-    }
-    return [string]$id
-}
-
 # The register with worker $id added (a fresh entry, active, on $account: '' for the command-line login) or removed
 # (no entry, in no account's uses). Throws for an account the register doesn't have, before it changes anything.
 function Set-WorkerEntry($settings, [string] $id, [bool] $present, [string] $account = '') {

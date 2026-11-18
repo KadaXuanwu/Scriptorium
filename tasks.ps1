@@ -43,11 +43,7 @@ function Get-WorkerArguments([string] $main, [string] $id, [string] $clone) {
 # Makes a worker copy able to work (docs/PLUGINS.md, PrepareCopy): each plugin adds what git does not hold and its
 # per-checkout git config. Throws with the plugin's name at the first hook that fails.
 function Initialize-Copy([string] $main, $plugins, [string] $clone, [string] $id) {
-    $machine = $null
-    $file = Join-Path $main '.queue\settings.json'
-    if (Test-Path $file) {
-        $machine = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
-    }
+    $machine = Read-ProjectSettings $main
     $say = { param($text) Write-Host "  $text" }
     Invoke-Hooks $plugins 'PrepareCopy' $main $clone $id (Join-Path $clone '.queue') $machine $say $say | Out-Null
 }

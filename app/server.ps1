@@ -49,6 +49,13 @@ trap {
     break
 }
 
+# Nothing of the PC's stays in the project: account keys and records from before the PC's files move there (pc.ps1).
+try {
+    Initialize-Pc $Main
+} catch {
+    Write-AppLog "the PC's files: $_"
+}
+
 # From the remote, not GitHub: a GitHub timeout at the start ended the restart silently.
 $slug = [regex]::Match((& git remote get-url origin), 'github\.com[:/](.+?)(\.git)?$').Groups[1].Value
 $owner = $slug.Split('/')[0]
@@ -222,11 +229,13 @@ function Get-LoginView {
     return $view
 }
 
-# The settings for an edit: never overwritten when unreadable.
+# The settings for an edit, the project's own with the PC's (pc.ps1): never overwritten when missing, and a file that
+# does not parse throws. The caller holds the PC's lock from here to its save: an action (Invoke-Request) or
+# Set-Enabled.
 function Read-SettingsToEdit {
-    $settings = Read-Json (Join-Path $mainQueue 'settings.json')
+    $settings = Read-ProjectSettings $Main
     if (-not $settings) {
-        throw 'settings.json is missing or unreadable'
+        throw 'settings.json is missing'
     }
     if (-not $settings.accounts) {
         $settings | Add-Member -NotePropertyName accounts -NotePropertyValue ([pscustomobject]@{}) -Force
@@ -235,7 +244,7 @@ function Read-SettingsToEdit {
 }
 
 function Save-Settings($settings) {
-    $settings | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $mainQueue 'settings.json') -Encoding utf8
+    Save-ProjectSettings $Main $settings
 }
 
 function Save-Control($control) {
@@ -244,13 +253,18 @@ function Save-Control($control) {
 
 # The worker's `enabled` in the settings (docs/QUEUE.md, Settings); written only when it changes.
 function Set-Enabled([string] $worker, [bool] $enabled) {
-    $settings = Read-SettingsToEdit
-    $entry = Get-WorkerSettings $settings $worker
-    if (($entry.enabled -ne $false) -eq $enabled) {
-        return
+    $lock = Enter-PcLock 'Settings'
+    try {
+        $settings = Read-SettingsToEdit
+        $entry = Get-WorkerSettings $settings $worker
+        if (($entry.enabled -ne $false) -eq $enabled) {
+            return
+        }
+        $entry | Add-Member -NotePropertyName enabled -NotePropertyValue $enabled -Force
+        Save-Settings $settings
+    } finally {
+        Exit-PcLock $lock
     }
-    $entry | Add-Member -NotePropertyName enabled -NotePropertyValue $enabled -Force
-    Save-Settings $settings
 }
 
 # Ends a worker's run now: the process started with its clone's MCP config, and its children. Work since the run's
@@ -317,10 +331,20 @@ function Update-Snapshot {
         Write-AppLog "disabled after its ticket: worker $id"
         $control = Read-Json (Join-Path $mainQueue 'control.json')
     }
-    $saved = Read-Json (Join-Path $mainQueue 'settings.json')
+    # The settings as last read: a file that does not parse must not empty the page. Its error goes to the log once.
+    try {
+        $script:saved = Read-ProjectSettings $Main
+        $script:savedError = ''
+    } catch {
+        if ("$_" -ne $script:savedError) {
+            $script:savedError = "$_"
+            Write-AppLog "settings: $_"
+        }
+    }
+    $saved = $script:saved
     $data = @{
         now = Get-Now; slug = $slug; workers = $workers; control = $control
-        usage = Read-Json (Join-Path $mainQueue 'usage.json'); out = Read-Json (Join-Path $mainQueue 'out.json'); settings = $saved
+        usage = Read-Json (Join-Path $PcDir 'usage.json'); out = Read-Json (Join-Path $PcDir 'out.json'); settings = $saved
         runs = Read-Runs; gh = $script:gh; appUrl = $appUrl; dispatch = Read-Json (Join-Path $mainQueue 'dispatch.json')
         name = $config.name; projects = $script:projects
         logins = @{}; login = Get-LoginView; complexities = Get-Complexities (Read-Models) $config $saved; plugins = $plugins
@@ -858,7 +882,14 @@ function Invoke-Request($context) {
         $reader = New-Object System.IO.StreamReader($request.InputStream, [System.Text.Encoding]::UTF8)
         $body = $reader.ReadToEnd() | ConvertFrom-Json
         try {
-            $message = Invoke-Action $body
+            # Under the PC's lock from an action's read of the settings to its save: the page's server of another
+            # project saves the PC's part too.
+            $lock = Enter-PcLock 'Settings'
+            try {
+                $message = Invoke-Action $body
+            } finally {
+                Exit-PcLock $lock
+            }
             if ($message -is [hashtable]) {
                 # The main loop answers when the job ends.
                 $job = Start-Job -ScriptBlock $ghWrite -ArgumentList $Main, (ConvertTo-Json -InputObject $message.calls -Compress)

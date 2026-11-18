@@ -47,9 +47,10 @@ $commentsFile = Join-Path $queueDir 'comments.md'
 $handoffFile = Join-Path $queueDir 'handoff.md'
 $progressFile = Join-Path $queueDir 'progress.json'
 $mainQueueDir = Join-Path $Project '.queue'
-$usageFile = Join-Path $mainQueueDir 'usage.json'
+# The accounts' records are the PC's (pc.ps1): the workers of every project read and write them.
+$usageFile = Join-Path $PcDir 'usage.json'
 $historyFile = Join-Path $mainQueueDir 'history.jsonl'
-$accessFile = Join-Path $mainQueueDir 'access.json'
+$accessFile = Join-Path $PcDir 'access.json'
 # Forced from the queue app: the next job starts past the area, room and ceiling checks; the run ending clears it.
 $forceFile = Join-Path $mainQueueDir "force-$Id.json"
 New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir | Out-Null
@@ -226,14 +227,10 @@ function Invoke-WorkerHooks([string] $hook, [string] $copy, [switch] $Report) {
     return Invoke-Hooks $plugins $hook $Project $copy $Id $queueDir (Read-Settings) $say $log
 }
 
-# The main checkout's .queue/settings.json (docs/QUEUE.md, Settings), read before every decision and run so a change
-# applies from the next.
+# The settings (docs/QUEUE.md, Settings): the project's own with the PC's (pc.ps1, Read-ProjectSettings), read before
+# every decision and run so a change applies from the next.
 function Read-Settings {
-    $file = Join-Path $mainQueueDir 'settings.json'
-    if (-not (Test-Path $file)) {
-        return $null
-    }
-    return Get-Content $file -Raw | ConvertFrom-Json
+    return Read-ProjectSettings $Project
 }
 
 # The account register: which login each use runs on (`worker:N`, `frontdesk`, `personal`), so moving a use to
@@ -424,9 +421,10 @@ function Read-AllUsage {
     return $all
 }
 
-# Shared with the other workers, per account. Under its own mutex and written whole: two workers that saved in the
-# same second once tore the file, and every worker then failed each poll.
-$usageMutex = New-Object System.Threading.Mutex($false, "Local\Scriptorium-$($config.name)-Usage")
+# Shared with the other workers of every project of the PC, per account. Under the lock of the accounts' records
+# (pc.ps1, 'Usage') and written whole: two workers that saved in the same second once tore the file, and every worker
+# then failed each poll.
+$usageMutex = New-Object System.Threading.Mutex($false, 'Local\Scriptorium-Usage')
 function Save-Usage([string] $account, $usage) {
     $usage.email = Get-LoginEmail $account
     try {
@@ -525,13 +523,13 @@ function Get-LoginStamp([string] $account) {
     return "$(if (Test-Path $file) { (Get-Item $file).LastWriteTimeUtc.Ticks } else { 0 }) $(Get-LoginEmail $account)"
 }
 
-# Accounts that are out (`.queue/out.json`, shared by the workers and the queue app): an account that refused a run
+# Accounts that are out (`out.json` in the PC's folder, shared by the workers and the queue app): an account that refused a run
 # for its subscription or its login, or on which neither a run nor a probe could start (limits.ps1, $OutKinds). Per
 # account: the kind, the refusal's text, the time of the last test and the login then. The fact is the account's, not
 # a ticket's: no worker starts a run on it, no dispatcher gives its workers a ticket, and the app shows it on the
 # account's card and on each of its workers' cards. A worker whose runs do not start although its account answers (a
 # wrong setting) has a record of its own, under `worker:<id>`: only that worker stops.
-$outFile = Join-Path $mainQueueDir 'out.json'
+$outFile = Join-Path $PcDir 'out.json'
 function Read-Out {
     $out = @{}
     try {
@@ -551,10 +549,11 @@ function New-OutRecord([string] $kind, [string] $text, [string] $stamp) {
     return @{ kind = $kind; text = $text; at = (Get-Now); login = $stamp }
 }
 
-# When the settings were last written: the owner's change may be the fix of a worker whose runs do not start.
+# When the settings were last written, the project's and the PC's: the owner's change may be the fix of a worker whose
+# runs do not start.
 function Get-SettingsStamp {
-    $file = Join-Path $mainQueueDir 'settings.json'
-    return "$(if (Test-Path $file) { (Get-Item $file).LastWriteTimeUtc.Ticks } else { 0 })"
+    return (@((Join-Path $mainQueueDir 'settings.json'), (Join-Path $PcDir 'settings.json')) |
+        ForEach-Object { if (Test-Path $_) { (Get-Item $_).LastWriteTimeUtc.Ticks } else { 0 } }) -join ' '
 }
 
 # $record: $null removes the account's record. Under the usage mutex and written whole, as usage.json.
@@ -643,7 +642,7 @@ function Get-Playbooks {
     return $books -join ', then '
 }
 
-# Models an account was refused (`.queue/access.json`, per account the time of the refusal): skipped for a day, then
+# Models an account was refused (`access.json` in the PC's folder, per account the time of the refusal): skipped for a day, then
 # tried again, so a plan that gains a model finds it. A refused start costs nothing.
 function Read-Access {
     $access = @{}
@@ -1490,6 +1489,12 @@ function Get-HeldView($p) {
 }
 
 $mutex = New-Object System.Threading.Mutex($false, "Local\Scriptorium-$($config.name)-Queue")
+# Nothing of the PC's stays in the project: account keys and records from before the PC's files move there (pc.ps1).
+try {
+    Initialize-Pc $Project
+} catch {
+    Write-Log "the PC's files: $_"
+}
 $script:budgetAt = 0
 $script:claimsAt = 0
 # Runs in a row that did not start although the account answered a probe.

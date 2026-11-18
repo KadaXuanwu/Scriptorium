@@ -1,6 +1,8 @@
 # Checks state.ps1, the queue app's snapshot and notifications: powershell -NoProfile -File app\app.test.ps1
 # (prints ok or throws).
 $ErrorActionPreference = 'Stop'
+# The PC's files of a test are in a folder of its own (pc.ps1): set before anything loads.
+$PcDir = Join-Path $env:TEMP "scriptorium-test-$PID"
 . (Join-Path $PSScriptRoot 'state.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {

@@ -1,6 +1,8 @@
 # The project a script works on: its main checkout and its scriptorium.json (docs/CONFIG.md). Dot-sourced by the
 # scripts that take -Project and by their tests; only definitions.
 
+. (Join-Path $PSScriptRoot 'pc.ps1')
+
 # The main checkout's full path, as every task and process match writes it.
 function Resolve-Project([string] $Project) {
     return (Resolve-Path $Project).Path.TrimEnd('\')
@@ -154,6 +156,17 @@ function Get-AdvisorRule($models, $complexities) {
 }
 
 # A logon task's name: `Scriptorium <name> worker 3`, `Scriptorium <name> merger`, `Scriptorium <name> app`.
+# The lowest worker number nothing holds (the page's Add a worker, setup.ps1): $taken are the numbers with a state file
+# in the project or a task in any project of the PC. A removed worker's number comes back, and with it its clone.
+function Get-FreeWorkerId($taken) {
+    $numbers = @($taken | ForEach-Object { [string]$_ })
+    $id = 1
+    while ($numbers -contains [string]$id) {
+        $id++
+    }
+    return [string]$id
+}
+
 function Get-TaskName([string] $name, [string] $role) {
     return "Scriptorium $name $role"
 }

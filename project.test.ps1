@@ -1,5 +1,7 @@
 # Checks project.ps1: powershell -NoProfile -File project.test.ps1 (prints ok or throws).
 $ErrorActionPreference = 'Stop'
+# The PC's files of a test are in a folder of its own (pc.ps1): set before anything loads.
+$PcDir = Join-Path $env:TEMP "scriptorium-test-$PID"
 . (Join-Path $PSScriptRoot 'project.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
@@ -190,5 +192,76 @@ Assert-Equal (Get-PushUrl (Get-ProjectViews $pc $null) 'http://127.0.0.1:8771' '
 $snapshot = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); name = 'App'; projects = $views }
 Assert-Equal "$($snapshot.name) $(@($snapshot.projects).Count) $($snapshot.projects[0].name)" 'App 3 App' 'the snapshot names the project and lists the PC''s projects'
 Assert-Equal @((New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).projects).Count 0 'a snapshot without the list'
+
+# The PC's files (pc.ps1). The settings of two projects merge into one register: an account is its login folder, a
+# name that another folder has gets a number, uses add up, and only missing fields come in.
+function New-Json([string] $text) {
+    return $text | ConvertFrom-Json
+}
+$game = '{"accounts":{"main":{"stopAt":{"five_hour":0.9},"uses":["frontdesk","personal","worker:1"]},"second":{"configDir":"C:/Users/u/.claude-second","uses":[]}},"keep":{"personal":0.07},"workers":{"1":{"enabled":true},"3":{"enabled":false}},"ntfy":{"topic":"t"}}'
+$app = '{"accounts":{"main":{"uses":["personal","worker:4"]},"second":{"configDir":"C:\\Users\\u\\.claude-other\\","uses":["worker:5"]}},"keep":{"personal":0.15,"frontdesk":0.1},"workers":{"4":{"enabled":true},"3":{"enabled":true,"ghConfigDir":"x"}}}'
+function Show-Register($pc) {
+    $accounts = $pc.accounts.PSObject.Properties | ForEach-Object { "$(Get-FolderKey ([string]$_.Value.configDir))=$(@($_.Value.uses | Sort-Object) -join ',')/$([bool]$_.Value.stopAt)" } | Sort-Object
+    return "$($accounts -join ' ') keep=$($pc.keep.personal),$($pc.keep.frontdesk) workers=$(($pc.workers.PSObject.Properties | Sort-Object Name | ForEach-Object { "$($_.Name):$($_.Value.enabled):$($_.Value.ghConfigDir)" }) -join ',')"
+}
+$merged = Merge-PcSettings (Merge-PcSettings ([pscustomobject]@{}) (New-Json $game)) (New-Json $app)
+Assert-Equal (Show-Register $merged) '=frontdesk,personal,worker:1,worker:4/True c:/users/u/.claude-other=worker:5/False c:/users/u/.claude-second=/False keep=0.07,0.1 workers=1:True:,3:False:x,4:True:' 'two projects merge into one register'
+Assert-Equal (@($merged.accounts.PSObject.Properties.Name) -join ',') 'main,second,second-2' 'a name that another login folder has gets a number'
+Assert-Equal $merged.ntfy $null 'only the PC keys merge'
+$again = Merge-PcSettings $merged (New-Json $app)
+Assert-Equal (Show-Register $again) (Show-Register $merged) 'a second merge of the same project changes nothing'
+Assert-Equal @($again.accounts.PSObject.Properties).Count 3 'and adds no entry'
+$other = Merge-PcSettings (Merge-PcSettings ([pscustomobject]@{}) (New-Json '{"accounts":{"main":{"uses":["personal","worker:4"]}},"workers":{"4":{"enabled":true}}}')) (New-Json '{"accounts":{"main":{"stopAt":{"five_hour":0.9},"uses":["frontdesk","personal","worker:1"]}},"workers":{"1":{"enabled":false}}}')
+Assert-Equal (Show-Register $other) '=frontdesk,personal,worker:1,worker:4/True keep=, workers=1:False:,4:True:' 'the other order of the projects gives the same register'
+
+# On disk: a read moves a project's PC keys to the PC's file, once; a save puts each key into its file.
+$one = Join-Path $PcDir 'one'
+$two = Join-Path $PcDir 'two'
+New-Item -ItemType Directory -Force (Join-Path $one '.queue'), (Join-Path $two '.queue') | Out-Null
+$PcDir = Join-Path $PcDir 'pc'
+Assert-Equal (Read-ProjectSettings $one) $null 'no settings anywhere'
+Set-Content (Join-Path $one '.queue\settings.json') $game -Encoding utf8
+Set-Content (Join-Path $two '.queue\settings.json') $app -Encoding utf8
+$read = Read-ProjectSettings $one
+Assert-Equal "$($read.ntfy.topic) $(@($read.accounts.main.uses).Count) $($read.workers.'3'.enabled)" 't 3 False' 'the settings of a project with the PC keys'
+Assert-Equal ((Get-Content (Join-Path $one '.queue\settings.json') -Raw | ConvertFrom-Json).PSObject.Properties.Name -join ',') 'ntfy' 'the project''s file keeps its own keys only'
+Assert-Equal ((Read-PcSettings).PSObject.Properties.Name -join ',') 'accounts,keep,workers' 'the PC''s file has the PC keys'
+Initialize-Pc $two
+Initialize-Pc $two
+Assert-Equal (Show-Register (Read-PcSettings)) (Show-Register $merged) 'the second project joins the same register, also when the move runs twice'
+$read = Read-ProjectSettings $two
+Assert-Equal "$($read.ntfy) $(@($read.accounts.main.uses).Count)" ' 4' 'the second project reads the PC''s register, and no key of the first'
+$read.workers.'4'.enabled = $false
+Set-JsonProperty $read 'model' 'claude-opus-5-5'
+Save-ProjectSettings $two $read
+Assert-Equal "$((Read-ProjectSettings $one).workers.'4'.enabled) $((Read-ProjectSettings $one).model)" 'False ' 'a save of a PC key reaches the other project; a key of its own does not'
+Assert-Equal (Get-Content (Join-Path $two '.queue\settings.json') -Raw | ConvertFrom-Json).model 'claude-opus-5-5' 'the project''s own key is in its file'
+# A file that does not parse is not an empty one.
+Set-Content (Join-Path $PcDir 'settings.json') '{ "accounts": ' -Encoding utf8
+$threw = $false
+try {
+    Read-ProjectSettings $one | Out-Null
+} catch {
+    $threw = $true
+}
+Assert-Equal $threw $true 'a PC file that does not parse stops the read'
+Set-Content (Join-Path $PcDir 'settings.json') '' -Encoding utf8
+$threw = $false
+try {
+    Read-ProjectSettings $one | Out-Null
+} catch {
+    $threw = $true
+}
+Assert-Equal $threw $true 'so does an empty one'
+
+# The accounts' records move too: the newer reading goes on, with the window that only the older one has.
+Set-Content (Join-Path $one '.queue\usage.json') '{"default":{"at":5,"five_hour":{"used":0.1},"fable":{"used":0.4}},"x":{"at":1}}' -Encoding utf8
+Set-Content (Join-Path $PcDir 'usage.json') '{"default":{"at":9,"five_hour":{"used":0.3}}}' -Encoding utf8
+Set-Content (Join-Path $one '.queue\out.json') 'not json' -Encoding utf8
+Move-PcRecords $one
+$usage = Get-Content (Join-Path $PcDir 'usage.json') -Raw | ConvertFrom-Json
+Assert-Equal "$($usage.default.at) $($usage.default.five_hour.used) $($usage.default.fable.used) $($usage.x.at)" '9 0.3 0.4 1' 'the usage of two projects in one file'
+Assert-Equal "$(Test-Path (Join-Path $one '.queue\usage.json')) $(Test-Path (Join-Path $one '.queue\out.json')) $(Test-Path (Join-Path $PcDir 'out.json'))" 'False False False' 'the project keeps no record; one that does not parse is dropped'
+Remove-Item (Split-Path $PcDir) -Recurse -Force
 
 Write-Output 'ok'

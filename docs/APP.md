@@ -212,7 +212,7 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
   queued tickets: a chip shows that project's lists and totals, and the choice stays on the device.
 - **The mark:** while the PC has two projects or more, each worker, question, ticket and history row carries its
   project's name, in a colour of its own.
-- **Accounts** are those of the project of the page's address. **Info** is one text: the common part once, and the
+- **Accounts** are the PC's: one list, with the workers of every project on it. **Info** is one text: the common part once, and the
   complexities and plugins for each project.
 - **How:** the page stays at its address and loads each other project's state, steps and pictures from that project's
   own server, and it sends each action to the server of the item's project. A page on the PC uses the project's

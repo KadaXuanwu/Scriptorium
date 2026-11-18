@@ -67,7 +67,8 @@ Or let Claude Code do it: paste [PROMPT.md](PROMPT.md) into Claude Code in your 
 
 - Windows only: Task Scheduler and Windows PowerShell 5.1.
 - One project for each setup run. Several projects on one PC each need their own run and their own `port`. Each has
-  its own queue, workers and page server; nothing is shared but the logins. One page shows them all together.
+  its own queue and page server. The accounts with their limits and the worker numbers are the PC's
+  ([docs/QUEUE.md](docs/QUEUE.md), Settings). One page shows every project together.
 - Claude Code and GitHub are fixed: no other agent, no other forge.
 - A worker's copy is a full clone, beside the main checkout.
 

@@ -2,7 +2,8 @@
 
 Each project that Scriptorium works on holds one file at its repo root, `scriptorium.json`, in git. It says what is
 true for the project on every PC. What is true for one PC only (the plan accounts, the workers, the limits, the
-notification topic) is in `.queue/settings.json` of the main checkout, which git ignores.
+notification topic) is in `.queue/settings.json` of the main checkout, which git ignores, or in the PC's own
+settings ([QUEUE.md](QUEUE.md), Settings).
 
 `setup.ps1` writes a first `scriptorium.json` when the project has none.
 
