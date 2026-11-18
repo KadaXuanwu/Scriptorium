@@ -857,7 +857,7 @@ function ask(title, text, yes, { fields = '', danger = false } = {}) {
 // A list in words: "a", "a and b", "a, b and c".
 const inWords = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list.at(-1)}` : list[0] || '');
 
-// One worker more, on the account the owner picks; the server gives it the lowest free number.
+// One worker more, on the account the owner picks; the server gives it the lowest number that no worker of the PC has.
 async function addWorker() {
   const accounts = states[home].accounts || [];
   const options = accounts.map((a) => `<option value="${esc(a.name)}">${esc(a.name)}${outMark[a.status] || ''}</option>`);

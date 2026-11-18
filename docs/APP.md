@@ -102,7 +102,8 @@ the project's), areas, size, then the model and effort of its run (Now) or, for 
 **Add and remove.** The last tile of the list adds a worker; the cross at the top right of a card removes one. Each asks
 first, in the page's one dialog.
 
-- **Add a worker** asks for its account. The server gives it the lowest number that has no state file and no task,
+- **Add a worker** asks for its account. The server gives it the lowest number that has no state file here and no
+  task in any project of the PC (a worker's number is the PC's: two projects never have a worker of one number),
   writes its settings entry (active, on that account) and its state file `setup`, so its card shows at once. A
   background job (`Install-Worker` in `tasks.ps1`) makes its copy `<main>-w<N>` (a copy that a removed worker left is
   used again), runs each plugin's `PrepareCopy` in it, makes the label `worker:<N>` in this repo and in each repo a

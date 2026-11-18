@@ -400,6 +400,9 @@ $old = @{ github = $true; questions = @(); stuck = @(); merged = @(); queued = @
 $new = @{ github = $true; questions = @(); stuck = @(); merged = @(); queued = @()
     workers = @(@{ id = '1'; status = 'active'; activity = 'free' }, @{ id = '3'; status = 'disabled'; activity = 'free' }) }
 Assert-Equal (@(Get-Events $old $new | ForEach-Object { $_.title }) -join ',') 'Queue empty' 'queue empty beside a disabled worker'
+# The page's start: the first snapshot has no reading of GitHub yet, and the queue was empty before it.
+$start = @{ github = $false; questions = @(); stuck = @(); merged = @(); queued = @(); workers = $new.workers }
+Assert-Equal @(Get-Events $start $new).Count 0 'no queue-empty push at the page''s start'
 # A worker at its usage limit stays active: its own push, and no "safe to switch off".
 $new = @{ github = $true; questions = @(); stuck = @(); merged = @(); queued = @(@{ number = 9 })
     workers = @(@{ id = '1'; status = 'active'; activity = 'limit'; resetsAt = 600 }, @{ id = '3'; status = 'disabled'; activity = 'free' }) }

@@ -462,10 +462,11 @@ function Invoke-Action($request) {
             return "complexity: worker $worker $name $(if ($request.on) { 'on' } else { 'off' })"
         }
         'add-worker' {
-            # One worker more (docs/APP.md, Workers): the lowest free number, active, on the account the owner
-            # picked ('' for the command-line login). Its card shows at once; its clone, label and task come from a job.
+            # One worker more (docs/APP.md, Workers): the lowest number that no worker of the PC has, active, on the
+            # account the owner picked ('' for the command-line login). A number is the PC's, not the project's: the
+            # worker tasks of every project count. Its card shows at once; its clone, label and task come from a job.
             $taken = @(Get-ChildItem (Join-Path $mainQueue 'worker-*.json') | ForEach-Object { $_.BaseName.Substring(7) }) +
-                @(Get-ScheduledTask -TaskName (Get-WorkerTaskName $config.name '*') -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName.Split(' ')[-1] })
+                @(Get-ScheduledTask -TaskName (Get-WorkerTaskName '*' '*') -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName.Split(' ')[-1] })
             $id = Get-FreeWorkerId $taken
             $account = [string]$request.account
             Save-Settings (Set-WorkerEntry (Read-SettingsToEdit) $id $true $account)

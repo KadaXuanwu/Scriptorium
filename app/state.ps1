@@ -59,8 +59,8 @@ function Set-WorkerAccount($settings, [string] $worker, [string] $account) {
     return $settings
 }
 
-# The lowest worker number nothing holds (the queue app's Add a worker): $taken are the numbers with a state file or a
-# task. A removed worker's number comes back, and with it its clone.
+# The lowest worker number nothing holds (the queue app's Add a worker): $taken are the numbers with a state file
+# here or a task in any project of the PC. A removed worker's number comes back, and with it its clone.
 function Get-FreeWorkerId($taken) {
     $numbers = @($taken | ForEach-Object { [string]$_ })
     $id = 1
@@ -1068,7 +1068,8 @@ function Get-Events($old, $new) {
         $snapshot.github -and @($snapshot.queued).Count -eq 0 -and $on.Count -gt 0 -and
             -not ($on | Where-Object { $_.status -ne 'active' -or $_.activity -ne 'free' })
     }
-    if ((& $empty $new) -and -not (& $empty $old)) {
+    # Not at the page's start: its first snapshot has no reading of GitHub, so an empty queue is no news then.
+    if ($old.github -and (& $empty $new) -and -not (& $empty $old)) {
         $events += @{ title = 'Queue empty'; message = 'Nothing queued; every worker free.'; priority = 2; tags = 'inbox_tray'; click = 'queue' }
     }
     return $events
