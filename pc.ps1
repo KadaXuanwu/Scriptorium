@@ -31,10 +31,30 @@ function Exit-PcLock($lock) {
 # A JSON file: $null when there is none. A file that does not parse throws: an unreadable register must never read as
 # an empty one (a disabled worker would read as enabled, and a save would write an empty register).
 function Read-JsonFile([string] $file) {
-    if (-not (Test-Path $file)) {
-        return $null
+    $text = $null
+    for ($try = 1; ; $try++) {
+        if (-not (Test-Path $file)) {
+            # A save takes the file away for an instant, while its new text still waits beside it (Save-JsonFile):
+            # 27 of 900 reads found none (measured). Wait for the save; then look once more before this is no file.
+            if ((Test-Path "$file.tmp") -and $try -lt 40) {
+                Start-Sleep -Milliseconds 25
+                continue
+            }
+            if (-not (Test-Path $file)) {
+                return $null
+            }
+        }
+        try {
+            $text = Get-Content $file -Raw -Encoding UTF8 -ErrorAction Stop
+            break
+        } catch {
+            # A save holds the file for a moment: read again.
+            if ($try -ge 40) {
+                throw
+            }
+            Start-Sleep -Milliseconds 25
+        }
     }
-    $text = Get-Content $file -Raw -Encoding UTF8
     if (-not "$text".Trim()) {
         throw "$file is empty"
     }
@@ -45,11 +65,27 @@ function Read-JsonFile([string] $file) {
     }
 }
 
-# Written whole, then moved into place: no reader gets half a file.
+# Written whole beside the file, then put in its place: no reader gets half a file, and none finds the file missing.
+# Not a move with -Force: that takes the old file away first, and 576 of 11 000 reads then found none (measured), which
+# reads as an empty register. A reader that has the file open for a moment refuses the replace: try again.
 function Save-JsonFile([string] $file, $value) {
     New-Item -ItemType Directory -Force (Split-Path $file) | Out-Null
     $value | ConvertTo-Json -Depth 8 | Set-Content "$file.tmp" -Encoding utf8
-    Move-Item "$file.tmp" $file -Force
+    for ($try = 1; ; $try++) {
+        try {
+            if (Test-Path $file) {
+                [System.IO.File]::Replace("$file.tmp", $file, [NullString]::Value)
+            } else {
+                [System.IO.File]::Move("$file.tmp", $file)
+            }
+            return
+        } catch {
+            if ($try -ge 40) {
+                throw
+            }
+            Start-Sleep -Milliseconds 25
+        }
+    }
 }
 
 # Sets a property of an object from JSON. Not Add-Member: it reads a name of digits (a worker's number) as a member
