@@ -58,7 +58,7 @@ Or let Claude Code do it: paste [PROMPT.md](PROMPT.md) into Claude Code in your 
 2. Add workers and plan accounts on the page (Workers, Accounts). One account runs everything at first: your own login.
 3. For the page on your phone: sign in to Tailscale on the PC and the phone, allow Serve when `tailscale serve` asks,
    open the address that setup prints ("On your Tailscale devices"), and add the page to the phone's home screen.
-   Only for the first project of a PC: a later project shows in the same app, under the project switch.
+   Only for the first project of a PC: a later project shows in the same app, beside the first.
 4. For pushes: subscribe to the ntfy topic that setup prints, in the ntfy app.
 5. File tickets: ask your own Claude Code session in the project ("ticket: ..."), or write GitHub issues with a
    priority label (`P0`, `P1`, `P2`).
@@ -67,8 +67,7 @@ Or let Claude Code do it: paste [PROMPT.md](PROMPT.md) into Claude Code in your 
 
 - Windows only: Task Scheduler and Windows PowerShell 5.1.
 - One project for each setup run. Several projects on one PC each need their own run and their own `port`. Each has
-  its own queue, workers and page server; nothing is shared but the logins. One page shows them all, with a project
-  switch at its top.
+  its own queue, workers and page server; nothing is shared but the logins. One page shows them all together.
 - Claude Code and GitHub are fixed: no other agent, no other forge.
 - A worker's copy is a full clone, beside the main checkout.
 

@@ -657,12 +657,12 @@ function Get-PageOrigin($views, [string] $origin) {
     return [string](@($views | ForEach-Object { $_.local; $_.url }) | Where-Object { $_ -and $_ -ceq $origin } | Select-Object -First 1)
 }
 
-# The address that a push opens: the app's address with the project named, so the one app shows the project of the
-# push and not the one that was open last. The app's address is the PC's plain Tailscale address (no port) when a
-# project of the PC has it: the owner's phone app is there. Else this project's own address ($own).
-function Get-PushUrl($views, [string] $name, [string] $own, [string] $click) {
+# The address that a push opens: the app's address, on the tab of the push. The app shows every project, so the
+# address names none. The app's address is the PC's plain Tailscale address (no port) when a project of the PC has it:
+# the owner's phone app is there. Else this project's own address ($own).
+function Get-PushUrl($views, [string] $own, [string] $click) {
     $plain = [string](@($views | ForEach-Object { $_.url }) | Where-Object { $_ -and $_ -notmatch ':\d+$' } | Select-Object -First 1)
-    return "$(if ($plain) { $plain } else { $own })/?project=$([uri]::EscapeDataString($name))#$click"
+    return "$(if ($plain) { $plain } else { $own })/#$click"
 }
 
 # Everything the page shows. $data: now, slug, workers (id, state, progress, forced), control, usage,

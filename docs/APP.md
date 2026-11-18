@@ -202,25 +202,33 @@ server first, and the server says yes only to the pages of this PC's projects (P
 
 ## Projects
 
-One app shows every project that Scriptorium runs on the PC. Each project keeps its own queue, workers and page
-server ([README.md](../README.md), Limits); the page shows one project at a time.
+One page shows every project that Scriptorium runs on the PC, with no switch between them. Each project keeps its own
+queue and page server ([README.md](../README.md), Limits); the page loads them all and shows them together.
 
-- **The switch** is a list above every view, while the PC has two projects or more. A choice reloads the page on that
-  project and stays on the device. So nothing of one project (a draft, an open dialog, a late answer) reaches
-  another: both can have a worker 1.
-- **How:** the page stays at its address and loads the other project's state, steps and pictures from that project's
-  own server, and it sends the owner's actions there. A page on the PC uses the project's address on the PC; a page on
-  a Tailscale device uses its Tailscale address (Setup). A project with no Tailscale address shows on the PC only.
-- **The list** is in every snapshot (`name`, `projects`): the server takes it from the logon tasks of the pages
-  (`Get-PcProjects`, [tasks.ps1](../tasks.ps1)) and from Tailscale's mapping, at its start and every five minutes.
+- **Workers:** the workers of every project stand side by side, in the order of their numbers.
+- **Questions, Queue and History:** one list of every project. In the Queue a project's own order stays, and between
+  the projects the priority decides. The Queue has a chip for each project and one for all, each with its count of
+  queued tickets: a chip shows that project's lists and totals, and the choice stays on the device.
+- **The mark:** while the PC has two projects or more, each worker, question, ticket and history row carries its
+  project's name, in a colour of its own.
+- **Accounts** are those of the project of the page's address. **Info** is one text: the common part once, and the
+  complexities and plugins for each project.
+- **How:** the page stays at its address and loads each other project's state, steps and pictures from that project's
+  own server, and it sends each action to the server of the item's project. A page on the PC uses the project's
+  address on the PC; a page on a Tailscale device uses its Tailscale address (Setup).
+- **An item belongs to its project.** Two projects can have a ticket 12, a question of the same key or a worker 1. The
+  page draws, looks up and changes an item in its own project's snapshot only (`within`, `act`,
+  [app.js](../app/web/app.js)), so nothing of one project reaches another.
+- **The list** of projects is in every snapshot (`name`, `projects`): the server takes it from the logon tasks of the
+  pages (`Get-PcProjects`, [tasks.ps1](../tasks.ps1)) and from Tailscale's mapping, at its start and every five minutes.
 - **The guard:** a server answers the page of another address only when that address is in its own list
   (`Get-PageOrigin`, [state.ps1](../app/state.ps1)): an exact match, never the asking page's own word. Every other
   site's page stays out, as before.
-- **A push** opens the app with its project named (`?project=<name>`), at the PC's plain Tailscale address when a
-  project has it: the phone app is there. Without Tailscale it opens the project's own address on the PC.
-- **A project whose server does not answer** shows its last state greyed out under the banner, which names it. The
-  switch still works.
-- The last state on the device is kept for each project.
+- **A push** opens the app on its tab, at the PC's plain Tailscale address when a project has it: the phone app is
+  there. Without Tailscale it opens the project's own address on the PC.
+- **A project that the page cannot load** keeps its last state on the page, and a line above the views names it: its
+  server does not answer, or it has no Tailscale address and the page is on a Tailscale device.
+- The last state on the device holds every project.
 - **Why not one address with a path for each project:** Windows gives a second program a path of a port only while no
   program holds the root of that port, and the reverse ("Access is denied", measured 2026-11-18). The first project's
   page is at the root of its port, and the phone app, the docs and every check use that address. So each project
@@ -256,7 +264,7 @@ random one); `ntfy.server` overrides `https://ntfy.sh`.
 `setup.ps1` registers the task, makes the ntfy topic and runs `tailscale serve`. The owner's part, once: Tailscale
 signed in on the PC and the phone (the same account), Serve allowed on the tailnet (the link that `tailscale serve`
 prints the first time), the ntfy app subscribed to the topic, and the page added to the phone's home screen. The
-home screen is for the first project of a PC only: a later one shows in the same app (Projects).
+home screen is for the first project of a PC only: a later one shows in the same app, beside the first (Projects).
 
 **The address on Tailscale.** A PC has one Tailscale name, and each project's page needs an address of its own. Setup
 reads what Tailscale serves (`tailscale serve status --json`) and never changes an address that is there:

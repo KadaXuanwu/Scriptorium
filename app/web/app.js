@@ -1,19 +1,33 @@
-// The queue app's page (docs/APP.md): renders /api/state every 10 s while visible, posts the owner's actions.
+// The queue app's page (docs/APP.md): renders every project's /api/state every 10 s while visible, posts the owner's
+// actions.
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-// The last snapshot as the server sent it, and what the page shows: that snapshot with the owner's unconfirmed
-// actions on top.
-let fresh = null;
+// One page shows every project that Scriptorium runs on the PC (docs/APP.md, Projects). `fresh` holds the last
+// snapshot of each project as its server sent it, by the project's name; `states` holds what the page shows: each
+// snapshot with the owner's unconfirmed actions on top. `home` is the project of this address, `projects` the PC's
+// projects with their addresses (from this address's snapshot), `names` those that have a snapshot.
+let fresh = {};
+let states = {};
+let home = '';
+let projects = [];
+let names = [];
+// The project in scope and its snapshot: the one whose item the page draws now (within). Two projects can have a
+// ticket 12 and a question of the same key, so an item is drawn, looked up and changed in its own project's
+// snapshot only, and an action names its project itself (act).
+let scope = '';
 let state = null;
 let fetches = 0;
-// The owner's actions that the server's state does not show yet, by the card each one changes. The page shows an
-// action at once and marks its card busy until a snapshot confirms it. Each: apply (the change, shown from the
-// click), after (a change shown once the server said yes), done (true when a snapshot shows the action; without it,
-// the first snapshot fetched after the yes confirms), responded, seq (the fetch count at the yes), until.
+// The count of the fetch that brought each project's snapshot.
+const seen = {};
+// The owner's actions that the server's state does not show yet, by project and the card each one changes. The page
+// shows an action at once and marks its card busy until a snapshot of its project confirms it. Each: project, apply
+// (the change, shown from the click), after (a change shown once the server said yes), done (true when a snapshot
+// shows the action; without it, the first snapshot fetched after the yes confirms), responded, seq (the fetch count
+// at the yes), until.
 const ops = new Map();
-const busyClass = (key) => (ops.has(key) ? ' busy' : '');
-const busyAttr = (key) => (ops.has(key) ? ' inert aria-busy="true"' : '');
+const busyClass = (key) => (ops.has(`${scope}|${key}`) ? ' busy' : '');
+const busyAttr = (key) => (ops.has(`${scope}|${key}`) ? ' inert aria-busy="true"' : '');
 const workerOf = (s, id) => s.workers.find((w) => w.id === id);
 const accountOf = (s, name) => s.accounts.find((a) => a.name === name);
 const complexityOf = (s, name) => (s.complexities || []).find((c) => c.name === name);
@@ -34,6 +48,28 @@ function put(el, html) {
 
 const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const icon = (name) => `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
+// Draws with a project in scope.
+function within(project, draw) {
+  const before = [scope, state];
+  scope = project;
+  state = states[project];
+  try {
+    return draw();
+  } finally {
+    [scope, state] = before;
+  }
+}
+// An item's HTML with its project on its first tag, so a click on the item finds the project (projectOf).
+const tagged = (project, html) => html.replace(/<[a-z]+/, (tag) => `${tag} data-project="${esc(project)}"`);
+const projectOf = (el) => el.closest('[data-project]')?.dataset.project || home;
+// One list of every project (`field` of each snapshot), each item with its project; and its items drawn, each in its
+// own project's scope.
+const all = (field) => names.flatMap((p) => (states[p]?.[field] || []).map((item) => ({ p, item })));
+const drawEach = (list, template) => list.map(({ p, item }) => within(p, () => tagged(p, template(item)))).join('');
+// A project's mark on an item, while the PC has two projects or more: its name, in a colour of its own.
+const hue = (name) => [...name].reduce((sum, c) => (sum * 31 + c.charCodeAt(0)) % 360, 7);
+const mark = () => (names.length > 1 ? `<span class="badge of" style="--hue:${hue(scope)}">${esc(scope)}</span>` : '');
 
 function duration(seconds) {
   if (seconds == null) return '';
@@ -61,7 +97,7 @@ function markdown(text) {
   return esc(text)
     .replace(/!\[([^\]]*)\]\(https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/blob\/(shots-t\d+)\/([\w.-]+\.(?:png|jpe?g))(?:\?raw=true)?\)/gi,
       (all, alt, branch, name) => {
-        const src = `${api('api/shot')}?branch=${branch}&amp;name=${name}`;
+        const src = `${api(scope, 'api/shot')}?branch=${branch}&amp;name=${name}`;
         return `<a class="shot" href="${src}" target="_blank"><img src="${src}" alt="${alt}" loading="lazy"></a>`;
       })
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)|(https:\/\/[^\s<]*[^\s<.,;:!?)\]])/g, (all, label, href, bare) => {
@@ -155,7 +191,7 @@ function progressBar(worker) {
 const opened = new Set();
 function workerCard(worker) {
   const id = esc(worker.id);
-  const open = opened.has(String(worker.id));
+  const open = opened.has(`${scope}|${worker.id}`);
   const [tone, glyph, words] = activity(worker);
   const repo = worker.repo && worker.repo !== state.slug ? [worker.repo.split('/')[1]] : [];
   const now = worker.ticket
@@ -179,7 +215,7 @@ function workerCard(worker) {
     : `<span class="free">${worker.status === 'disabled' ? 'None' : 'Nothing queued'}</span>`;
 
   const seg = Object.keys(statusNames).map((s) => `<button data-status="${s}" data-worker="${id}" aria-pressed="${worker.status === s}"
-    class="${worker.status === s ? 'on' : ''}${worker.pending?.to === s ? ' pending' : ''}"${worker.status === s ? ` style="view-transition-name:seg-${id}"` : ''}>${icon(statusIcons[s])}<span>${statusNames[s]}</span></button>`).join('');
+    class="${worker.status === s ? 'on' : ''}${worker.pending?.to === s ? ' pending' : ''}"${worker.status === s ? ` style="view-transition-name:seg-${esc(scope)}-${id}"` : ''}>${icon(statusIcons[s])}<span>${statusNames[s]}</span></button>`).join('');
   const pending = worker.pending ? `<div class="pending-note">${pendingVerbs[worker.pending.to]} ${howNames[worker.pending.how]}</div>` : '';
 
   // Config opens the worker's config (drawConfig). Its button counts the complexities the worker takes while one is off.
@@ -194,7 +230,7 @@ function workerCard(worker) {
 
   const card = `worker:${worker.id}`;
   return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}"${busyAttr(card)}>
-    <div class="worker-head"><span class="avatar">${id}</span><div class="who"><strong>Worker ${id}</strong>
+    <div class="worker-head"><span class="avatar">${id}</span><div class="who"><strong>Worker ${id}${mark()}</strong>
       <span class="doing ${tone}">${icon(glyph)}${words}</span></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
@@ -216,10 +252,13 @@ let configOf = null;
 const pickList = (list, value, label) => [...new Set([...list, value])].filter(Boolean)
   .map((v) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label(v))}</option>`).join('');
 function drawConfig() {
-  const worker = workerOf(state, configOf);
+  const worker = configOf && states[configOf.project] && workerOf(states[configOf.project], configOf.id);
   if (!worker) { $('config').close(); return; }
+  within(configOf.project, () => drawConfigOf(worker));
+}
+function drawConfigOf(worker) {
   const id = esc(worker.id);
-  $('config-title').textContent = `Worker ${worker.id}: config`;
+  $('config-title').textContent = `Worker ${worker.id}${names.length > 1 ? ` on ${scope}` : ''}: config`;
   put($('config-body'), `<div class="config-head"><span>Worker ${id} takes</span><span>Model, effort, compacts near <small>all workers</small></span></div>
     ${(worker.takes || []).map((t) => {
     const name = esc(t.name);
@@ -244,11 +283,11 @@ const questionTags = { pr: 'Holds a PR', ticket: 'Holds a ticket', question: 'De
 function questionCard(q) {
   const key = esc(q.key);
   const details = q.details
-    ? `<details data-key="more-${key}"><summary>More</summary><div class="text">${markdown(q.details)}</div></details>` : '';
+    ? `<details data-key="more-${esc(scope)}-${key}"><summary>More</summary><div class="text">${markdown(q.details)}</div></details>` : '';
   const tag = questionTags[q.kind] + (q.kind === 'followup' && q.size ? ` · size ${esc(q.size)}` : '');
   const card = `question:${q.key}`;
   return `<article class="card question${q.blocking ? ' blocking' : ''}${busyClass(card)}"${busyAttr(card)}>
-    <div class="question-head"><span class="tag">${tag}</span><a href="${esc(q.url)}" target="_blank">${esc(q.title)}</a></div>
+    <div class="question-head"><span class="tag">${tag}</span>${mark()}<a href="${esc(q.url)}" target="_blank">${esc(q.title)}</a></div>
     <div class="text ask">${markdown(q.question)}</div>${details}
     <textarea data-key="${key}" rows="2" placeholder="${q.kind === 'followup' ? 'Your answer. &quot;No&quot; drops it.' : 'Your answer'}"></textarea>
     <div class="buttons"><button data-default="${key}">Accept default</button><button class="primary" data-answer="${key}">Send answer</button></div></article>`;
@@ -267,15 +306,28 @@ function ticketRow(row) {
   const reason = row.reason ? `<span class="why${ready ? ' good' : ''}">${icon(ready ? 'next' : 'lock')}${esc(row.reason)}</span>` : '';
   const card = `ticket:${row.number}`;
   return `<div class="row${busyClass(card)}"${busyAttr(card)}><div class="what"><a href="${esc(row.url)}" target="_blank">${esc(row.title)}</a>
-    <div class="meta">${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${prioritySelect(row)}</div>`;
+    <div class="meta">${mark()}${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${prioritySelect(row)}</div>`;
 }
 
 
 const stuckRow = (item) => `<div class="row${busyClass(`stuck:${item.key}`)}"${busyAttr(`stuck:${item.key}`)}><div class="what"><a href="${esc(item.url)}" target="_blank">${esc(item.title)}</a>
-  <div class="meta">${badges([item.worker && `worker ${item.worker}`])}</div><div class="reason">${markdown(item.reason)}</div></div>
+  <div class="meta">${mark()}${badges([item.worker && `worker ${item.worker}`])}</div><div class="reason">${markdown(item.reason)}</div></div>
   <button data-retry="${esc(item.key)}">${icon('retry')}Retry</button></div>`;
 
-const heldRow = (item) => `<div class="row"><div class="what"><a href="${esc(item.url)}" target="_blank">${esc(item.title)}</a></div></div>`;
+const heldRow = (item) => `<div class="row"><div class="what"><a href="${esc(item.url)}" target="_blank">${esc(item.title)}</a>
+  <div class="meta">${mark()}</div></div></div>`;
+
+// ---- History
+
+const mergedRow = (m) => `<div class="row"><div class="what"><a href="${esc(m.url)}" target="_blank">${esc(m.title)}</a>
+  <div class="meta">${mark()}</div></div><span class="when">${esc(clock(m.mergedAt))}</span></div>`;
+
+function runRow(r) {
+  const kind = { answered: 'answers', 'needs-rebase': 'rebase' }[r.kind] || (r.partial ? 'part' : '');
+  return `<div class="row"><div class="what">${esc(r.title || `Ticket ${r.ticket}`)}
+    <div class="meta">${mark()}${badges([kind, r.size, modelName(r.model), r.duration && duration(r.duration), r.cost != null && `$${Number(r.cost).toFixed(2)}`])}</div></div>
+    <span class="when">${ago(r.at)}</span></div>`;
+}
 
 // ---- Accounts
 
@@ -427,6 +479,8 @@ function info(s) {
   const advisor = s.advisor;
   const working = (s.accounts || []).filter((a) => (a.uses || []).some((u) => u.startsWith('worker:')));
   const plugins = s.plugins || [];
+  // What can differ between the PC's projects, for each of them: its complexities and its plugins.
+  const per = s.per || [{ name: '', complexities: s.complexities, plugins }];
   return [
     section('In short', `<p>Workers are Claude sessions on this PC that build tickets (GitHub issues) on their own, one at
       a time. Each works in its own copy of the project${plugins.length ? `, with its environment (${environment(s)})` : ''},
@@ -458,7 +512,7 @@ function info(s) {
     </ol>`),
     section('Who builds what', `${items(s.workers.map((w) => {
       const off = (w.takes || []).filter((t) => !t.on).map((t) => t.name);
-      return `Worker ${esc(w.id)}: ${setting(esc(statusNames[w.status] || w.status), 'workers')}${w.account ? ` on ${esc(w.account)}` : ''}${off.length
+      return `Worker ${esc(w.id)}${w.project ? ` (${esc(w.project)})` : ''}: ${setting(esc(statusNames[w.status] || w.status), 'workers')}${w.account ? ` on ${esc(w.account)}` : ''}${off.length
         ? `, takes no ${setting(esc(off.join(', ')), 'workers')} tickets` : ''}.`;
     }))}
       <p>Active takes tickets. Paused takes none and keeps its ticket. Disabled takes none, and other workers take its
@@ -466,21 +520,22 @@ function info(s) {
       <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes.</p>`),
     section('Complexities', `<p>The complexity of a ticket chooses the model. The size (S, M, L) only says how much usage
       it takes. A ticket with no complexity label is medium.</p>
+      ${per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}
       <div class="scroll"><table><thead><tr><th>Complexity</th><th>For</th><th>Model</th><th>Effort</th><th>Advisor</th><th>Compacts near</th></tr></thead>
-        <tbody>${(s.complexities || []).map((c) => `<tr><th scope="row">${esc(c.name)}</th><td>${esc(c.description || c.name)}</td>
+        <tbody>${(p.complexities || []).map((c) => `<tr><th scope="row">${esc(c.name)}</th><td>${esc(c.description || c.name)}</td>
           <td>${setting(esc(modelName(c.model)), 'workers')}</td><td>${setting(esc(c.effort), 'workers')}</td>
           <td>${c.advisor ? `${esc(modelName(c.advisor))}${c.advisorFallback ? `<small>${esc(c.advisorFallback)} effort without it</small>` : ''}` : 'None'}</td>
-          <td>${setting(`${Math.round(c.compactAt / 1000)}k&nbsp;tokens`, 'workers')}</td></tr>`).join('')}</tbody></table></div>
+          <td>${setting(`${Math.round(c.compactAt / 1000)}k&nbsp;tokens`, 'workers')}</td></tr>`).join('')}</tbody></table></div>`).join('')}
       <p>Compacts near: when the context of a run reaches this size, Claude Code replaces the older part with a summary.
         A larger size keeps more of the work in view and uses more for each turn.</p>
       <p>A worker's ${setting('Config', 'workers')} sets the model, the effort and the compact size of a complexity for
-        all workers, from the next run. A run that waits for its account goes on with the model it started on.</p>
+        all workers${per.length > 1 ? ' of its project' : ''}, from the next run. A run that waits for its account goes on with the model it started on.</p>
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
         not see the advice. A run keeps its advisor to its end; past the Fable advisor line (Limits), new runs start
         without one.</p>` : ''}`),
-    section('Plugins', plugins.length
-      ? items(plugins.map((p) => `<b>${esc(p.title || p.name)}</b> ${esc(p.version)}: ${esc(p.description)}`))
-      : '<p>None: a plain git repo.</p>'),
+    section('Plugins', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${(p.plugins || []).length
+      ? items(p.plugins.map((x) => `<b>${esc(x.title || x.name)}</b> ${esc(x.version)}: ${esc(x.description)}`))
+      : '<p>None: a plain git repo.</p>'}`).join('')),
     section('Limits', `<p>Each account has three usage windows: 5 hours, the week, and the Fable week (Fable alone). The
       workers use all the room you give them and stop at the lines you set (${setting('Accounts', 'accounts')}). A run that
       reaches a stop line ends at its next checkpoint, and the same session goes on when the account has room again; one
@@ -528,64 +583,91 @@ function count(id, n, hot) {
 
 const quiet = (text) => `<div class="quiet">${text}</div>`;
 
+// The Queue shows every project ('') or the one its chips name; the choice stays on the device.
+const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ } };
+const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
+let queueOf = kept('scriptorium-queue') || '';
+
 function render() {
-  const s = state;
-  const blocking = s.questions.filter((q) => q.blocking);
-  const open = s.questions.filter((q) => !q.blocking);
-  const working = s.workers.filter((w) => w.activity === 'running').length;
+  const s = states[home];
+  const questions = all('questions');
+  const blocking = questions.filter(({ item }) => item.blocking);
+  const open = questions.filter(({ item }) => !item.blocking);
+  // The workers side by side, in the order of their numbers.
+  const workers = all('workers').sort((a, b) => a.item.id - b.item.id || a.p.localeCompare(b.p));
+  const working = workers.filter(({ item }) => item.activity === 'running').length;
+  const stuck = all('stuck');
+  const loaded = names.every((p) => states[p].github);
   // Workers counts the workers with a run in flight; Accounts the accounts in use that are not out.
-  count('count-workers', working, s.workers.some((w) => w.activity === 'down'));
+  count('count-workers', working, workers.some(({ item }) => item.activity === 'down'));
   count('count-questions', blocking.length || open.length, blocking.length > 0);
-  count('count-queue', s.queued.length + s.stuck.length, s.stuck.length > 0);
+  count('count-queue', all('queued').length + stuck.length, stuck.length > 0);
   count('count-accounts', s.accounts.filter((a) => ['ready', 'limit'].includes(a.status) && a.uses.length).length,
     s.accounts.some((a) => ['signedout', 'refused'].includes(a.status) && (a.own || a.uses.length)));
   document.title = (blocking.length ? `(${blocking.length}) ` : '') + 'Scriptorium' + (working ? ` · ${working} working` : '');
 
-  const active = s.workers.filter((w) => w.status === 'active').length;
-  $('workers-sub').textContent = `${working} working · ${active} of ${s.workers.length} active`;
+  const active = workers.filter(({ item }) => item.status === 'active').length;
+  $('workers-sub').textContent = `${working} working · ${active} of ${workers.length} active`;
   put($('all-buttons'), `<button data-status="active" data-worker="all">${icon('play')}All active</button>
     <button data-status="paused" data-worker="all">${icon('pause')}Pause all</button>`);
-  put($('worker-list'), (s.workers.map(workerCard).join('') || quiet('No worker has reported yet.')) + addTile('worker', 'Add a worker'));
+  put($('worker-list'), (drawEach(workers, workerCard) || quiet('No worker has reported yet.')) + addTile('worker', 'Add a worker'));
   if ($('config').open) drawConfig();
 
   // An answer being typed survives a redraw of its list.
   const typed = {};
-  document.querySelectorAll('#questions textarea').forEach((t) => { typed[t.dataset.key] = t.value; });
+  const typedKey = (t) => `${projectOf(t)}|${t.dataset.key}`;
+  document.querySelectorAll('#questions textarea').forEach((t) => { typed[typedKey(t)] = t.value; });
   const loading = quiet('Loading from GitHub...');
   $('blocking-title').textContent = `Blocking · ${blocking.length}`;
   $('open-title').textContent = `Not blocking · ${open.length}`;
-  put($('blocking-list'), s.github ? (blocking.map(questionCard).join('') || quiet('No question blocks any work.')) : loading);
-  put($('open-list'), s.github ? (open.map(questionCard).join('') || quiet('No open question.')) : loading);
-  document.querySelectorAll('#questions textarea').forEach((t) => { if (typed[t.dataset.key]) t.value = typed[t.dataset.key]; });
+  put($('blocking-list'), drawEach(blocking, questionCard) || (loaded ? quiet('No question blocks any work.') : loading));
+  put($('open-list'), drawEach(open, questionCard) || (loaded ? quiet('No open question.') : loading));
+  document.querySelectorAll('#questions textarea').forEach((t) => { if (typed[typedKey(t)]) t.value = typed[typedKey(t)]; });
 
-  put($('queue-stats'), s.left.count ? `<span><b>${s.left.count}</b> tickets</span>
-    ${s.left.seconds ? `<span><b>≈ ${Math.round(s.left.seconds / 3600)} h</b> of runs</span>` : ''}
-    ${s.left.cost ? `<span><b>≈ ${dollars(s.left.cost)}</b></span>` : ''}` : '');
-  put($('stuck-list'), s.stuck.length ? `<h2 class="hot">Stuck · ${s.stuck.length}</h2><div class="list stuck">${s.stuck.map(stuckRow).join('')}</div>` : '');
-  put($('queue-list'), s.queued.map(ticketRow).join('') || quiet(s.github ? 'Nothing queued.' : 'Loading...'));
-  put($('held-list'), s.held.length ? `<h2>On hold · ${s.held.length}</h2><div class="list">${s.held.map(heldRow).join('')}</div>` : '');
-  $('parked-title').textContent = `Parked · ${s.parked.length}`;
-  put($('parked-list'), s.parked.map(ticketRow).join('') || quiet('None.'));
+  // The Queue: every project in one list, or one project (its chips). A project's own order stays; between the
+  // projects the priority decides.
+  if (!names.includes(queueOf)) queueOf = '';
+  const shown = ({ p }) => !queueOf || p === queueOf;
+  const rank = ({ item }) => (['P0', 'P1', 'P2'].indexOf(item.priority) + 4) % 4;
+  const queued = all('queued');
+  put($('queue-projects'), names.length > 1 ? `<div class="seg" role="group" aria-label="The projects of the queue">${[['', 'All'], ...names.map((p) => [p, p])]
+    .map(([value, label]) => `<button data-queue="${esc(value)}" class="${queueOf === value ? 'on' : ''}" aria-pressed="${queueOf === value}">${esc(label)}
+      <small>${queued.filter(({ p }) => !value || p === value).length}</small></button>`).join('')}</div>` : '');
+  const left = names.filter((p) => !queueOf || p === queueOf).map((p) => states[p].left)
+    .reduce((sum, l) => ({ count: sum.count + l.count, seconds: sum.seconds + l.seconds, cost: sum.cost + l.cost }), { count: 0, seconds: 0, cost: 0 });
+  put($('queue-stats'), left.count ? `<span><b>${left.count}</b> tickets</span>
+    ${left.seconds ? `<span><b>≈ ${Math.round(left.seconds / 3600)} h</b> of runs</span>` : ''}
+    ${left.cost ? `<span><b>≈ ${dollars(left.cost)}</b></span>` : ''}` : '');
+  const stuckShown = stuck.filter(shown);
+  const held = all('held').filter(shown);
+  const parked = all('parked').filter(shown);
+  put($('stuck-list'), stuckShown.length ? `<h2 class="hot">Stuck · ${stuckShown.length}</h2><div class="list stuck">${drawEach(stuckShown, stuckRow)}</div>` : '');
+  put($('queue-list'), drawEach(queued.filter(shown).sort((a, b) => rank(a) - rank(b)), ticketRow) || quiet(loaded ? 'Nothing queued.' : 'Loading...'));
+  put($('held-list'), held.length ? `<h2>On hold · ${held.length}</h2><div class="list">${drawEach(held, heldRow)}</div>` : '');
+  $('parked-title').textContent = `Parked · ${parked.length}`;
+  put($('parked-list'), drawEach(parked, ticketRow) || quiet('None.'));
 
+  // The accounts are the PC's: this address's own project gives them.
   const code = $('login-code')?.value || '';
-  put($('login-box'), loginBox(s.login));
+  within(home, () => {
+    put($('login-box'), loginBox(s.login));
+    put($('account-list'), (s.accounts.map((a) => tagged(home, accountCard(a))).join('') || quiet('No accounts in the settings.')) + addTile('account', 'Add an account'));
+  });
   if (code && $('login-code')) $('login-code').value = code;
-  put($('account-list'), (s.accounts.map(accountCard).join('') || quiet('No accounts in the settings.')) + addTile('account', 'Add an account'));
 
-  put($('merged-list'), s.merged.map((m) => `<div class="row"><div class="what"><a href="${esc(m.url)}" target="_blank">${esc(m.title)}</a></div>
-    <span class="when">${esc(clock(m.mergedAt))}</span></div>`).join('') || quiet('None yet.'));
-  put($('run-list'), s.runs.map((r) => {
-    const kind = { answered: 'answers', 'needs-rebase': 'rebase' }[r.kind] || (r.partial ? 'part' : '');
-    return `<div class="row"><div class="what">${esc(r.title || `Ticket ${r.ticket}`)}
-      <div class="meta">${badges([kind, r.size, modelName(r.model), r.duration && duration(r.duration), r.cost != null && `$${Number(r.cost).toFixed(2)}`])}</div></div>
-      <span class="when">${ago(r.at)}</span></div>`;
-  }).join('') || quiet('None yet.'));
+  put($('merged-list'), drawEach(all('merged').sort((a, b) => new Date(b.item.mergedAt) - new Date(a.item.mergedAt)), mergedRow) || quiet('None yet.'));
+  put($('run-list'), drawEach(all('runs').sort((a, b) => b.item.at - a.item.at), runRow) || quiet('None yet.'));
 
   $('stamp').textContent = `Updated ${new Date(s.now * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
+  // The info is one text for the PC: this address's project gives the common part, every project its own part.
   let text;
   try {
-    text = info(s);
+    text = within(home, () => info({
+      ...s, questions: questions.map(({ item }) => item), stuck: stuck.map(({ item }) => item),
+      workers: workers.map(({ p, item }) => ({ ...item, project: names.length > 1 ? p : '' })),
+      per: names.map((p) => ({ name: p, complexities: states[p].complexities, plugins: states[p].plugins })),
+    }));
   } catch (e) {
     text = quiet('The info could not be drawn from this state. Pull down or reload to fetch a new one.');
   }
@@ -604,50 +686,29 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 
-// One app for every project of the PC (docs/APP.md, Projects): the page shows one project at a time. `base` is the
-// address of the shown project's server: '' for the project of this address, else that project's own address, and the
-// page then loads everything from there. The choice stays on the device. A push names its project in the address
-// (?project=), which wins once. A switch reloads the page, so no draft, dialog or late answer of one project reaches
-// another: both can have a worker 1.
-const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ } };
-const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
 // A page at the PC's own address uses each project's address on the PC. A page on a Tailscale device uses the
 // Tailscale one, and a project without it cannot show there.
 const addressOf = (p) => (location.hostname === '127.0.0.1' ? p?.local : p?.url);
-let projects = kept('scriptorium-projects') || [];
-const asked = new URLSearchParams(location.search).get('project');
-if (asked) {
-  keep('scriptorium-project', asked);
-  history.replaceState(null, '', location.pathname + location.hash);
-}
-const project = kept('scriptorium-project') || '';
-const there = addressOf(projects.find((p) => p.name === project));
-const base = there && there !== location.origin ? there : '';
-const api = (path) => (base ? `${base}/` : '') + path;
+// Where a project's server answers this page: this address for its own project, else the project's own address.
+const api = (project, path) => (project && project !== home ? `${addressOf(projects.find((p) => p.name === project))}/` : '') + path;
 
-// The project switch, above every view while the PC has two projects or more. `shown`: the project on the page.
-function drawProjects(shown) {
-  const box = $('project');
-  box.hidden = projects.length < 2;
-  if (box.hidden || document.activeElement === box) return;
-  box.innerHTML = projects.map((p) => `<option value="${esc(p.name)}"${p.name === shown ? ' selected' : ''}${addressOf(p) ? '' : ' disabled'}>
-    ${esc(p.name)}${addressOf(p) ? '' : ' (on the PC only)'}</option>`).join('');
-}
-$('project').addEventListener('change', (e) => {
-  keep('scriptorium-project', e.target.value);
-  location.reload();
-});
-drawProjects(base ? project : projects.find((p) => addressOf(p) === location.origin)?.name);
-
-// The last state reached, kept on the device, one for each project: with the PC off the app still opens on it, greyed
-// out under a banner.
-const stored = base ? `scriptorium-state:${project}` : 'scriptorium-state';
-function remember(snapshot) {
-  try { localStorage.setItem(stored, JSON.stringify({ snapshot, at: Date.now() })); } catch (e) { /* private mode */ }
+// The PC's projects, and those of them that have a snapshot to show.
+function adopt(list) {
+  projects = list;
+  names = projects.map((p) => p.name).filter((name) => fresh[name]);
 }
 
+// The last state reached, kept on the device: with the PC off the app still opens on it, greyed out under a banner.
+const stored = 'scriptorium-state';
+const remember = () => keep(stored, { fresh, home, projects, at: Date.now() });
 function recall() {
-  try { return JSON.parse(localStorage.getItem(stored)); } catch (e) { return null; }
+  const last = kept(stored);
+  // A state from before the page showed every project: one snapshot.
+  if (last?.snapshot) {
+    const name = last.snapshot.name || 'project';
+    return { fresh: { [name]: last.snapshot }, home: name, projects: [{ name }], at: last.at };
+  }
+  return last?.fresh ? last : null;
 }
 
 function setOffline(offline) {
@@ -656,23 +717,33 @@ function setOffline(offline) {
   banner.hidden = !offline;
   if (offline) {
     const last = recall();
-    // Another project's server can be down while this address answers: the banner names what does not answer.
-    banner.textContent = `Can't reach ${base ? project : 'your PC'}${last ? ` since ${clock(last.at)}` : ''}. Is ${base ? 'the PC' : 'it'} on, and Tailscale connected?`;
+    banner.textContent = `Can't reach your PC${last ? ` since ${clock(last.at)}` : ''}. Is it on, and Tailscale connected?`;
   }
 }
 
-// Shows the last snapshot with the unconfirmed actions on top. `fetch` is the count of the fetch that brought the
-// snapshot (0: no new one): an action that it confirms, or that waited too long, goes.
-function draw(animate, fetch) {
+// A project that this page cannot load now: its server does not answer (its last state stays on the page), or it has
+// no address on this device.
+function setNotice(down, away) {
+  const lines = [down.length && `Can't reach ${inWords(down)}: ${down.length > 1 ? 'their' : 'its'} last state shows.`,
+    away.length && `${inWords(away)} ${away.length > 1 ? 'show' : 'shows'} on the PC only: no Tailscale address.`].filter(Boolean);
+  $('notice').hidden = !lines.length;
+  $('notice').textContent = lines.join(' ');
+}
+
+// Shows the last snapshots with the unconfirmed actions on top. An action goes when a snapshot of its project that
+// was fetched after the server's yes confirms it, or when it waited too long.
+function draw(animate) {
   const paint = () => {
-    state = structuredClone(fresh);
+    states = {};
+    for (const p of names) states[p] = structuredClone(fresh[p]);
     for (const op of new Set(ops.values())) {
-      if (op.responded && fetch > op.seq && (!op.done || op.done(state) || Date.now() > op.until)) {
+      const s = states[op.project];
+      if (!s || (op.responded && (seen[op.project] || 0) > op.seq && (!op.done || op.done(s) || Date.now() > op.until))) {
         for (const [key, value] of ops) if (value === op) ops.delete(key);
         continue;
       }
-      op.apply?.(state);
-      if (op.responded) op.after?.(state);
+      op.apply?.(s);
+      if (op.responded) op.after?.(s);
     }
     render();
   };
@@ -681,29 +752,54 @@ function draw(animate, fetch) {
   else paint();
 }
 
+async function load(project) {
+  const response = await fetch(api(project, 'api/state'), { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+  const snapshot = await response.json();
+  if (!snapshot.workers) throw new Error('no state');
+  return snapshot;
+}
+
+// This address's project first: it names the PC's projects. Then every other project from its own address, at the
+// same time; one that does not answer keeps its last snapshot.
 async function refresh(animate) {
   const fetched = ++fetches;
+  let own;
   try {
-    const response = await fetch(api('api/state'), { cache: 'no-store', signal: AbortSignal.timeout(8000) });
-    const snapshot = await response.json();
-    if (!snapshot.workers) throw new Error('no state');
-    if (snapshot.projects?.length) {
-      projects = snapshot.projects;
-      keep('scriptorium-projects', projects);
-      // A choice from before the page knew the project's address (the first visit, from a push): it knows it now.
-      const wanted = addressOf(projects.find((p) => p.name === project));
-      if (!base && wanted && wanted !== location.origin) return location.reload();
-    }
-    drawProjects(snapshot.name);
-    fresh = snapshot;
-    remember(snapshot);
-    setOffline(false);
-    draw(animate, fetched);
+    own = await load('');
   } catch (e) {
-    if (!fresh) fresh = recall()?.snapshot;
-    if (fresh) draw(false, 0);
+    const last = !names.length && recall();
+    if (last) {
+      ({ fresh, home } = last);
+      adopt(last.projects);
+    }
+    if (names.length) draw(false);
     setOffline(true);
+    return;
   }
+  home = own.name || 'project';
+  const list = own.projects?.length ? own.projects : [{ name: home }];
+  for (const name of Object.keys(fresh)) if (!list.some((p) => p.name === name)) delete fresh[name];
+  fresh[home] = own;
+  seen[home] = fetched;
+  adopt(list);
+  setOffline(false);
+  draw(animate);
+  const others = list.filter((p) => p.name !== home);
+  const reach = others.filter(addressOf);
+  const results = await Promise.allSettled(reach.map((p) => load(p.name)));
+  const down = [];
+  results.forEach((result, i) => {
+    const { name } = reach[i];
+    if (result.status !== 'fulfilled') down.push(name);
+    else if (fetched >= (seen[name] || 0)) {
+      fresh[name] = result.value;
+      seen[name] = fetched;
+    }
+  });
+  adopt(list);
+  remember();
+  setNotice(down, others.filter((p) => !addressOf(p)).map((p) => p.name));
+  if (reach.length) draw(false);
 }
 
 function toast(text) {
@@ -714,15 +810,15 @@ function toast(text) {
   toast.timer = setTimeout(() => { box.hidden = true; }, 3500);
 }
 
-// Posts an action. `keys` are the cards it changes: the change shows at once (apply), and those cards stay busy until
-// a snapshot confirms it. A refusal takes the change back and says why.
-async function act(body, { keys = [], apply, after, done } = {}) {
-  const op = { apply, after, done, responded: false };
-  for (const key of keys) ops.set(key, op);
-  if (keys.length) draw(true, 0);
+// Posts an action to a project's server. `keys` are the cards it changes: the change shows at once (apply), and those
+// cards stay busy until a snapshot confirms it. A refusal takes the change back and says why.
+async function act(project, body, { keys = [], apply, after, done } = {}) {
+  const op = { project, apply, after, done, responded: false };
+  for (const key of keys) ops.set(`${project}|${key}`, op);
+  if (keys.length) draw(true);
   let ok = false;
   try {
-    const response = await fetch(api('api/action'), {
+    const response = await fetch(api(project, 'api/action'), {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Queue': '1' }, body: JSON.stringify(body),
     });
     const result = await response.json();
@@ -732,7 +828,7 @@ async function act(body, { keys = [], apply, after, done } = {}) {
     toast('Cannot reach Scriptorium');
   }
   if (ok) Object.assign(op, { responded: true, seq: fetches, until: Date.now() + 90000 });
-  else for (const key of keys) ops.delete(key);
+  else for (const key of keys) ops.delete(`${project}|${key}`);
   await refresh(true);
   return ok;
 }
@@ -763,16 +859,16 @@ const inWords = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} an
 
 // One worker more, on the account the owner picks; the server gives it the lowest free number.
 async function addWorker() {
-  const accounts = state.accounts || [];
+  const accounts = states[home].accounts || [];
   const options = accounts.map((a) => `<option value="${esc(a.name)}">${esc(a.name)}${outMark[a.status] || ''}</option>`);
   // The command-line login, offered as on a worker's card: only while no entry is that login.
   if (accounts.every((a) => a.own)) options.unshift('<option value="">command line</option>');
-  const plugins = state.plugins || [];
-  const values = await ask('Add a worker', 'It starts as Active. It takes tickets when its copy of the repo is made'
-    + (plugins.length ? ` and its environment (${inWords(plugins.map((p) => p.title || p.name))}) is ready.` : '.'), 'Add worker', {
-    fields: `<label>Account<select name="account">${options.join('')}</select></label>`,
+  // Its project, while the PC has two or more.
+  const where = names.length > 1 ? `<label>Project<select name="project">${names.map((p) => `<option>${esc(p)}</option>`).join('')}</select></label>` : '';
+  const values = await ask('Add a worker', 'It starts as Active. It takes tickets when its copy of the repo is made and its environment is ready.', 'Add worker', {
+    fields: `${where}<label>Account<select name="account">${options.join('')}</select></label>`,
   });
-  if (values) await act({ action: 'add-worker', account: values.account || '' });
+  if (values) await act(values.project || home, { action: 'add-worker', account: values.account || '' });
 }
 
 // One account more: its name and email, then the sign-in on this tab (loginBox).
@@ -785,12 +881,12 @@ async function addAccount() {
     });
   if (!values) return;
   const account = values.account.trim().toLowerCase();
-  if (await act({ action: 'login', account, email: values.email.trim(), new: true })) $('login-box').scrollIntoView({ block: 'nearest' });
+  if (await act(home, { action: 'login', account, email: values.email.trim(), new: true })) $('login-box').scrollIntoView({ block: 'nearest' });
 }
 
 // Only a disabled worker with no run goes (its ticket is free then); the dialog says what to do first.
-async function removeWorker(id) {
-  const worker = workerOf(state, id);
+async function removeWorker(project, id) {
+  const worker = workerOf(states[project], id);
   if (!worker) return;
   const title = `Remove worker ${id}?`;
   // A disabled worker whose script is gone goes too, though its state still names a run: nothing finishes that run.
@@ -800,10 +896,10 @@ async function removeWorker(id) {
   } else if (!disabled && worker.pending?.to === 'disabled') {
     await ask(title, 'It is disabled when its run ends. Then remove it.');
   } else if (!disabled) {
-    if (await ask(title, 'Disable it first: its ticket then goes back to the queue. When it shows Disabled, remove it.', 'Disable')) setStatus(id, 'disabled');
+    if (await ask(title, 'Disable it first: its ticket then goes back to the queue. When it shows Disabled, remove it.', 'Disable')) setStatus(project, id, 'disabled');
   } else if (await ask(title, `Its script stops and its card goes. Its copy of the repo stays on the PC: a new worker ${id} uses it again.`,
     'Remove', { danger: true })) {
-    await act({ action: 'remove-worker', worker: id }, {
+    await act(project, { action: 'remove-worker', worker: id }, {
       keys: [`worker:${id}`],
       after: (s) => { s.workers = s.workers.filter((w) => w.id !== id); },
       done: (s) => !s.workers.some((w) => w.id === id),
@@ -813,7 +909,7 @@ async function removeWorker(id) {
 
 // Only an account nothing uses goes: its login is signed out.
 async function removeAccount(name) {
-  const account = accountOf(state, name);
+  const account = accountOf(states[home], name);
   if (!account) return;
   const title = `Remove ${name}?`;
   if (account.uses.length) {
@@ -823,7 +919,7 @@ async function removeAccount(name) {
     return;
   }
   if (!(await ask(title, 'Its login is signed out, and its card goes.', 'Remove', { danger: true }))) return;
-  await act({ action: 'remove-account', account: name }, {
+  await act(home, { action: 'remove-account', account: name }, {
     keys: [`account:${name}`],
     after: (s) => { s.accounts = s.accounts.filter((a) => a.name !== name); },
     done: (s) => !s.accounts.some((a) => a.name === name),
@@ -839,10 +935,10 @@ const howOptions = {
 const keeps = { paused: 'The worker keeps its ticket.', disabled: 'Its ticket goes back to the queue.' };
 
 // Sends a status. Shown at once: the new status, or the target as pending while a run still works toward it.
-function sendStatus(worker, to, how) {
+function sendStatus(project, worker, to, how) {
   const mine = (s) => s.workers.filter((w) => worker === 'all' || w.id === worker);
-  return act({ action: 'status', worker, to, how }, {
-    keys: mine(state).map((w) => `worker:${w.id}`),
+  return act(project, { action: 'status', worker, to, how }, {
+    keys: mine(states[project]).map((w) => `worker:${w.id}`),
     apply: (s) => mine(s).forEach((w) => {
       if (to !== 'active' && w.run && how !== 'now' && w.status === 'active') w.pending = { to, how };
       else Object.assign(w, { status: to, pending: null }, to === 'disabled' ? { next: null } : {});
@@ -850,24 +946,26 @@ function sendStatus(worker, to, how) {
   });
 }
 
-function setStatus(worker, to) {
-  const views = worker === 'all' ? state.workers : state.workers.filter((w) => w.id === worker);
+// "all" is the workers of every project.
+const statusTo = (project, worker, to, how) => Promise.all((worker === 'all' ? names : [project]).map((p) => sendStatus(p, worker, to, how)));
+
+function setStatus(project, worker, to) {
+  const views = worker === 'all' ? all('workers').map(({ item }) => item) : states[project].workers.filter((w) => w.id === worker);
   const who = worker === 'all' ? 'all workers' : `worker ${worker}`;
   if (to === 'active' || !views.some((w) => w.run)) {
-    sendStatus(worker, to, to === 'active' ? '' : 'now');
+    statusTo(project, worker, to, to === 'active' ? '' : 'now');
     return;
   }
+  $('how').dataset.project = project;
   $('how-title').textContent = `${to === 'paused' ? 'Pause' : 'Disable'} ${who}`;
   $('how-options').innerHTML = Object.entries(howOptions).map(([how, [glyph, name, effect]]) => `<button data-how="${how}" data-to="${to}" data-worker="${esc(worker)}">
     ${icon(glyph)}<span><b>${name}</b><small>${effect}${how === 'finish' ? '' : ` ${keeps[to]}`}</small></span></button>`).join('');
   $('how').showModal();
 }
 
-const answerBox = (key) => document.querySelector(`#questions textarea[data-key="${CSS.escape(key)}"]`);
-
 // An answer in text, or no text to take the default; the server decides what the queue does with it. Once the server
 // said yes, the question is hidden until GitHub's next fetch drops it, so none is sent twice.
-const answer = (key, text) => act({ action: 'answer', key, text }, {
+const answer = (project, key, text) => act(project, { action: 'answer', key, text }, {
   keys: [`question:${key}`],
   after: (s) => { s.questions = s.questions.filter((q) => q.key !== key); },
   done: (s) => !s.questions.some((q) => q.key === key),
@@ -877,66 +975,72 @@ document.addEventListener('click', async (e) => {
   const target = e.target.closest('button');
   if (!target) return;
   const data = target.dataset;
+  const project = projectOf(target);
   if (data.status) {
-    setStatus(data.worker, data.status);
+    setStatus(project, data.worker, data.status);
+  } else if (data.queue !== undefined) {
+    queueOf = data.queue;
+    keep('scriptorium-queue', queueOf);
+    draw(false);
   } else if (data.more) {
-    const open = !opened.delete(data.more);
-    if (open) opened.add(data.more);
+    const open = !opened.delete(`${project}|${data.more}`);
+    if (open) opened.add(`${project}|${data.more}`);
     target.closest('.worker').classList.toggle('open', open);
     target.setAttribute('aria-expanded', open);
   } else if (data.take) {
     const on = target.getAttribute('aria-pressed') !== 'true';
-    await act({ action: 'complexity', worker: data.worker, complexity: data.take, on }, {
+    await act(project, { action: 'complexity', worker: data.worker, complexity: data.take, on }, {
       keys: [`worker:${data.worker}`],
       apply: (s) => { workerOf(s, data.worker).takes.find((t) => t.name === data.take).on = on; },
     });
   } else if (data.how) {
     $('how').close();
-    await sendStatus(data.worker, data.to, data.how);
+    await statusTo(project, data.worker, data.to, data.how);
   } else if (data.force) {
-    const next = state.workers.find((w) => w.id === data.force)?.next;
+    const next = workerOf(states[project], data.force)?.next;
     if (next && !next.available && !(await ask(`Take "${next.title}" now?`,
       `The queue holds it back: ${next.why}. The run goes past the stop line and uses the room kept under it.`, 'Take it'))) return;
-    await act({ action: 'force', worker: data.force }, { keys: [`worker:${data.force}`], apply: (s) => { workerOf(s, data.force).forced = true; } });
+    await act(project, { action: 'force', worker: data.force }, { keys: [`worker:${data.force}`], apply: (s) => { workerOf(s, data.force).forced = true; } });
   } else if (data.unforce) {
-    await act({ action: 'unforce', worker: data.unforce }, { keys: [`worker:${data.unforce}`], apply: (s) => { workerOf(s, data.unforce).forced = false; } });
+    await act(project, { action: 'unforce', worker: data.unforce }, { keys: [`worker:${data.unforce}`], apply: (s) => { workerOf(s, data.unforce).forced = false; } });
   } else if (data.answer) {
-    const text = answerBox(data.answer).value.trim();
+    const text = target.closest('.question').querySelector('textarea').value.trim();
     if (!text) { toast('Write an answer first'); return; }
-    await answer(data.answer, text);
+    await answer(project, data.answer, text);
   } else if (data.default) {
-    await answer(data.default, '');
+    await answer(project, data.default, '');
   } else if (data.retry) {
-    await act({ action: 'retry', key: data.retry }, {
+    await act(project, { action: 'retry', key: data.retry }, {
       keys: [`stuck:${data.retry}`],
       after: (s) => { s.stuck = s.stuck.filter((item) => item.key !== data.retry); },
       done: (s) => !s.stuck.some((item) => item.key === data.retry),
     });
   } else if (data.login) {
-    await act({ action: 'login', account: data.login }, { keys: [`account:${data.login}`] });
+    await act(home, { action: 'login', account: data.login }, { keys: [`account:${data.login}`] });
   } else if (data.loginCode !== undefined) {
     const code = $('login-code').value.trim();
     if (!code) { toast('Paste the code first'); return; }
     target.disabled = true;
-    if (await act({ action: 'login-code', code })) $('login-code').value = '';
+    if (await act(home, { action: 'login-code', code })) $('login-code').value = '';
   } else if (data.loginCancel !== undefined) {
-    if (await ask('Cancel the sign-in?', 'The account stays as it is.', 'Cancel the sign-in')) await act({ action: 'login-cancel' });
+    if (await ask('Cancel the sign-in?', 'The account stays as it is.', 'Cancel the sign-in')) await act(home, { action: 'login-cancel' });
   } else if (data.ping) {
-    await act({ action: 'ping', account: data.ping }, { keys: [`account:${data.ping}`] });
+    await act(home, { action: 'ping', account: data.ping }, { keys: [`account:${data.ping}`] });
   } else if (data.add) {
     await (data.add === 'worker' ? addWorker() : addAccount());
   } else if (data.remove) {
-    await (data.remove === 'worker' ? removeWorker(data.name) : removeAccount(data.name));
+    await (data.remove === 'worker' ? removeWorker(project, data.name) : removeAccount(data.name));
   } else if (data.config) {
-    configOf = data.config;
+    configOf = { project, id: data.config };
+    $('config').dataset.project = project;
     drawConfig();
     $('config').showModal();
   } else if (data.steps) {
-    $('steps-title').textContent = `Worker ${data.steps}: latest run`;
+    $('steps-title').textContent = `Worker ${data.steps}${names.length > 1 ? ` on ${project}` : ''}: latest run`;
     $('steps-list').innerHTML = '<li>Loading...</li>';
     $('steps').showModal();
     try {
-      const log = await (await fetch(api(`api/log?worker=${encodeURIComponent(data.steps)}`), { cache: 'no-store' })).json();
+      const log = await (await fetch(api(project, `api/log?worker=${encodeURIComponent(data.steps)}`), { cache: 'no-store' })).json();
       $('steps-list').innerHTML = (log.steps || []).map((s) => `<li>${esc(s)}</li>`).join('') || '<li>No run yet.</li>';
     } catch (err) {
       $('steps-list').innerHTML = '<li>Cannot reach Scriptorium.</li>';
@@ -1087,16 +1191,17 @@ document.addEventListener('contextmenu', (e) => { if (hold) e.preventDefault(); 
 
 document.addEventListener('change', async (e) => {
   const data = e.target.dataset;
+  const project = projectOf(e.target);
   if (data.assign) {
     e.target.blur();
     const account = e.target.value;
-    await act({ action: 'assign', worker: data.assign, account }, { keys: [`worker:${data.assign}`], apply: (s) => { workerOf(s, data.assign).account = account; } });
+    await act(project, { action: 'assign', worker: data.assign, account }, { keys: [`worker:${data.assign}`], apply: (s) => { workerOf(s, data.assign).account = account; } });
   } else if (data.priority) {
     e.target.blur();
     // GitHub holds the priority: the row stays busy until the next fetch shows it.
     const number = Number(data.priority);
     const priority = e.target.value;
-    await act({ action: 'priority', number, priority }, {
+    await act(project, { action: 'priority', number, priority }, {
       keys: [`ticket:${number}`],
       apply: (s) => { const row = rowOf(s, number); if (row) row.priority = priority === 'park' ? '' : priority; },
       done: (s) => (rowOf(s, number)?.priority || 'park') === priority,
@@ -1104,7 +1209,7 @@ document.addEventListener('change', async (e) => {
   } else if (data.stop) {
     e.target.blur();
     const value = e.target.value / 100;
-    await act({ action: 'stop-at', account: data.stop, window: data.window, value }, {
+    await act(home, { action: 'stop-at', account: data.stop, window: data.window, value }, {
       keys: [`account:${data.stop}`],
       apply: (s) => {
         // The room the guards keep stays under the line, wherever the line goes.
@@ -1116,7 +1221,7 @@ document.addEventListener('change', async (e) => {
   } else if (data.pick) {
     e.target.blur();
     const value = e.target.value / 100;
-    await act({ action: 'pick-up', account: data.account, window: data.window, size: data.pick, value }, {
+    await act(home, { action: 'pick-up', account: data.account, window: data.window, size: data.pick, value }, {
       keys: [`account:${data.account}`],
       apply: (s) => { accountOf(s, data.account)[data.window].pickUp[data.pick] = value; },
     });
@@ -1127,10 +1232,10 @@ document.addEventListener('change', async (e) => {
     const value = Math.round(Number(e.target.value));
     if (!(value >= e.target.min && value <= e.target.max)) {
       toast(`Between ${e.target.min}k and ${e.target.max}k tokens`);
-      e.target.value = Math.round(complexityOf(state, name).compactAt / 1000);
+      e.target.value = Math.round(complexityOf(states[project], name).compactAt / 1000);
       return;
     }
-    await act({ action: 'compact-at', complexity: name, value: value * 1000 }, {
+    await act(project, { action: 'compact-at', complexity: name, value: value * 1000 }, {
       keys: [`compact:${name}`],
       apply: (s) => { complexityOf(s, name).compactAt = value * 1000; },
       done: (s) => complexityOf(s, name).compactAt === value * 1000,
@@ -1142,7 +1247,7 @@ document.addEventListener('change', async (e) => {
     const row = e.target.closest('.config-row');
     const pick = { model: row.querySelector('[data-run-model]').value, effort: row.querySelector('[data-run-effort]').value };
     const same = (a) => a.model === pick.model && a.effort === pick.effort;
-    await act({ action: 'model', complexity: name, ...pick }, {
+    await act(project, { action: 'model', complexity: name, ...pick }, {
       keys: [`model:${name}`],
       apply: (s) => {
         const c = complexityOf(s, name);
@@ -1157,7 +1262,7 @@ document.addEventListener('change', async (e) => {
   } else if (data.guard) {
     e.target.blur();
     const value = e.target.value / 100;
-    await act({ action: 'keep', use: data.guard, value }, {
+    await act(home, { action: 'keep', use: data.guard, value }, {
       keys: [`account:${data.account}`],
       apply: (s) => {
         // The use keeps its share on whatever account it is on.
@@ -1175,8 +1280,17 @@ document.addEventListener('change', async (e) => {
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 10000);
-fresh = recall()?.snapshot;
-if (fresh) draw(false, 0);
+try {
+  localStorage.removeItem('scriptorium-project');
+  localStorage.removeItem('scriptorium-projects');
+} catch (e) { /* private mode */ }
+if (location.search) history.replaceState(null, '', location.pathname + location.hash);
+const last = recall();
+if (last) {
+  ({ fresh, home } = last);
+  adopt(last.projects);
+  if (names.length) draw(false);
+}
 refresh();
 // The tab icon is the mark alone, in the ink that shows on the browser's own colour. The link starts as the tile
 // (index.html), so a browser that keeps its first icon still shows one.

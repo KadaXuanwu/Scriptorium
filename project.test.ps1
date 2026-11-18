@@ -185,9 +185,8 @@ foreach ($foreign in 'https://evil.example', 'http://127.0.0.1:9999', 'https://p
     Assert-Equal (Get-PageOrigin $views $foreign) '' "no other page may ask: '$foreign'"
 }
 Assert-Equal (Get-PageOrigin @() 'http://127.0.0.1:8770') '' 'no list, no page'
-Assert-Equal (Get-PushUrl $views 'App' 'https://pc.tail.ts.net:8443' 'questions') 'https://pc.tail.ts.net/?project=App#questions' 'a push opens the app at the plain address, with its project named'
-Assert-Equal (Get-PushUrl $views 'Game' 'https://pc.tail.ts.net' 'workers') 'https://pc.tail.ts.net/?project=Game#workers' 'also the push of the project that has the plain address'
-Assert-Equal (Get-PushUrl (Get-ProjectViews $pc $null) 'App' 'http://127.0.0.1:8771' 'queue') 'http://127.0.0.1:8771/?project=App#queue' 'without Tailscale, the project''s own address'
+Assert-Equal (Get-PushUrl $views 'https://pc.tail.ts.net:8443' 'questions') 'https://pc.tail.ts.net/#questions' 'a push opens the app at the plain address'
+Assert-Equal (Get-PushUrl (Get-ProjectViews $pc $null) 'http://127.0.0.1:8771' 'queue') 'http://127.0.0.1:8771/#queue' 'without Tailscale, the project''s own address'
 $snapshot = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); name = 'App'; projects = $views }
 Assert-Equal "$($snapshot.name) $(@($snapshot.projects).Count) $($snapshot.projects[0].name)" 'App 3 App' 'the snapshot names the project and lists the PC''s projects'
 Assert-Equal @((New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).projects).Count 0 'a snapshot without the list'

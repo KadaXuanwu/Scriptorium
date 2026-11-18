@@ -49,9 +49,9 @@
     <span id="stamp"></span>
   </nav>
   <main>
-    <!-- The project switch (app.js, drawProjects): shown while the PC has two projects or more. -->
-    <select id="project" hidden aria-label="Project"></select>
     <div id="offline" hidden></div>
+    <!-- A project that the page cannot load now (app.js, setNotice). -->
+    <div id="notice" hidden></div>
 
     <section class="view" id="workers">
       <header><h1>Workers</h1><span class="sub" id="workers-sub"></span><div class="buttons" id="all-buttons"></div></header>
@@ -67,7 +67,7 @@
     </section>
 
     <section class="view" id="queue" hidden>
-      <header><h1>Queue</h1><div class="stats" id="queue-stats"></div></header>
+      <header><h1>Queue</h1><div id="queue-projects"></div><div class="stats" id="queue-stats"></div></header>
       <div class="split wide">
         <div class="pane"><div id="stuck-list"></div><h2>Up next</h2><div id="queue-list" class="list"></div></div>
         <div class="pane"><div id="held-list"></div><h2 id="parked-title">Parked</h2><div id="parked-list" class="list"></div></div>

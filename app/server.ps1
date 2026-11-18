@@ -351,7 +351,7 @@ function Send-Notification($note, $settings) {
     $server = if ($settings.ntfy.server) { $settings.ntfy.server.TrimEnd('/') } else { 'https://ntfy.sh' }
     try {
         Invoke-RestMethod -Method Post -Uri "$server/$($settings.ntfy.topic)" -Body ([System.Text.Encoding]::UTF8.GetBytes($note.message)) -Headers @{
-            Title = $note.title; Priority = "$($note.priority)"; Tags = $note.tags; Click = Get-PushUrl $script:projects $config.name $appUrl $note.click
+            Title = $note.title; Priority = "$($note.priority)"; Tags = $note.tags; Click = Get-PushUrl $script:projects $appUrl $note.click
         } | Out-Null
         Write-AppLog "notified: $($note.title): $($note.message)"
     } catch {
