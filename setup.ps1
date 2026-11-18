@@ -346,19 +346,30 @@ Invoke-Step "Register the logon tasks: $($tasks.Keys -join ', ')$(if ($Start) { 
     }
 }
 
-# The page on the owner's Tailscale devices.
+# The page on the owner's Tailscale devices, at an address that no other project on this PC has (project.ps1,
+# Get-ServeCommand).
 $tailscale = Get-Command tailscale -ErrorAction SilentlyContinue
-if ($tailscale) {
-    Invoke-Step "Serve the page on your Tailscale devices: tailscale serve --bg $($config.port)" {
-        & $tailscale.Source serve --bg $config.port
-    }
-} else {
+$serve = Read-Serve
+if (-not $tailscale) {
     Write-Output "Tailscale is not installed: the page is only at http://127.0.0.1:$($config.port) on this PC."
+} elseif (-not $serve) {
+    Write-Output "Tailscale does not answer: the page is only at http://127.0.0.1:$($config.port) on this PC. Start Tailscale and run setup again."
+} else {
+    $command = Get-ServeCommand $serve $config.port
+    if ($command) {
+        Invoke-Step "Serve the page on your Tailscale devices: tailscale $command" {
+            & $tailscale.Source @($command -split ' ')
+        }
+    }
 }
 
 if (-not $WhatIf) {
     Write-Output ''
     Write-Output "Done. The page: http://127.0.0.1:$($config.port) on this PC."
+    $address = Get-ServeUrl (Read-Serve) $config.port
+    if ($address) {
+        Write-Output "On your Tailscale devices: $address"
+    }
     Write-Output "Subscribe to the ntfy topic $($settings.ntfy.topic) in the ntfy app for pushes."
     Write-Output 'Sign in more plan accounts on the page (Accounts) when one is not enough.'
 }

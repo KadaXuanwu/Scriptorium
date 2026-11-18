@@ -150,4 +150,25 @@ Assert-Equal $file.complexities.low.model 'claude-opus-4-8@max' 'the base''s own
 $file = Set-ComplexityModel $file $models (Get-Complexities $models $other $file) 'low' 'claude-opus-4-8' 'high'
 Assert-Equal ($file.complexities.low | ConvertTo-Json -Compress) '{}' 'and back to the base'
 
+# The page's address on Tailscale is read from Serve's own mapping (the shape of `tailscale serve status --json`), and
+# setup gives a later project an address that no other one has.
+$site = '"pc.tail.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8770"}}}'
+$one = "{`"TCP`":{`"443`":{`"HTTPS`":true}},`"Web`":{$site}}" | ConvertFrom-Json
+$two = "{`"TCP`":{`"443`":{`"HTTPS`":true},`"8443`":{`"HTTPS`":true}},`"Web`":{$site,`"pc.tail.ts.net:8443`":{`"Handlers`":{`"/`":{`"Proxy`":`"http://127.0.0.1:8771`"}}}}}" | ConvertFrom-Json
+$empty = '{}' | ConvertFrom-Json
+Assert-Equal (Get-ServeUrl $one 8770) 'https://pc.tail.ts.net' 'the PC''s plain address'
+Assert-Equal (Get-ServeUrl $two 8771) 'https://pc.tail.ts.net:8443' 'an address with a port'
+Assert-Equal "$(Get-ServeUrl $one 8771)|$(Get-ServeUrl $one 877)|$(Get-ServeUrl $empty 8770)|$(Get-ServeUrl $null 8770)" '|||' 'no address: another port, a port that this one starts with, nothing served, no Tailscale'
+$path = '{"TCP":{"443":{"HTTPS":true}},"Web":{"pc.tail.ts.net:443":{"Handlers":{"/docs":{"Proxy":"http://127.0.0.1:8770"}}}}}' | ConvertFrom-Json
+$plain = '{"TCP":{"80":{"HTTP":true}},"Web":{"pc.tail.ts.net:80":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8770"}}}}}' | ConvertFrom-Json
+Assert-Equal "$(Get-ServeUrl $path 8770)|$(Get-ServeUrl $plain 8770)" '|' 'a path and plain HTTP are no address of the page'
+Assert-Equal (Get-ServeCommand $empty 8770) 'serve --bg 8770' 'the first project gets the plain address'
+Assert-Equal "$(Get-ServeCommand $one 8770)|$(Get-ServeCommand $two 8771)|$(Get-ServeCommand $null 8770)" '||' 'nothing to run: the address is there, or the mapping cannot be read'
+Assert-Equal (Get-ServeCommand $one 8771) 'serve --bg --https=8443 8771' 'a second project never takes the plain address'
+Assert-Equal (Get-ServeCommand $two 8772) 'serve --bg --https=8444 8772' 'a third project gets the next port'
+Assert-Equal (Get-ServeCommand $one 8443) 'serve --bg --https=8444 8443' 'never the page''s own port'
+Assert-Equal (Get-ServeCommand $path 8770) 'serve --bg --https=8443 8770' 'port 443 with another use stays as it is'
+$forward = '{"TCP":{"443":{"TCPForward":"127.0.0.1:22"}}}' | ConvertFrom-Json
+Assert-Equal (Get-ServeCommand $forward 8770) 'serve --bg --https=8443 8770' 'also a forwarder at port 443'
+
 Write-Output 'ok'

@@ -163,6 +163,65 @@ function Get-ProjectArg([string] $Project) {
     return "-Project `"$Project`""
 }
 
+# Tailscale Serve's mapping on this PC (`tailscale serve status --json`): an empty object while it serves nothing, and
+# $null when it cannot be read (no Tailscale, or Tailscale does not run).
+function Read-Serve {
+    $tailscale = Get-Command tailscale -ErrorAction SilentlyContinue
+    if (-not $tailscale) {
+        return $null
+    }
+    try {
+        $text = (& $tailscale.Source serve status --json) -join "`n"
+        if ($LASTEXITCODE -ne 0) {
+            return $null
+        }
+        $serve = $text | ConvertFrom-Json
+        if ($serve) {
+            return $serve
+        }
+        return [pscustomobject]@{}
+    } catch {
+        return $null
+    }
+}
+
+# The address of the page of $port on the owner's Tailscale devices, or $null: the HTTPS address whose root Tailscale
+# Serve gives to that port of this PC. $serve: Read-Serve. The address is read from the mapping, never made from the
+# PC's name: several projects on one PC each have their own (docs/APP.md, Setup).
+function Get-ServeUrl($serve, [int] $port) {
+    if (-not $serve -or -not $serve.Web) {
+        return $null
+    }
+    foreach ($site in $serve.Web.PSObject.Properties) {
+        $at = ($site.Name -split ':')[-1]
+        $root = if ($site.Value.Handlers) { $site.Value.Handlers.'/' }
+        if ($root -and "$($root.Proxy)" -match "^http://(127\.0\.0\.1|localhost):$port/?$" -and $serve.TCP.$at.HTTPS) {
+            return 'https://' + ($site.Name -replace ':443$', '')
+        }
+    }
+    return $null
+}
+
+# What setup runs to give the page of $port an address, as the arguments of `tailscale` in one string, or '' when an
+# address goes to the port already or the mapping cannot be read. The first project on the PC gets the PC's plain
+# address (port 443). A later one gets the first free port from 8443 up, so setup never takes an address that
+# Tailscale serves already. Never the page's own port: Windows keeps the port of the page's server (http.sys) from
+# every other program, so Tailscale could not listen there for this PC's own browser.
+function Get-ServeCommand($serve, [int] $port) {
+    if (-not $serve -or (Get-ServeUrl $serve $port)) {
+        return ''
+    }
+    $taken = @(if ($serve.TCP) { $serve.TCP.PSObject.Properties | ForEach-Object { $_.Name } })
+    if ($taken -notcontains '443') {
+        return "serve --bg $port"
+    }
+    $at = 8443
+    while ($taken -contains "$at" -or $at -eq $port) {
+        $at++
+    }
+    return "serve --bg --https=$at $port"
+}
+
 # Whether a process's command line runs $script (worker.ps1, merge.ps1, server.ps1) for this project. The path as a
 # whole argument: another project, a path that starts with this one, or a queue from before -Project never matches.
 # conhost passes a path with no space on without its quotes, so the quotes are optional.

@@ -7,8 +7,9 @@ PNGs. The home screen gets the tile, because a home screen gives a picture a bac
 and the page show the mark alone, with no background: `mark-on-light.png` in the light colour scheme and
 `mark-on-dark.png` in the dark one.
 
-- **Address:** `http://127.0.0.1:<port>` on the PC (`port` in `scriptorium.json`, 8770 when left out); the Tailscale
-  name of the PC on the owner's own devices.
+- **Address:** `http://127.0.0.1:<port>` on the PC (`port` in `scriptorium.json`, 8770 when left out). On the owner's
+  own devices: `https://<the PC's Tailscale name>` for the first project on the PC, and the same with a port from 8443
+  up for each later one (Setup).
 - **Code:** `app/server.ps1` (the logon task `Scriptorium <name> app`), `app/state.ps1` (the snapshot, the owner's
   choices turned into queue changes, and the pushes, checked by `app.test.ps1`), `app/web/` (the page: plain HTML, CSS
   and JS, no build step).
@@ -21,7 +22,7 @@ and the page show the mark alone, with no background: `mark-on-light.png` in the
 | GitHub | The record of the work: tickets, questions and answers, PRs | no |
 | Queue files | The live state in `.queue/` (main checkout and copies), written by the scripts and the runs (Data) | no |
 | Server | Reads both, serves the page and one snapshot (`/api/state`), does the owner's actions (`/api/action`), shows a run's steps (`/api/log?worker=N`), sends pushes. It listens on localhost only. It reads GitHub once a minute in a background job and the local files every 10 s. An action's GitHub writes also run in a background job, so a slow GitHub delays only that action's answer, never the page | no |
-| Tailscale | `tailscale serve --bg <port>` puts the server on the owner's devices with a certificate; nothing is open to the internet | no |
+| Tailscale | Tailscale Serve puts the server on the owner's devices with a certificate, at an address of its own for each project (Setup); nothing is open to the internet | no |
 | ntfy | Pushes to the phone; a tap opens the page on that tab | no |
 
 No chat between agents: the scripts coordinate the runs, and a run reads only its own ticket. The server, the page and
@@ -228,3 +229,15 @@ random one); `ntfy.server` overrides `https://ntfy.sh`.
 `setup.ps1` registers the task, makes the ntfy topic and runs `tailscale serve`. The owner's part, once: Tailscale
 signed in on the PC and the phone (the same account), Serve allowed on the tailnet (the link that `tailscale serve`
 prints the first time), the ntfy app subscribed to the topic, and the page added to the phone's home screen.
+
+**The address on Tailscale.** A PC has one Tailscale name, and each project's page needs an address of its own. Setup
+reads what Tailscale serves (`tailscale serve status --json`) and never changes an address that is there:
+
+- The first project gets the plain address: `tailscale serve --bg <port>`, at `https://<name>`.
+- A later project gets the first free port from 8443 up: `tailscale serve --bg --https=8443 <port>`, at
+  `https://<name>:8443`. Not the page's own port: Windows keeps that port for the page's server alone.
+- A page that has an address keeps it. Setup prints the address at its end.
+
+The server reads its address from the same mapping (`Get-ServeUrl`, [project.ps1](../project.ps1)), at its start and
+for each push, so a push opens the page of its own project. Without an address the push opens localhost. To take an
+address away: `tailscale serve --https=<its port> off` (443 for the plain one).

@@ -52,7 +52,8 @@ At the end, tell me in a short list what is set up, what you could not check, an
 1. **Accounts.** One worker runs on my own Claude Code login. To add a plan account, open the page, Accounts, and use
    the last tile: I sign in in the browser and paste the code.
 2. **Phone.** Sign in to Tailscale on the PC and on the phone. Open the link that `tailscale serve` printed, to allow
-   Serve. Then open the page on the phone and add it to the home screen.
+   Serve. Then open the page on the phone, at the address that setup printed ("On your Tailscale devices"), and add it
+   to the home screen.
 3. **Pushes.** Install the ntfy app and subscribe to the topic that setup printed.
 4. **Plugins.** Anything a plugin's README says a human must do (for example, install an editor).
 

@@ -29,7 +29,7 @@ notification topic) is in `.queue/settings.json` of the main checkout, which git
 | `repos` | no | Other repos of the same owner that a ticket may name with a `repo:<Name>` label |
 | `playbook` | no | The path of the project's own rules for a run. A run reads it from `origin/main`, after the base's and the plugins' playbooks |
 | `allowedTools` | no | Claude Code tool rules a run gets on top of `Bash(git:*)`, `Bash(gh:*)` and what the plugins give |
-| `port` | no | The port of the page on this PC, 8770 when left out. Two projects on one PC need two ports |
+| `port` | no | The port of the page on this PC, 8770 when left out. Two projects on one PC need two ports; setup gives each its own Tailscale address ([APP.md](APP.md), Setup) |
 | `compactAt` | no | The compact size of every run, in tokens (The compact size, below). 167000 when left out |
 | `complexities` | no | Changes to the complexities (below) |
 

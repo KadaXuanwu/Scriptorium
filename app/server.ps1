@@ -57,17 +57,12 @@ function Get-Now {
     return [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 }
 
-# The page's address on the owner's devices: Tailscale's name for this PC, else localhost.
+# The page's address on the owner's devices: the one that Tailscale Serve gives this page's port (project.ps1,
+# Get-ServeUrl), else localhost. A push asks again: setup can make the address while this server runs.
 function Get-AppUrl {
-    $tailscale = Get-Command tailscale -ErrorAction SilentlyContinue
-    if ($tailscale) {
-        try {
-            $name = ((& $tailscale.Source status --json) -join "`n" | ConvertFrom-Json).Self.DNSName.TrimEnd('.')
-            if ($name) {
-                return "https://$name"
-            }
-        } catch {
-        }
+    $url = Get-ServeUrl (Read-Serve) $Port
+    if ($url) {
+        return $url
     }
     return "http://127.0.0.1:$Port"
 }
@@ -354,7 +349,7 @@ function Send-Notification($note, $settings) {
     $server = if ($settings.ntfy.server) { $settings.ntfy.server.TrimEnd('/') } else { 'https://ntfy.sh' }
     try {
         Invoke-RestMethod -Method Post -Uri "$server/$($settings.ntfy.topic)" -Body ([System.Text.Encoding]::UTF8.GetBytes($note.message)) -Headers @{
-            Title = $note.title; Priority = "$($note.priority)"; Tags = $note.tags; Click = "$appUrl/#$($note.click)"
+            Title = $note.title; Priority = "$($note.priority)"; Tags = $note.tags; Click = "$(Get-AppUrl)/#$($note.click)"
         } | Out-Null
         Write-AppLog "notified: $($note.title): $($note.message)"
     } catch {
