@@ -1098,4 +1098,10 @@ setInterval(() => { if (!document.hidden) refresh(); }, 10000);
 fresh = recall()?.snapshot;
 if (fresh) draw(false, 0);
 refresh();
+// The tab icon is the mark alone, in the ink that shows on the browser's own colour. The link starts as the tile
+// (index.html), so a browser that keeps its first icon still shows one.
+const darkScheme = matchMedia('(prefers-color-scheme: dark)');
+const setTabIcon = () => { document.querySelector('link[rel="icon"]').href = darkScheme.matches ? 'mark-on-dark.png' : 'mark-on-light.png'; };
+darkScheme.addEventListener('change', setTabIcon);
+setTabIcon();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

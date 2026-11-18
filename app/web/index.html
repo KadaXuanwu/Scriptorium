@@ -38,7 +38,8 @@
 <div id="app">
   <!-- One tab per view: a rail on a wide screen, a bar in thumb reach on a phone. -->
   <nav id="tabs">
-    <div class="brand"><img src="icon-192.png" alt="" width="32" height="32"><strong>Scriptorium</strong></div>
+    <!-- The mark has no background: the page takes the one whose ink shows on its theme (style.css, the same condition). -->
+    <div class="brand"><picture><source srcset="mark-on-dark.png" media="(prefers-color-scheme: dark)"><img src="mark-on-light.png" alt="" width="32" height="32"></picture><strong>Scriptorium</strong></div>
     <a href="#workers" data-tab="workers"><svg class="i"><use href="#i-workers"/></svg><span>Workers</span><span class="count hot" id="count-workers"></span></a>
     <a href="#accounts" data-tab="accounts"><svg class="i"><use href="#i-accounts"/></svg><span>Accounts</span><span class="count hot" id="count-accounts"></span></a>
     <a href="#questions" data-tab="questions"><svg class="i"><use href="#i-questions"/></svg><span>Questions</span><span class="count" id="count-questions"></span></a>

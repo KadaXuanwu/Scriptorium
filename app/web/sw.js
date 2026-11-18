@@ -1,7 +1,7 @@
 // Keeps the page itself on the phone, so the app opens with the PC off and says so (the queue's state is only ever
 // live: /api is never cached). The page comes from the network when it can, so an update shows at once.
 const CACHE = 'scriptorium-shell-v1';
-const SHELL = ['/', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const SHELL = ['/', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'mark-on-light.png', 'mark-on-dark.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

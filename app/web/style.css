@@ -73,7 +73,7 @@ nav {
   border-right: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 18px; font-size: 16px; }
-.brand img { border-radius: 9px; }
+.brand img { display: block; }
 nav a {
   display: flex;
   align-items: center;

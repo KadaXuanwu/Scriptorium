@@ -2,8 +2,10 @@
 
 One web page shows the queue ([QUEUE.md](QUEUE.md)) to the owner: which ticket each worker has, what is unclear, what is
 left and what it costs. The owner never manages the workflow there: the scripts do. On a phone it installs to the home
-screen like an app. Its name is Scriptorium; its icon is drawn in `app/icon.svg`, which also says how to export the
-PNGs.
+screen like an app. Its name is Scriptorium. Its icon is drawn in `app/icon.svg`, which also says how to export the
+PNGs. The home screen gets the tile, because a home screen gives a picture a background of its own. The browser tab
+and the page show the mark alone, with no background: `mark-on-light.png` in the light colour scheme and
+`mark-on-dark.png` in the dark one.
 
 - **Address:** `http://127.0.0.1:<port>` on the PC (`port` in `scriptorium.json`, 8770 when left out); the Tailscale
   name of the PC on the owner's own devices.
