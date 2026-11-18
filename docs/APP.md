@@ -67,12 +67,17 @@ error is in Now), or Script silent (its state file is older than 15 minutes: the
 works). When its account is out, the line names the cause and the next test: Account signed out, Subscription refused
 or Runs do not start.
 
-**Config,** beside Steps, opens the worker's config: a dialog with a row for each complexity, which shows the model and
-effort of its runs. Each change saves at once.
+**Config,** beside Steps, opens the worker's config: a dialog with a row for each complexity. Each change saves at
+once. On a phone a complexity has two lines: its switch and compact size, then its model and effort.
 
 - **The switch** is this worker's (`workers.<id>.complexity`). Press it to switch the complexity off or on again. Off:
   this worker takes no new ticket of that complexity and leaves the answers and rebases of its PRs of it. A ticket
-  already started goes on. While a complexity is off, the Config button counts the ones the worker takes.
+  already started goes on. While a complexity is off, the Config button counts the ones the worker takes. A worker
+  that the settings give a model of its own (`model`, [QUEUE.md](QUEUE.md), Settings) names it on the switch.
+- **Model and effort** are two lists: the models and the efforts of [models.json](../models.json). The pick is the
+  same for every worker, is saved for this PC (`complexities.<name>.model`) and applies from the next run
+  ([QUEUE.md](QUEUE.md), Models, The owner's pick). A pick that is not the base's shows the base's under it as
+  Default. Pick the default pair again, and the PC follows `models.json` and `scriptorium.json` again.
 - **Compacts near** is the compact size of the complexity in thousands of tokens ([CONFIG.md](CONFIG.md), The compact
   size). It is the same for every worker, is saved for this PC (`complexities.<name>.compactAt`) and applies from the
   next run. The Info tab shows it for each complexity.

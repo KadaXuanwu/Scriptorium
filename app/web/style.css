@@ -204,8 +204,8 @@ textarea { resize: vertical; min-height: 60px; }
 /* A number field has no arrows: the owner types the number. */
 input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
 input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-/* Tables: the complexities on the Info tab, and a worker's config. A wide one scrolls sideways in its own box
-   (.scroll), so the page never does. */
+/* Tables: the complexities on the Info tab. A wide one scrolls sideways in its own box (.scroll), so the page never
+   does. */
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 8px 12px 8px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
 :is(th, td):last-child { padding-right: 0; }
@@ -365,21 +365,34 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 
 /* Queue and history */
 /* Workers: Config stands beside Steps and opens the worker's config, a row for each complexity: the worker's switch
-   for it, then its compact size. A switch that is on is the page's plain button with a blue check; off is grey and
-   dashed. */
+   for it, then its model, effort and compact size. A switch that is on is the page's plain button with a blue check;
+   off is grey and dashed. */
 .config-open { margin-left: auto; white-space: nowrap; }
 .config-open small { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 /* A phone: Config and Steps lose their icons, so the account's name still fits beside them. */
 @media (max-width: 760px) {
   .worker-tools > button > .i { display: none; }
 }
-#config { width: min(480px, calc(100vw - 32px)); }
-.config td { vertical-align: middle; }
-.config th small { font-weight: 400; }
-.config .take { width: 100%; }
+#config { width: min(620px, calc(100vw - 32px)); }
+/* The head and each row stand on one grid. The base's model, where the pick is another, goes under the lists. */
+.config-head, .config-row { display: grid; grid-template-columns: 9em minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.config-row:last-child { border-bottom: 0; }
+.config-head { font-size: 12px; font-weight: 600; color: var(--muted); }
+.config-head small { font-weight: 400; }
+.config-head > :last-child, .config-row > small { grid-column: 2 / -1; }
+.config-row > small { font-size: 11px; color: var(--muted); }
+.config-row select { min-width: 0; }
+.config-row .take small { white-space: normal; }
+/* A phone: two lines for a complexity, its switch and compact size, then its model and effort. */
+@media (max-width: 760px) {
+  .config-head, .config-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .config-head > :last-child { grid-column: auto; text-align: right; }
+  .config-row > small { grid-column: 1 / -1; }
+  .config-row .take { order: -2; }
+  .config-row .compact { order: -1; justify-self: end; }
+}
 .compact { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
 .compact input[type="number"] { width: 4.5em; text-align: right; }
-.config :is(th, td):last-child { width: 1%; white-space: nowrap; }
 .take { justify-content: flex-start; text-align: left; padding: 5px 12px; }
 .take b { display: block; text-transform: capitalize; }
 .take small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); white-space: nowrap; }

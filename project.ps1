@@ -33,11 +33,12 @@ function Read-Models {
 
 # The ticket complexities (docs/CONFIG.md, Complexities), the one list every script and the page read: models.json's,
 # with scriptorium.json's `complexities` over them, in this order: low, medium, high, the project's own, design. Each
-# @{ name; description; models; advisor; advisorFallback; compactAt }. A complexity of the project's own needs a
-# description; with no models it runs on medium's. Its compact size (docs/CONFIG.md, The compact size) is the one
-# the owner set on the page ($settings: the PC's settings.json, `complexities.<name>.compactAt`), else its own in
-# scriptorium.json, else the project's, else models.json's. Throws for a missing description, a name that is no
-# label or a compact size out of range.
+# @{ name; description; models; base; advisor; advisorFallback; compactAt }. A complexity of the project's own needs a
+# description; with no models it runs on medium's. The model the owner picked on the page ($settings: the PC's
+# settings.json, `complexities.<name>.model`) is its one candidate, and `base` is the first candidate without that
+# pick. Its compact size (docs/CONFIG.md, The compact size) is the one the owner set on the page
+# (`complexities.<name>.compactAt`), else its own in scriptorium.json, else the project's, else models.json's. Throws
+# for a missing description, a name that is no label or a compact size out of range.
 function Get-Complexities($models, $config, $settings) {
     $compactAt = ConvertTo-CompactAt $(if ($config -and $null -ne $config.compactAt) { $config.compactAt } else { $models.compactAt }) 'compactAt'
     $paged = if ($settings -and $settings.complexities) { $settings.complexities } else { [pscustomobject]@{} }
@@ -50,7 +51,7 @@ function Get-Complexities($models, $config, $settings) {
         if ($name -cnotmatch '^[a-z0-9][a-z0-9-]*$') {
             throw "complexity '$name': lower-case letters, digits and hyphens only"
         }
-        $entry = @{ name = $name; description = ''; models = @(); advisor = $false; advisorFallback = ''; compactAt = $compactAt }
+        $entry = @{ name = $name; description = ''; models = @(); base = ''; advisor = $false; advisorFallback = ''; compactAt = $compactAt }
         foreach ($source in @($models.complexities.$name, $changes.$name)) {
             if (-not $source) {
                 continue
@@ -80,10 +81,24 @@ function Get-Complexities($models, $config, $settings) {
         if ($entry.models.Count -eq 0) {
             $entry.models = @(($list | Where-Object { $_.name -eq 'medium' } | Select-Object -First 1).models)
         }
+        $entry.base = [string]$entry.models[0]
+        if ($paged.$name -and $paged.$name.model) {
+            $entry.models = @([string]$paged.$name.model)
+        }
         $list += , $entry
     }
     # The list unrolled, one complexity at a time, so a pipe or a foreach sees each: it is never empty.
     return $list
+}
+
+# A pick (`claude-opus-5-5@high`) as its model and effort: the effort after `@`, else that model's in models.json,
+# xhigh for a model not listed there (as worker.ps1, Get-RunModel).
+function Split-Pick($models, [string] $pick) {
+    $model, $effort = $pick -split '@'
+    if (-not $effort) {
+        $effort = if ($models.models.$model) { [string]$models.models.$model.effort } else { 'xhigh' }
+    }
+    return @{ model = $model; effort = $effort }
 }
 
 # A compact size (docs/CONFIG.md, The compact size): the context size at which a run compacts, in whole tokens in

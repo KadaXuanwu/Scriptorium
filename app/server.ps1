@@ -534,15 +534,16 @@ function Invoke-Action($request) {
             }
             $at = ConvertTo-CompactAt $request.value 'compactAt'
             $settings = Read-SettingsToEdit
-            if (-not $settings.complexities) {
-                $settings | Add-Member -NotePropertyName complexities -NotePropertyValue ([pscustomobject]@{}) -Force
-            }
-            if (-not $settings.complexities.$name) {
-                $settings.complexities | Add-Member -NotePropertyName $name -NotePropertyValue ([pscustomobject]@{}) -Force
-            }
-            $settings.complexities.$name | Add-Member -NotePropertyName compactAt -NotePropertyValue $at -Force
+            Get-ComplexitySettings $settings $name | Add-Member -NotePropertyName compactAt -NotePropertyValue $at -Force
             Save-Settings $settings
             return "compact at: $name $at"
+        }
+        'model' {
+            # The model and effort of a complexity's runs on this PC (state.ps1, Set-ComplexityModel).
+            $settings = Read-SettingsToEdit
+            $list = Read-Models
+            Save-Settings (Set-ComplexityModel $settings $list (Get-Complexities $list $config $settings) ([string]$request.complexity) ([string]$request.model) ([string]$request.effort))
+            return "model: $($request.complexity) $($request.model)@$($request.effort)"
         }
         'login' {
             # An account new to the register gets its own config folder, ~/.claude-<name>.

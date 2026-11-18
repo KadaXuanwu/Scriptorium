@@ -125,8 +125,9 @@ a pattern.
 
 ## Models
 
-[models.json](../models.json), in git: each model's effort and its API price per million tokens (input, output), and for
-each complexity its candidates, best first (answer and rebase jobs run on their ticket's complexity). A run takes the
+[models.json](../models.json), in git: each model's effort and its API price per million tokens (input, output), the
+efforts a run can have (`efforts`), and for each complexity its candidates, best first (answer and rebase jobs run on
+their ticket's complexity). A run takes the
 first candidate that its account was not refused. A start that the plan refuses ("requires usage credits") costs
 nothing, goes into `.queue/access.json` for a day, and the job starts again on the next candidate. After the day the
 model is tried again, so a plan that gains it finds it. With no candidate left, the ticket waits in the queue for that
@@ -137,6 +138,14 @@ candidate names after `@` (`claude-opus-5-5@high`). `afterFable` is the model fo
 reached the Fable limit (The Fable limit). Runs use the plan logins, never an API key, so no script reads `price`: it is
 there for the front desk, which weighs a model's cost with it. A pick-up limit is the same for every model: a Fable
 ticket costs about 2.5 times an Opus one of its size, so it reaches the stop line sooner.
+
+**The owner's pick:** a worker's Config on the page picks the model and effort of a complexity for this PC
+([APP.md](APP.md), Workers; Settings, `complexities.<name>.model`). The pick is then the complexity's one candidate,
+from the next run. The page offers the models of `models` and the efforts of `efforts`, and the server saves nothing
+else: Claude Code refuses a model it does not know, but it takes an effort it does not know without a word. A model
+that `scriptorium.json` names for the complexity stays a valid pick. Two things do not follow the pick: a held run
+resumes on the model it started on, and a run without its advisor takes the complexity's `advisorFallback` effort
+(Without the advisor).
 
 **The advisor:** a run of a complexity with `advisor` gets `advisor.model` (Fable 5.2) as its advisor
 (`Get-AdvisorRule` in [project.ps1](../project.ps1), `Get-Advisor` in [limits.ps1](../limits.ps1)). The run calls it
@@ -187,8 +196,12 @@ the next. Setup writes a first one.
 - `complexities.<name>.compactAt`: the compact size of a complexity's runs on this PC, for example
   `{ "design": { "compactAt": 250000 } }`, over `scriptorium.json`'s ([CONFIG.md](CONFIG.md), The compact size). It is
   the same for every worker. A worker's Config sets it.
+- `complexities.<name>.model`: the owner's pick of a complexity's model and effort on this PC, as `model@effort`, for
+  example `{ "medium": { "model": "claude-sonnet-5-5@high" } }`, over the complexity's candidates (Models, The owner's
+  pick). It is the same for every worker. A worker's Config sets it, and takes it away when the pick is the base's own.
 - `model`: overrides the complexities' models for every run, or one worker's in `workers.<id>`: a full id, at its
-  effort in `models.json` (xhigh if it is not listed). Left out: the complexity picks.
+  effort in `models.json` (xhigh if it is not listed). It goes over the page's pick too, and the worker's Config then
+  names it on the switches of that worker. Left out: the complexity picks.
 - `ghConfigDir`: a `gh` login folder (`GH_CONFIG_DIR`) signed in as a GitHub bot account for the worker. Its comments,
   PRs, pushes and commits are the bot's, so GitHub notifies the owner of them. Sign a folder in once:
   `$env:GH_CONFIG_DIR = '<folder>'; gh auth login`, in a browser signed in as the bot. Left out, or not signed in: the

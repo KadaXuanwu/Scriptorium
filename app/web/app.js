@@ -204,21 +204,37 @@ function workerCard(worker) {
     <div class="slot next"><span class="slot-label">Next</span><div class="slot-body">${nextBody}</div>${force}</div></article>`;
 }
 
-// A worker's config, the dialog its Config button opens: a row for each complexity with the model and effort of its
-// runs. The switch (docs/QUEUE.md, Settings, `workers.<id>.complexity`) is this worker's: off, it takes no new ticket
-// of the complexity and leaves the answers and rebases of its PRs of it (`jobs`) until it is on again. The compact
-// size (`complexities.<name>.compactAt`) is the same for every worker.
+// A worker's config, the dialog its Config button opens: a row for each complexity. The switch (docs/QUEUE.md,
+// Settings, `workers.<id>.complexity`) is this worker's: off, it takes no new ticket of the complexity and leaves the
+// answers and rebases of its PRs of it (`jobs`) until it is on again. The model and effort
+// (`complexities.<name>.model`) and the compact size (`complexities.<name>.compactAt`) are the same for every worker.
+// The two lists are models.json's, with the value in use always among them: a list without it would show its first
+// entry. The models have the base's own too (`base`, which a project may name outside the list), so the way back is
+// always there. A pick that is not the base's shows the base's under it; the switch names the model of a worker that
+// the settings give its own.
 let configOf = null;
+const pickList = (list, value, label) => [...new Set([...list, value])].filter(Boolean)
+  .map((v) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label(v))}</option>`).join('');
 function drawConfig() {
   const worker = workerOf(state, configOf);
   if (!worker) { $('config').close(); return; }
   const id = esc(worker.id);
   $('config-title').textContent = `Worker ${worker.id}: config`;
-  put($('config-body'), `<table class="config"><thead><tr><th>Worker ${id} takes</th><th>Compacts near <small>all workers</small></th></tr></thead>
-    <tbody>${(worker.takes || []).map((t) => `<tr><td><button class="take${t.on ? ' on' : ''}" data-take="${esc(t.name)}" data-worker="${id}" aria-pressed="${t.on}">
-        ${icon(t.on ? 'check' : 'lock')}<span><b>${esc(t.name)}</b><small>${esc(modelName(t.model))}${t.effort ? ` · ${esc(t.effort)}` : ''}${!t.on && t.jobs ? ` · holds ${t.jobs} PR job${t.jobs === 1 ? '' : 's'}` : ''}</small></span></button></td>
-      <td><label class="compact"><input type="number" inputmode="numeric" min="67" max="967" step="1" value="${Math.round(complexityOf(state, t.name).compactAt / 1000)}"
-        data-compact="${esc(t.name)}" aria-label="Thousands of tokens at which a ${esc(t.name)} run compacts its context">k tokens</label></td></tr>`).join('')}</tbody></table>`);
+  put($('config-body'), `<div class="config-head"><span>Worker ${id} takes</span><span>Model, effort, compacts near <small>all workers</small></span></div>
+    ${(worker.takes || []).map((t) => {
+    const name = esc(t.name);
+    const c = complexityOf(state, t.name);
+    const notes = [(t.model !== c.model || t.effort !== c.effort) && `settings.json: ${esc(modelName(t.model))} · ${esc(t.effort)}`,
+      !t.on && t.jobs && `holds ${t.jobs} PR job${t.jobs === 1 ? '' : 's'}`].filter(Boolean);
+    const base = c.base && (c.base.model !== c.model || c.base.effort !== c.effort)
+      ? `<small>Default: ${esc(modelName(c.base.model))} · ${esc(c.base.effort)}</small>` : '';
+    return `<div class="config-row"><button class="take${t.on ? ' on' : ''}" data-take="${name}" data-worker="${id}" aria-pressed="${t.on}">
+        ${icon(t.on ? 'check' : 'lock')}<span><b>${name}</b>${notes.length ? `<small>${notes.join(' · ')}</small>` : ''}</span></button>
+      <select data-run-model="${name}" aria-label="Model of a ${name} run">${pickList([...(state.models || []), c.base?.model], c.model, modelName)}</select>
+      <select data-run-effort="${name}" aria-label="Effort of a ${name} run">${pickList(state.efforts || [], c.effort, (v) => v)}</select>
+      <label class="compact"><input type="number" inputmode="numeric" min="67" max="967" step="1" value="${Math.round(c.compactAt / 1000)}"
+        data-compact="${name}" aria-label="Thousands of tokens at which a ${name} run compacts its context">k tokens</label>${base}</div>`;
+  }).join('')}`);
 }
 
 // ---- Questions
@@ -447,18 +463,18 @@ function info(s) {
     }))}
       <p>Active takes tickets. Paused takes none and keeps its ticket. Disabled takes none, and other workers take its
         ticket. Force (the arrow on Next) gives a free worker its next ticket now, past the limits.</p>
-      <p>A worker's ${setting('Config', 'workers')} sets what it takes. It shows the model of each complexity for that
-        worker, where the settings change it.</p>`),
+      <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes.</p>`),
     section('Complexities', `<p>The complexity of a ticket chooses the model. The size (S, M, L) only says how much usage
       it takes. A ticket with no complexity label is medium.</p>
       <div class="scroll"><table><thead><tr><th>Complexity</th><th>For</th><th>Model</th><th>Effort</th><th>Advisor</th><th>Compacts near</th></tr></thead>
         <tbody>${(s.complexities || []).map((c) => `<tr><th scope="row">${esc(c.name)}</th><td>${esc(c.description || c.name)}</td>
-          <td>${esc(modelName(c.model))}</td><td>${esc(c.effort)}</td>
+          <td>${setting(esc(modelName(c.model)), 'workers')}</td><td>${setting(esc(c.effort), 'workers')}</td>
           <td>${c.advisor ? `${esc(modelName(c.advisor))}${c.advisorFallback ? `<small>${esc(c.advisorFallback)} effort without it</small>` : ''}` : 'None'}</td>
           <td>${setting(`${Math.round(c.compactAt / 1000)}k&nbsp;tokens`, 'workers')}</td></tr>`).join('')}</tbody></table></div>
       <p>Compacts near: when the context of a run reaches this size, Claude Code replaces the older part with a summary.
-        A larger size keeps more of the work in view and uses more for each turn. A worker's ${setting('Config', 'workers')}
-        sets it for all workers, from the next run.</p>
+        A larger size keeps more of the work in view and uses more for each turn.</p>
+      <p>A worker's ${setting('Config', 'workers')} sets the model, the effort and the compact size of a complexity for
+        all workers, from the next run. A run that waits for its account goes on with the model it started on.</p>
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
         not see the advice. A run keeps its advisor to its end; past the Fable advisor line (Limits), new runs start
         without one.</p>` : ''}`),
@@ -1073,6 +1089,25 @@ document.addEventListener('change', async (e) => {
       keys: [`compact:${name}`],
       apply: (s) => { complexityOf(s, name).compactAt = value * 1000; },
       done: (s) => complexityOf(s, name).compactAt === value * 1000,
+    });
+  } else if (data.runModel || data.runEffort) {
+    // The model and effort of a complexity (drawConfig): the two lists of its row, saved as one pick.
+    e.target.blur();
+    const name = data.runModel || data.runEffort;
+    const row = e.target.closest('.config-row');
+    const pick = { model: row.querySelector('[data-run-model]').value, effort: row.querySelector('[data-run-effort]').value };
+    const same = (a) => a.model === pick.model && a.effort === pick.effort;
+    await act({ action: 'model', complexity: name, ...pick }, {
+      keys: [`model:${name}`],
+      apply: (s) => {
+        const c = complexityOf(s, name);
+        // A worker that ran on the complexity's model runs on the pick; one with its own in the settings keeps it.
+        for (const t of s.workers.map((w) => (w.takes || []).find((x) => x.name === name))) {
+          if (t && t.model === c.model && t.effort === c.effort) Object.assign(t, pick);
+        }
+        Object.assign(c, pick);
+      },
+      done: (s) => same(complexityOf(s, name)),
     });
   } else if (data.guard) {
     e.target.blur();

@@ -103,4 +103,51 @@ $threw = $false
 try { Get-Complexities $models $null ('{ "complexities": { "low": { "compactAt": 5 } } }' | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'a bad compact size in settings.json stops the scripts'
 
+# The owner's pick of a model on the page (settings.json, `complexities.<name>.model`) is the complexity's one
+# candidate, and `base` keeps the first candidate without it. A complexity with no models follows medium's pick; a pick
+# for a name not in the list changes nothing.
+$picked = Get-Complexities $models $own ('{ "complexities": { "medium": { "model": "claude-haiku-5-5@low" }, "review": { "model": "claude-fable-5-2@max" }, "gone": { "model": "x" } } }' | ConvertFrom-Json)
+Assert-Equal ((Get-ComplexityModels $picked 'medium') -join ',') 'claude-haiku-5-5@low' 'the page''s pick is the one candidate'
+Assert-Equal "$(($picked | Where-Object { $_.name -eq 'medium' }).base) $(($picked | Where-Object { $_.name -eq 'review' }).base)" 'claude-sonnet-5-5@high claude-opus-5-5@high' 'the base is the first candidate without the pick'
+Assert-Equal "$((Get-ComplexityModels $picked 'tidy') -join ',') $((Get-ComplexityModels $picked 'high') -join ',')" 'claude-haiku-5-5@low claude-opus-5-5@xhigh' 'no models: medium''s pick; no pick: its own'
+Assert-Equal (($picked | ForEach-Object { $_.name }) -join ',') 'low,medium,high,review,tidy,design' 'a pick for a name not in the list changes nothing'
+$alone = Get-Complexities $models $own ('{ "complexities": { "tidy": { "model": "claude-haiku-5-5@low" } } }' | ConvertFrom-Json)
+Assert-Equal "$((Get-ComplexityModels $alone 'tidy') -join ',') $((Get-ComplexityModels $alone 'medium') -join ',')" 'claude-haiku-5-5@low claude-sonnet-5-5@high' 'a pick leaves medium alone'
+# A pick as its model and effort: after `@`, else the model's in models.json, xhigh for a model not listed.
+Assert-Equal ((@('claude-opus-5-5@high', 'claude-opus-5-5', 'x') | ForEach-Object { $run = Split-Pick $models $_; "$($run.model)=$($run.effort)" }) -join ' ') 'claude-opus-5-5=high claude-opus-5-5=medium x=xhigh' 'a pick as its model and effort'
+# The page offers models.json's two lists, and nothing else is saved: they hold every model and effort that
+# models.json itself names.
+$view = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); complexities = $picked
+    workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
+$named = @($models.complexities.PSObject.Properties | ForEach-Object { $_.Value.models }) + @($models.afterFable) +
+    @($models.models.PSObject.Properties | ForEach-Object { $_.Name }) | ForEach-Object { Split-Pick $models $_ }
+Assert-Equal "$($named.Count -gt 8) $(@($named | Where-Object { $view.models -cnotcontains $_.model -or $view.efforts -cnotcontains $_.effort }).Count)" 'True 0' 'the two lists hold every model and effort that models.json names'
+$medium = $view.complexities | Where-Object { $_.name -eq 'medium' }
+Assert-Equal "$($medium.model) $($medium.effort) $($medium.base.model) $($medium.base.effort)" 'claude-haiku-5-5 low claude-sonnet-5-5 high' 'the page gets the pick and the base'
+Assert-Equal ($view.workers[0].takes | Where-Object { $_.name -eq 'medium' }).model 'claude-haiku-5-5' 'a worker runs on the pick'
+Assert-Equal "$($medium.advisor)|$(($view.complexities | Where-Object { $_.name -eq 'review' }).advisor)|" 'claude-fable-5-2||' 'no advisor for a run on the advisor''s own model'
+# The pick as a change to the settings: saved as model@effort beside what is there; the base's own pick takes it away
+# and makes no entry.
+$file = '{ "complexities": { "low": { "compactAt": 300000 } } }' | ConvertFrom-Json
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'low' 'claude-haiku-5-5' 'max'
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'tidy' 'claude-opus-5-5' 'low'
+Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000,"model":"claude-haiku-5-5@max"},"tidy":{"model":"claude-opus-5-5@low"}}' 'a pick is saved as model@effort'
+Assert-Equal ((Get-ComplexityModels (Get-Complexities $models $own $file) 'low') -join ',') 'claude-haiku-5-5@max' 'the worker reads the saved pick'
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'low' 'claude-opus-5-5' 'medium'
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'high' 'claude-opus-5-5' 'xhigh'
+Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000},"tidy":{"model":"claude-opus-5-5@low"}}' 'the base''s pick is not saved'
+foreach ($bad in @('none', 'claude-opus-5-5', 'high'), @('low', 'opus', 'high'), @('low', 'claude opus 5.5 with extra high', 'high'), @('low', 'claude-opus-5-5', 'extra high'), @('low', '', '')) {
+    $threw = $false
+    try { Set-ComplexityModel $file $models (Get-Complexities $models $own $file) $bad[0] $bad[1] $bad[2] | Out-Null } catch { $threw = $true }
+    Assert-Equal $threw $true "no pick: $($bad -join ' / ')"
+}
+Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000},"tidy":{"model":"claude-opus-5-5@low"}}' 'a refused pick changes nothing'
+# A model that the project names outside models.json's list stays a valid pick for its complexity: its effort alone
+# changes, and the way back to it is open.
+$other = '{ "complexities": { "low": { "models": ["claude-opus-4-8@high"] } } }' | ConvertFrom-Json
+$file = Set-ComplexityModel ('{}' | ConvertFrom-Json) $models (Get-Complexities $models $other) 'low' 'claude-opus-4-8' 'max'
+Assert-Equal $file.complexities.low.model 'claude-opus-4-8@max' 'the base''s own model with another effort'
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $other $file) 'low' 'claude-opus-4-8' 'high'
+Assert-Equal ($file.complexities.low | ConvertTo-Json -Compress) '{}' 'and back to the base'
+
 Write-Output 'ok'

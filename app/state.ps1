@@ -95,6 +95,39 @@ function Get-WorkerSettings($settings, [string] $id) {
     return $settings.workers.$id
 }
 
+# The settings' entry of a complexity (`complexities.<name>`), made empty when it has none.
+function Get-ComplexitySettings($settings, [string] $name) {
+    if (-not $settings.complexities) {
+        $settings | Add-Member -NotePropertyName complexities -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    if (-not $settings.complexities.$name) {
+        $settings.complexities | Add-Member -NotePropertyName $name -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    return $settings.complexities.$name
+}
+
+# The owner's pick of a complexity's model and effort on this PC (docs/QUEUE.md, Settings,
+# `complexities.<name>.model`), as `model@effort`. Only an effort of models.json's list, and a model of its list or
+# the base's own (a project may name another in scriptorium.json): Claude Code takes an effort it does not know without
+# a word. The base's own pick is not saved, so the PC follows models.json and scriptorium.json again. $complexities:
+# the list with these settings (project.ps1, Get-Complexities).
+function Set-ComplexityModel($settings, $models, $complexities, [string] $name, [string] $model, [string] $effort) {
+    $entry = $complexities | Where-Object { $_.name -ceq $name } | Select-Object -First 1
+    if (-not $entry) {
+        throw "no complexity $name"
+    }
+    $base = Split-Pick $models $entry.base
+    if (@($models.models.PSObject.Properties | ForEach-Object { $_.Name }) + $base.model -cnotcontains $model -or @($models.efforts) -cnotcontains $effort) {
+        throw "models.json lists no model '$model' or no effort '$effort'"
+    }
+    if ($base.model -ne $model -or $base.effort -ne $effort) {
+        Get-ComplexitySettings $settings $name | Add-Member -NotePropertyName model -NotePropertyValue "$model@$effort" -Force
+    } elseif ($settings.complexities -and $settings.complexities.$name) {
+        $settings.complexities.$name.PSObject.Properties.Remove('model')
+    }
+    return $settings
+}
+
 # Why worker $id cannot be removed now, '' when it can (the queue app's Remove). Only a disabled worker with no run in
 # flight: its ticket is free already. Never while its setup runs. $state: what its script wrote; $alive: its script
 # still refreshes it. A dead script's run waits for nothing: the server ends what is left of it.
@@ -621,16 +654,12 @@ function New-Snapshot($data) {
         $status = Get-WorkerStatus ([string]$s.state) (Get-Mode $data.control $id) $enabled $marked
         $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced }
         # The worker's complexity switches (limits.ps1): each with the model and effort its runs use (the worker's own
-        # or the settings' `model`, else the complexity's first candidate; the effort as in worker.ps1, Get-RunModel)
-        # and the PR jobs it holds while it is off.
+        # or the settings' `model`, else the complexity's first candidate) and the PR jobs it holds while it is off.
         $ownModel = if ($data.settings -and $data.settings.workers -and $data.settings.workers.$id) { $data.settings.workers.$id.model } else { $null }
         $view.takes = @($complexities | ForEach-Object {
             $pick = if ($ownModel) { [string]$ownModel } elseif ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { [string]@($_.models)[0] }
-            $model, $effort = $pick -split '@'
-            if (-not $effort) {
-                $effort = if ($models.models.$model) { [string]$models.models.$model.effort } else { 'xhigh' }
-            }
-            @{ name = $_.name; on = -not (Test-ComplexityOff $_.name $data.settings $id); model = $model; effort = $effort; jobs = 0 }
+            $run = Split-Pick $models $pick
+            @{ name = $_.name; on = -not (Test-ComplexityOff $_.name $data.settings $id); model = $run.model; effort = $run.effort; jobs = 0 }
         })
         # A run in flight: working, or waiting in paused.json for a limit reset, for room under the workers' limit
         # (it ended at a checkpoint there), for its account, or for the owner to set the paused worker active
@@ -836,16 +865,16 @@ function New-Snapshot($data) {
         left = @{ count = 0; seconds = 0; cost = 0.0 }
         # The advisor rule (models.json `advisor`, docs/QUEUE.md, Models), for the Info tab.
         advisor = Get-AdvisorRule $models $complexities
-        # Every complexity with its description, models, the first one's model and effort, its advisor and its compact
-        # size.
+        # The models and efforts a worker's Config offers for a complexity: models.json's two lists.
+        models = @($models.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($models.efforts)
+        # Every complexity with its description, models, the first one's model and effort, the same without the owner's
+        # pick (`base`), its advisor (none for a run on the advisor's own model) and its compact size.
         complexities = @($complexities | ForEach-Object {
-            $model, $effort = ([string]@($_.models)[0]) -split '@'
-            if (-not $effort) {
-                $effort = if ($models.models.$model) { [string]$models.models.$model.effort } else { 'xhigh' }
-            }
+            $run = Split-Pick $models ([string]@($_.models)[0])
             $rule = Get-AdvisorRule $models @($_)
-            @{ name = $_.name; description = $_.description; models = @($_.models); model = $model; effort = $effort
-                advisor = $(if ($rule.complexities.Count) { $rule.model } else { '' }); advisorFallback = $_.advisorFallback
+            @{ name = $_.name; description = $_.description; models = @($_.models); model = $run.model; effort = $run.effort
+                base = Split-Pick $models ([string]$_.base)
+                advisor = $(if ($rule.complexities.Count -and $rule.model -ne $run.model) { $rule.model } else { '' }); advisorFallback = $_.advisorFallback
                 compactAt = $_.compactAt }
         })
         # The project's plugins (name, title, version, description) for the Info tab: none for a plain git repo.

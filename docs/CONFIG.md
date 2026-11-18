@@ -49,7 +49,9 @@ An entry under `complexities` changes one of the four or adds one of the project
 | `compactAt` | The compact size of its runs, where it is not the project's |
 
 `setup.ps1` makes the label of each complexity. The page shows every complexity with its model on the Info tab and in
-each worker's Config. A complexity of the project's own stands between `high` and `design`.
+each worker's Config. There the owner can pick another model and effort for a complexity on this PC, and the pick goes
+over `models` ([QUEUE.md](QUEUE.md), Models, The owner's pick). A complexity of the project's own stands between `high`
+and `design`.
 
 ## The compact size
 
