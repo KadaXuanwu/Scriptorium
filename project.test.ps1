@@ -8,8 +8,14 @@ function Assert-Equal($actual, $expected, [string] $what) {
     }
 }
 
-# A process is this project's only by its -Project argument with the closing quote: never another project, a path
-# that starts with this one, or a queue from before -Project.
+# A process is this project's only by its whole -Project argument: never another project, a path that starts with this
+# one, or a queue from before -Project. A task's process has no quotes around a path with no space.
+$bare = 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -File C:\S\worker.ps1 -Project D:\Work\App -Id 2 -Clone D:\Work\App-w2'
+Assert-Equal (Test-ProjectProcess $bare 'worker.ps1' 'D:\Work\App') $true 'a path without its quotes'
+Assert-Equal (Test-ProjectProcess $bare 'worker.ps1' 'D:\Work\Ap') $false 'a bare path that this one starts with'
+Assert-Equal (Test-ProjectProcess 'powershell.exe -File C:\S\merge.ps1 -Project D:\Work\App' 'merge.ps1' 'D:\Work\App') $true 'a bare path at the end'
+Assert-Equal (Test-ProjectProcess 'powershell.exe -File C:\S\merge.ps1 -Project D:\Work\App2' 'merge.ps1' 'D:\Work\App') $false 'a longer bare path'
+Assert-Equal (Test-ProjectProcess 'powershell.exe -File "C:\S\merge.ps1" -Project "D:\My Work\App"' 'merge.ps1' 'D:\My Work\App') $true 'a path with a space'
 $line = 'powershell.exe -NoProfile -File "C:\S\worker.ps1" -Project "D:\Work\App" -Id 2 -Clone "D:\Work\App-w2"'
 Assert-Equal (Test-ProjectProcess $line 'worker.ps1' 'D:\Work\App') $true 'this project''s worker'
 Assert-Equal (Test-ProjectProcess $line 'worker.ps1' 'd:\work\app') $true 'the path in another case'

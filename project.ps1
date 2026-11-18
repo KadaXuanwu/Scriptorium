@@ -114,12 +114,13 @@ function Get-ProjectArg([string] $Project) {
     return "-Project `"$Project`""
 }
 
-# Whether a process's command line runs $script (worker.ps1, merge.ps1, server.ps1) for this project. The path with its
-# closing quote: another project, a path that starts with this one, or a queue from before -Project never matches.
+# Whether a process's command line runs $script (worker.ps1, merge.ps1, server.ps1) for this project. The path as a
+# whole argument: another project, a path that starts with this one, or a queue from before -Project never matches.
+# conhost passes a path with no space on without its quotes, so the quotes are optional.
 function Test-ProjectProcess([string] $commandLine, [string] $script, [string] $Project) {
     if (-not $commandLine) {
         return $false
     }
-    $line = $commandLine.ToLowerInvariant()
-    return $line.Contains($script.ToLowerInvariant()) -and $line.Contains((Get-ProjectArg $Project).ToLowerInvariant())
+    return $commandLine.ToLowerInvariant().Contains($script.ToLowerInvariant()) -and
+        $commandLine -match ('-Project "?' + [regex]::Escape($Project) + '("|\s|$)')
 }
