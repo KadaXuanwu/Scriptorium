@@ -1148,12 +1148,15 @@ function Invoke-Worker($job, [string] $log, $paused) {
     # Claude Code's own commit and PR attribution off: CLAUDE.md allows none. The advisor on (Use-Advisor turns it off).
     $runSettings = Join-Path $queueDir 'run-settings.json'
     $advisorSetting = if ($advisor) { ",`"advisorModel`":`"$advisor`"" } else { '' }
-    [System.IO.File]::WriteAllText($runSettings, '{"includeCoAuthoredBy":false,"attribution":{"commit":"","pr":""}' + $advisorSetting + '}')
+    # The base's tools, the project's and the plugins' (Get-RunTools), as a list: a rule may hold a space
+    # (`Bash(unity command:*)`), and a comma-joined --allowedTools value is not sure to keep such a rule whole.
+    $allow = ConvertTo-Json -InputObject @(Get-RunTools $config $given) -Compress
+    [System.IO.File]::WriteAllText($runSettings, '{"includeCoAuthoredBy":false,"attribution":{"commit":"","pr":""},' +
+        '"permissions":{"allow":' + $allow + '}' + $advisorSetting + '}')
     # The same for the run and for the compaction of its session (Compress-Session).
-    # The base's tools, the project's and the plugins' (Get-RunTools).
     $sessionArgs = @('--permission-mode', 'auto', '--mcp-config', "`"$mcpConfig`"",
         '--strict-mcp-config', '--settings', "`"$runSettings`"",
-        '--allowedTools', "`"$(Get-RunTools $config $given)`"", '--disallowedTools', "`"$UnusedTools`"", '--output-format', 'stream-json', '--verbose',
+        '--disallowedTools', "`"$UnusedTools`"", '--output-format', 'stream-json', '--verbose',
         '--model', $model, '--effort', $effort)
     if ($dir -ne $Clone) {
         # The playbook, CLAUDE.md and the usage warning stay in the clone.
@@ -1173,6 +1176,12 @@ function Invoke-Worker($job, [string] $log, $paused) {
         $env:CLAUDE_CONFIG_DIR = $configDir
     }
     $previousAdvisor = Use-Advisor $advisor
+    # What the plugins set in the run's environment (docs/PLUGINS.md, GetRun): the run's process takes this script's.
+    $previousVariables = @{}
+    foreach ($name in @($given.Env.Keys)) {
+        $previousVariables[$name] = [Environment]::GetEnvironmentVariable($name)
+        [Environment]::SetEnvironmentVariable($name, $given.Env[$name])
+    }
     $runStartedAt = Get-Now
     $commentsCheckedAt = 0
     try {
@@ -1216,6 +1225,9 @@ function Invoke-Worker($job, [string] $log, $paused) {
     } finally {
         $env:CLAUDE_CONFIG_DIR = $previousConfigDir
         $env:CLAUDE_CODE_DISABLE_ADVISOR_TOOL = $previousAdvisor
+        foreach ($name in $previousVariables.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previousVariables[$name])
+        }
         # However the run ended, the plugins leave its environment clean (EndRun). An error there is no run's.
         try {
             Invoke-WorkerHooks 'EndRun' $dir | Out-Null

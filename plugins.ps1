@@ -99,16 +99,22 @@ function Invoke-Hooks($plugins, [string] $hook, [string] $project, [string] $cop
     return , $answers
 }
 
-# GetRun's answers merged (docs/PLUGINS.md, The hooks): MCP servers by name (a later plugin's wins), tools as a union,
-# prompts in order. @{ McpServers; AllowedTools; Prompt }.
+# GetRun's answers merged (docs/PLUGINS.md, The hooks): MCP servers and environment variables by name (a later plugin's
+# wins), tools as a union, prompts in order. @{ McpServers; AllowedTools; Prompt; Env }.
 function Merge-RunAnswers($answers) {
     $servers = [ordered]@{}
     $tools = @()
     $prompts = @()
+    $variables = [ordered]@{}
     foreach ($answer in @($answers | Where-Object { $_ -is [System.Collections.IDictionary] })) {
         if ($answer.McpServers) {
             foreach ($key in @($answer.McpServers.Keys)) {
                 $servers[$key] = $answer.McpServers[$key]
+            }
+        }
+        if ($answer.Env) {
+            foreach ($key in @($answer.Env.Keys)) {
+                $variables[$key] = [string]$answer.Env[$key]
             }
         }
         $tools += @($answer.AllowedTools | Where-Object { $_ })
@@ -116,7 +122,7 @@ function Merge-RunAnswers($answers) {
             $prompts += ([string]$answer.Prompt).Trim()
         }
     }
-    return @{ McpServers = $servers; AllowedTools = @($tools | Select-Object -Unique); Prompt = $prompts -join ' ' }
+    return @{ McpServers = $servers; AllowedTools = @($tools | Select-Object -Unique); Prompt = $prompts -join ' '; Env = $variables }
 }
 
 # The run's MCP config file text: the merged servers, none without a plugin.
@@ -124,8 +130,8 @@ function ConvertTo-McpConfig($servers) {
     return @{ mcpServers = $servers } | ConvertTo-Json -Depth 8 -Compress
 }
 
-# The run's --allowedTools value: the base's git and gh, then scriptorium.json's `allowedTools`, then the plugins'.
+# The run's tool rules: the base's git and gh, then scriptorium.json's `allowedTools`, then the plugins'.
 function Get-RunTools($config, $merged) {
     $tools = @('Bash(git:*)', 'Bash(gh:*)') + @($config.allowedTools) + @($merged.AllowedTools)
-    return (@($tools | Where-Object { $_ } | Select-Object -Unique) -join ',')
+    return @($tools | Where-Object { $_ } | Select-Object -Unique)
 }

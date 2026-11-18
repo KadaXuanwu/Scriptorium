@@ -27,14 +27,14 @@ try {
 function Get-Word { 'one' }
 @{
     Start = { param($ctx) & $ctx.Report "start $(Get-Word) in $($ctx.Copy)" }
-    GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'one' }; First = @{ command = 'a' } }; AllowedTools = @('mcp__First', 'Bash(dotnet:*)'); Prompt = "Word $(Get-Word)." } }
+    GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'one' }; First = @{ command = 'a' } }; AllowedTools = @('mcp__First', 'Bash(dotnet:*)'); Prompt = "Word $(Get-Word)."; Env = @{ SHARED = 'one'; FIRST = 'a' } } }
     EndRun = { param($ctx) throw 'the server did not stop' }
 }
 '@
     $two = New-Plugin $root 'two' @'
 function Get-Word { 'two' }
 @{
-    GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'two' } }; AllowedTools = @('Bash(dotnet:*)', 'mcp__Shared'); Prompt = "Word $(Get-Word) at $($ctx.Settings.level)." } }
+    GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'two' } }; AllowedTools = @('Bash(dotnet:*)', 'mcp__Shared'); Prompt = "Word $(Get-Word) at $($ctx.Settings.level)."; Env = @{ SHARED = 'two' } } }
 }
 '@
     $config = "{ `"name`": `"App`", `"allowedTools`": [`"Bash(npm:*)`"], `"plugins`": { `"one`": { `"source`": `"$($one.Replace('\', '/'))`" }, `"two`": { `"source`": `"$($two.Replace('\', '/'))`", `"level`": 1 } } }" | ConvertFrom-Json
@@ -52,7 +52,8 @@ function Get-Word { 'two' }
     Assert-Equal "$($run.Prompt)" 'Word one. Word two at 2.' 'prompts in order, each with its own helper and settings'
     Assert-Equal (($run.McpServers.Keys | Sort-Object) -join ',') 'First,Shared' 'servers by name'
     Assert-Equal $run.McpServers.Shared.command 'two' 'a later plugin''s server of the same name wins'
-    Assert-Equal (Get-RunTools $config $run) 'Bash(git:*),Bash(gh:*),Bash(npm:*),mcp__First,Bash(dotnet:*),mcp__Shared' 'tools as a union'
+    Assert-Equal "$($run.Env.FIRST) $($run.Env.SHARED) $($run.Env.Count)" 'a two 2' 'environment variables by name, a later plugin''s wins'
+    Assert-Equal ((Get-RunTools $config $run) -join ',') 'Bash(git:*),Bash(gh:*),Bash(npm:*),mcp__First,Bash(dotnet:*),mcp__Shared' 'tools as a union'
     Assert-Equal ((ConvertTo-McpConfig $run.McpServers) -match '^\{"mcpServers":\{.*"First":\{"command":"a"\}') $true 'the MCP config'
 
     # Report and Log reach the caller; a hook only one plugin has calls only that one.
@@ -96,7 +97,7 @@ function Get-Word { 'two' }
     Assert-Equal (Invoke-Hooks $none 'Start' 'D:/p' 'D:/p-w1' 1 'D:/q' $null).Count 0 'Start does nothing'
     $run = Merge-RunAnswers (Invoke-Hooks $none 'GetRun' 'D:/p' 'D:/p-w1' 1 'D:/q' $null)
     Assert-Equal (ConvertTo-McpConfig $run.McpServers) '{"mcpServers":{}}' 'an MCP config with no server'
-    Assert-Equal (Get-RunTools $plain $run) 'Bash(git:*),Bash(gh:*)' 'the base''s tools only'
+    Assert-Equal ((Get-RunTools $plain $run) -join ',') 'Bash(git:*),Bash(gh:*)' 'the base''s tools only'
     Assert-Equal $run.Prompt '' 'no prompt'
     Assert-Equal (Import-Plugins $root ('{ "name": "App" }' | ConvertFrom-Json)).Count 0 'no plugins key'
 } finally {

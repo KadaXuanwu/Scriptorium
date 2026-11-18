@@ -44,10 +44,10 @@ The plugins of a project run in the order the file gives them.
 {
     "name": "unity",
     "title": "Scriptorium for Unity",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "api": 1,
-    "description": "One Unity editor for each worker copy, with MCP for Unity pinned to it.",
-    "requires": ["uvx"]
+    "description": "One Unity editor for each worker copy, driven with the Unity CLI.",
+    "requires": ["unity"]
 }
 ```
 
@@ -97,15 +97,17 @@ nothing and changes nothing.
 
   ```powershell
   @{
-      McpServers = @{ UnityMCP = @{ type = 'stdio'; command = '...'; args = @('...'); env = @{ } } }
-      AllowedTools = @('mcp__UnityMCP', 'Bash(dotnet:*)')
+      McpServers = @{ Docs = @{ type = 'stdio'; command = '...'; args = @('...'); env = @{ } } }
+      AllowedTools = @('mcp__Docs', 'Bash(unity command:*)')
+      Env = @{ UNITY_PROJECT_PATH = 'D:/Work/App-w1/Client' }
       Prompt = 'Your editor is ...'
   }
   ```
 
   `McpServers` has the shape of `mcpServers` in a Claude Code MCP config. `AllowedTools` holds Claude Code tool rules.
-  `Prompt` is one or two sentences that the base adds to the run's first message. The base merges the answers of all
-  plugins: servers by name, tools as a union, prompts in order.
+  `Env` holds environment variables for the run's process, so each command that the run starts has them. `Prompt` is
+  one or two sentences that the base adds to the run's first message. The base merges the answers of all plugins:
+  servers and variables by name, tools as a union, prompts in order.
 - **`EndRun`** leaves the environment clean for the next run: it leaves play mode, stops a server.
 
 A job can be in another repo of the owner (a `repo:` label). `$ctx.Copy` is then that repo's checkout, which may not
