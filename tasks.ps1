@@ -33,7 +33,7 @@ function Initialize-Copy([string] $main, $plugins, [string] $clone, [string] $id
     if (Test-Path $file) {
         $machine = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
     }
-    $say = { param($text) Write-Output "  $text" }
+    $say = { param($text) Write-Host "  $text" }
     Invoke-Hooks $plugins 'PrepareCopy' $main $clone $id (Join-Path $clone '.queue') $machine $say $say | Out-Null
 }
 

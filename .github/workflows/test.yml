@@ -1,0 +1,14 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse every .ps1 and run every *.test.ps1 in Windows PowerShell
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File check.ps1

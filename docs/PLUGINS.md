@@ -153,5 +153,7 @@ request that does this.
 4. To have it listed by name, open a pull request here that adds one entry to `plugins.json`:
    `"<name>": { "source": "<git URL>", "description": "<one line>" }`. [CONTRIBUTING.md](../CONTRIBUTING.md) gives
    the checks for it.
+5. Add `"detect"` to the entry, a list of file patterns from the repo root (`"*/ProjectSettings/ProjectVersion.txt"`),
+   and `setup.ps1` puts the plugin in a new `scriptorium.json` when a pattern matches a file of the project.
 
 A listed plugin stays its author's: its issues and pull requests go to its own repo.

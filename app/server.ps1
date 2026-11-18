@@ -394,7 +394,7 @@ $ghWrite = {
 }
 $script:writes = @()
 
-# The owner's actions (docs/APP.md, What the owner can do). One that writes to GitHub returns its calls.
+# The owner's actions (docs/APP.md). One that writes to GitHub returns its calls.
 function Invoke-Action($request) {
     $worker = [string]$request.worker
     switch ($request.action) {

@@ -31,7 +31,7 @@ $plugins = Import-Plugins $PSScriptRoot $config
 Start-CodeWatch (@((Join-Path $Project 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }))
 
 # One loop per worker: stopping the task ends only its console host, so an older loop may still run, on old code.
-# End it with its run; the ticket resumes here (PLAYBOOK.md, 3). Only this project's worker of this number.
+# End it with its run; the ticket resumes here (PLAYBOOK.md, Branch). Only this project's worker of this number.
 Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
     Where-Object { $_.ProcessId -ne $PID -and (Test-ProjectProcess $_.CommandLine 'worker.ps1' $Project) -and $_.CommandLine -match "-Id $Id\b" } |
     ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
@@ -1098,7 +1098,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     $playbooks = Get-Playbooks
     if ($paused -and $paused.Session) {
         $cause = if ($paused.FableOut) {
-            "Your account reached its weekly Fable limit, so this session goes on with $model. Read the Fable limit part at the end first."
+            "Your account reached its weekly Fable limit, so this session goes on with $model. Read the Fable limit part of the playbook first."
         } elseif ($paused.Stopped) { 'The owner paused your worker, and it is active again now.' } else { 'A usage limit or a lost login stopped you, and it is cleared now.' }
         # The pause can last hours, and the playbooks may change meanwhile: a resumed run shipped by old rules.
         $prompt = "$cause Checkpoint first (PLAYBOOK.md, Checkpoints). " +
