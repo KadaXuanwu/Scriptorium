@@ -321,11 +321,13 @@ function Update-Snapshot {
         Write-AppLog "disabled after its ticket: worker $id"
         $control = Read-Json (Join-Path $mainQueue 'control.json')
     }
+    $saved = Read-Json (Join-Path $mainQueue 'settings.json')
     $data = @{
         now = Get-Now; slug = $slug; workers = $workers; control = $control
-        usage = Read-Json (Join-Path $mainQueue 'usage.json'); out = Read-Json (Join-Path $mainQueue 'out.json'); settings = Read-Json (Join-Path $mainQueue 'settings.json')
+        usage = Read-Json (Join-Path $mainQueue 'usage.json'); out = Read-Json (Join-Path $mainQueue 'out.json'); settings = $saved
         runs = Read-Runs; gh = $script:gh; appUrl = $appUrl; dispatch = Read-Json (Join-Path $mainQueue 'dispatch.json')
-        logins = @{}; login = Get-LoginView; complexities = Get-Complexities (Read-Models) $config; plugins = $plugins
+        logins = @{}; login = Get-LoginView; complexities = Get-Complexities (Read-Models) $config $saved; plugins = $plugins
+        compactWindow = Get-CompactWindow (Read-Models) $config $saved
     }
     if ($data.settings -and $data.settings.accounts) {
         foreach ($property in $data.settings.accounts.PSObject.Properties) {
@@ -523,6 +525,14 @@ function Invoke-Action($request) {
             $settings.keep | Add-Member -NotePropertyName $use -NotePropertyValue $value -Force
             Save-Settings $settings
             return "keep: $use $value"
+        }
+        'compact-window' {
+            # The compact window of the runs on this PC (docs/CONFIG.md, The compact window).
+            $window = ConvertTo-CompactWindow $request.value 'compactWindow'
+            $settings = Read-SettingsToEdit
+            $settings | Add-Member -NotePropertyName compactWindow -NotePropertyValue $window -Force
+            Save-Settings $settings
+            return "compact window: $window"
         }
         'login' {
             # An account new to the register gets its own config folder, ~/.claude-<name>.

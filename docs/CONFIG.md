@@ -60,10 +60,11 @@ it, by Claude Code's own buffer (measured with Claude Code 2.1.323). A window of
 
 `compactWindow` is that window, as Claude Code takes it in `CLAUDE_CODE_AUTO_COMPACT_WINDOW`: whole tokens in plain
 digits, from 100000 to 1000000. Anything else stops the scripts with an error: Claude Code once read `250k` as its
-minimum without a word. A run gets the window of its ticket's complexity, else the project's, else the 200000 of
-[models.json](../models.json). A window above the model's own context window has no effect: Claude Code takes the
+minimum without a word. A run gets the window of its ticket's complexity. If the complexity has none, it gets the one
+the owner set on the page (Workers tab; saved for this PC in `.queue/settings.json`), else the project's, else the
+200000 of [models.json](../models.json). A window above the model's own context window has no effect: Claude Code takes the
 smaller of the two.
 
 A larger window keeps more of the work in view and costs more for each turn. A smaller one compacts more often, and
-each compaction loses detail. The page shows where each complexity compacts on its Info tab, and the worker script
-writes the window of each run into its log.
+each compaction loses detail. The page shows where each complexity compacts on its Info tab and sets the size on its
+Workers tab, and the worker script writes the window of each run into its log.

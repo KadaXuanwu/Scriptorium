@@ -98,6 +98,11 @@ first, in the page's one dialog.
   loop (`Uninstall-Worker`), then deletes its state and force files, its settings entry, its control entries and its
   place in each account's uses. Its copy stays: it may hold work that no checkpoint pushed.
 
+**The compact size.** Under the cards, one field says near how many thousand tokens a run compacts its context. The
+page saves it as the compact window of this PC, which is Claude Code's 33k buffer larger ([CONFIG.md](CONFIG.md), The
+compact window), and it applies from the next run. A complexity with a window of its own keeps it; the Info tab
+shows where each compacts.
+
 ### Questions
 
 One list of questions about the product, in two groups ([PLAYBOOK.md](../PLAYBOOK.md), What to ask):

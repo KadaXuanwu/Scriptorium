@@ -613,9 +613,10 @@ function Get-Out([string] $configDir) {
     return $record
 }
 
-# The ticket complexities (project.ps1, Get-Complexities): models.json's with the project's over them.
+# The ticket complexities (project.ps1, Get-Complexities): models.json's with the project's over them, and the
+# compact window the owner set on the page.
 function Get-ProjectComplexities {
-    return Get-Complexities (Read-Models) $config
+    return Get-Complexities (Read-Models) $config (Read-Settings)
 }
 
 

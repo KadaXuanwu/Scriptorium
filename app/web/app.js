@@ -442,7 +442,7 @@ function info(s) {
       ${items((s.complexities || []).map((c) => `<b>${esc(c.name)}</b> (${esc(c.description || c.name)}): ${esc(modelName(c.model))},
         ${esc(c.effort)} effort${c.advisor ? `, with ${esc(modelName(c.advisor))} as advisor${c.advisorFallback
           ? `; ${esc(c.advisorFallback)} effort while the advisor is not there` : ''}` : ''}. Its context is
-        compacted near ${Math.round((c.compactWindow - COMPACT_BUFFER) / 1000)}k tokens.`))}
+        compacted near ${setting(`${Math.round((c.compactWindow - COMPACT_BUFFER) / 1000)}k tokens`, 'workers')}.`))}
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
         not see the advice. A run keeps its advisor to its end; past the Fable advisor line (Limits), new runs start
         without one.</p>` : ''}`),
@@ -514,6 +514,13 @@ function render() {
   put($('all-buttons'), `<button data-status="active" data-worker="all">${icon('play')}All active</button>
     <button data-status="paused" data-worker="all">${icon('pause')}Pause all</button>`);
   put($('worker-list'), (s.workers.map(workerCard).join('') || quiet('No worker has reported yet.')) + addTile('worker', 'Add a worker'));
+  // Where a run's context is compacted (docs/CONFIG.md, The compact window): the field takes that size in thousands
+  // of tokens, and the server gets the window, which is the buffer larger.
+  put($('run-settings'), s.compactWindow ? `<label class="compact">Runs compact their context near
+    <input type="number" inputmode="numeric" min="${(100000 - COMPACT_BUFFER) / 1000}" max="${(1000000 - COMPACT_BUFFER) / 1000}" step="1"
+      value="${Math.round((s.compactWindow - COMPACT_BUFFER) / 1000)}" data-compact="" aria-label="Thousands of tokens at which a run compacts its context">
+    k tokens</label><p class="hint">Claude Code then replaces the older part with a summary. A larger size keeps more of the work in
+    view and uses more for each turn. It applies from the next run.</p>` : '');
 
   // An answer being typed survives a redraw of its list.
   const typed = {};
@@ -1039,6 +1046,18 @@ document.addEventListener('change', async (e) => {
     await act({ action: 'pick-up', account: data.account, window: data.window, size: data.pick, value }, {
       keys: [`account:${data.account}`],
       apply: (s) => { accountOf(s, data.account)[data.window].pickUp[data.pick] = value; },
+    });
+  } else if (data.compact !== undefined) {
+    e.target.blur();
+    const value = Math.round(Number(e.target.value)) * 1000 + COMPACT_BUFFER;
+    await act({ action: 'compact-window', value }, {
+      keys: ['compact'],
+      apply: (s) => {
+        // A complexity with a window of its own keeps it.
+        for (const c of s.complexities || []) if (c.compactWindow === s.compactWindow) c.compactWindow = value;
+        s.compactWindow = value;
+      },
+      done: (s) => s.compactWindow === value,
     });
   } else if (data.guard) {
     e.target.blur();

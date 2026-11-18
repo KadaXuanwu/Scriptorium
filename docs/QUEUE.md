@@ -184,6 +184,8 @@ the next. Setup writes a first one.
 - `keep`: the share of a whole week that each human use's usage guard holds on its account, for example
   `{ "frontdesk": 0.1, "personal": 0.15 }` (the defaults). The guard keeps the part of it for the time left; 0 keeps
   nothing. The page's guard sliders set it.
+- `compactWindow`: the compact window of the runs on this PC, over `scriptorium.json`'s ([CONFIG.md](CONFIG.md), The
+  compact window). A complexity with a window of its own keeps it. The page's Workers tab sets it.
 - `model`: overrides the complexities' models for every run, or one worker's in `workers.<id>`: a full id, at its
   effort in `models.json` (xhigh if it is not listed). Left out: the complexity picks.
 - `ghConfigDir`: a `gh` login folder (`GH_CONFIG_DIR`) signed in as a GitHub bot account for the worker. Its comments,

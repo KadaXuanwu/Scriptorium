@@ -85,6 +85,9 @@ Assert-Equal $threw $true 'a complexity of the project''s own needs a descriptio
 # The compact window: the complexity's own, else the project's, else models.json's; a name not in the list has medium's.
 Assert-Equal "$(Get-ComplexityWindow $list 'low') $(Get-ComplexityWindow $list 'review') $(Get-ComplexityWindow $list 'none')" '250000 400000 250000' 'the project''s window, a complexity''s own, medium''s for no complexity'
 Assert-Equal (Get-ComplexityWindow (Get-Complexities $models $null) 'design') 200000 'models.json''s window with no config'
+# The page's window (settings.json) goes over the project's, and a complexity's own stays.
+$paged = Get-Complexities $models $own ('{ "compactWindow": 283000 }' | ConvertFrom-Json)
+Assert-Equal "$(Get-ComplexityWindow $paged 'low') $(Get-ComplexityWindow $paged 'review') $(Get-CompactWindow $models $own $null)" '283000 400000 250000' 'the page''s window over the project''s'
 Assert-Equal $review.compactWindow 400000 'the page gets each window'
 # Only what Claude Code takes: it read '250k' as its 100k minimum without a word.
 foreach ($bad in '"250k"', '99999', '"099999"', '1000001', '250000.5', '""') {

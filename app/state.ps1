@@ -848,6 +848,8 @@ function New-Snapshot($data) {
                 advisor = $(if ($rule.complexities.Count) { $rule.model } else { '' }); advisorFallback = $_.advisorFallback
                 compactWindow = $_.compactWindow }
         })
+        # The compact window of a run whose complexity has none of its own, which the Workers tab sets.
+        compactWindow = $data.compactWindow
         # The project's plugins (name, title, version, description) for the Info tab: none for a plain git repo.
         plugins = @($data.plugins | Where-Object { $_ } | ForEach-Object {
             @{ name = $_.Name; title = $_.Title; version = $_.Version; description = $_.Description }

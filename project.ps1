@@ -34,10 +34,11 @@ function Read-Models {
 # The ticket complexities (docs/CONFIG.md, Complexities), the one list every script and the page read: models.json's,
 # with scriptorium.json's `complexities` over them, in this order: low, medium, high, the project's own, design. Each
 # @{ name; description; models; advisor; advisorFallback; compactWindow }. A complexity of the project's own needs a
-# description; with no models it runs on medium's. Its compact window is its own, else scriptorium.json's, else
-# models.json's. Throws for a missing description, a name that is no label or a window that Claude Code does not take.
-function Get-Complexities($models, $config) {
-    $window = ConvertTo-CompactWindow $(if ($config -and $null -ne $config.compactWindow) { $config.compactWindow } else { $models.compactWindow }) 'compactWindow'
+# description; with no models it runs on medium's. Its compact window is its own, else the project's (Get-CompactWindow;
+# $settings is the PC's settings.json, where the page saves it). Throws for a missing description, a name that is no
+# label or a window that Claude Code does not take.
+function Get-Complexities($models, $config, $settings) {
+    $window = Get-CompactWindow $models $config $settings
     $base = @($models.complexities.PSObject.Properties | ForEach-Object { $_.Name })
     $changes = if ($config -and $config.complexities) { $config.complexities } else { [pscustomobject]@{} }
     $own = @($changes.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { $base -notcontains $_ })
@@ -87,6 +88,18 @@ function ConvertTo-CompactWindow($value, [string] $where) {
         throw "${where}: '$value' is no compact window: write whole tokens in digits, from 100000 to 1000000"
     }
     return [int]"$value"
+}
+
+# The compact window of a run whose complexity has none of its own: the one the owner set on the page (settings.json,
+# this PC), else scriptorium.json's, else models.json's.
+function Get-CompactWindow($models, $config, $settings) {
+    $value = $models.compactWindow
+    foreach ($source in @($config, $settings)) {
+        if ($source -and $null -ne $source.compactWindow) {
+            $value = $source.compactWindow
+        }
+    }
+    return ConvertTo-CompactWindow $value 'compactWindow'
 }
 
 # The compact window of a ticket's complexity, from the list Get-Complexities gives; medium's for a name not in it,

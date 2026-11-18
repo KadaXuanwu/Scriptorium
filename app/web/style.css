@@ -201,6 +201,10 @@ textarea, input:not([type="range"]):not([type="checkbox"]) {
   color: var(--ink);
 }
 textarea { resize: vertical; min-height: 60px; }
+/* The size at which a run compacts its context, under the worker cards. */
+#run-settings { margin-top: 18px; }
+.compact { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.compact input[type="number"] { display: inline-block; width: 6.5em; }
 textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 @media (pointer: coarse) {
   button, select { min-height: 42px; }
