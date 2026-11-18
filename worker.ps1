@@ -218,12 +218,13 @@ function Get-JobDir([string] $slug) {
 # the app and the other scripts read a state without one as a run that has ended. A hook that throws stops the call.
 function Invoke-WorkerHooks([string] $hook, [string] $copy, [switch] $Report) {
     $log = { param($text) Write-Log "$text" }
-    $report = if ($Report) {
+    # Not $report: PowerShell names ignore case, so that is the switch, and it takes no script block.
+    $say = if ($Report) {
         { param($text) if (-not (Test-Path $pausedFile)) { Write-State 'opening' @{ report = [string]$text } } }
     } else {
         $log
     }
-    return Invoke-Hooks $plugins $hook $Project $copy $Id $queueDir (Read-Settings) $report $log
+    return Invoke-Hooks $plugins $hook $Project $copy $Id $queueDir (Read-Settings) $say $log
 }
 
 # The main checkout's .queue/settings.json (docs/QUEUE.md, Settings), read before every decision and run so a change

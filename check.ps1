@@ -7,10 +7,24 @@ $files = @(Get-ChildItem $PSScriptRoot -Recurse -Filter *.ps1 | Where-Object { $
 
 foreach ($file in $files) {
     $errors = $null
-    [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors) | Out-Null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors)
     if ($errors) {
         $failed++
         Write-Output "parse FAILED $($file.FullName): $($errors[0].Message) (line $($errors[0].Extent.StartLineNumber))"
+    }
+    # Names ignore case: a local with the name of the function's own switch is that switch, and a value of another type
+    # stops the script there, only when it runs.
+    foreach ($function in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+        $switches = @($function.Parameters) + @($function.Body.ParamBlock.Parameters) | Where-Object { $_ -and $_.StaticType -eq [switch] }
+        foreach ($name in $switches | ForEach-Object { $_.Name.VariablePath.UserPath }) {
+            $hit = $function.Body.Find({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                    $args[0].Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+                    $args[0].Left.VariablePath.UserPath -eq $name }, $true)
+            if ($hit) {
+                $failed++
+                Write-Output "switch FAILED $($file.Name): line $($hit.Extent.StartLineNumber) assigns to -$name, a switch of $($function.Name)"
+            }
+        }
     }
 }
 Write-Output "parsed $($files.Count) files"
