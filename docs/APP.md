@@ -221,6 +221,10 @@ server ([README.md](../README.md), Limits); the page shows one project at a time
 - **A project whose server does not answer** shows its last state greyed out under the banner, which names it. The
   switch still works.
 - The last state on the device is kept for each project.
+- **Why not one address with a path for each project:** Windows gives a second program a path of a port only while no
+  program holds the root of that port, and the reverse ("Access is denied", measured 2026-11-18). The first project's
+  page is at the root of its port, and the phone app, the docs and every check use that address. So each project
+  keeps its own address, and its Tailscale address must stay: the app loads the project from there.
 
 ## Notifications
 
@@ -251,7 +255,8 @@ random one); `ntfy.server` overrides `https://ntfy.sh`.
 
 `setup.ps1` registers the task, makes the ntfy topic and runs `tailscale serve`. The owner's part, once: Tailscale
 signed in on the PC and the phone (the same account), Serve allowed on the tailnet (the link that `tailscale serve`
-prints the first time), the ntfy app subscribed to the topic, and the page added to the phone's home screen.
+prints the first time), the ntfy app subscribed to the topic, and the page added to the phone's home screen. The
+home screen is for the first project of a PC only: a later one shows in the same app (Projects).
 
 **The address on Tailscale.** A PC has one Tailscale name, and each project's page needs an address of its own. Setup
 reads what Tailscale serves (`tailscale serve status --json`) and never changes an address that is there:

@@ -58,6 +58,7 @@ Or let Claude Code do it: paste [PROMPT.md](PROMPT.md) into Claude Code in your 
 2. Add workers and plan accounts on the page (Workers, Accounts). One account runs everything at first: your own login.
 3. For the page on your phone: sign in to Tailscale on the PC and the phone, allow Serve when `tailscale serve` asks,
    open the address that setup prints ("On your Tailscale devices"), and add the page to the phone's home screen.
+   Only for the first project of a PC: a later project shows in the same app, under the project switch.
 4. For pushes: subscribe to the ntfy topic that setup prints, in the ntfy app.
 5. File tickets: ask your own Claude Code session in the project ("ticket: ..."), or write GitHub issues with a
    priority label (`P0`, `P1`, `P2`).
