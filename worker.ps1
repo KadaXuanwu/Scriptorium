@@ -53,10 +53,9 @@ $accessFile = Join-Path $mainQueueDir 'access.json'
 # Forced from the queue app: the next job starts past the area, room and ceiling checks; the run ending clears it.
 $forceFile = Join-Path $mainQueueDir "force-$Id.json"
 New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir | Out-Null
-# Every turn reads the whole context again, so Claude Code compacts a run's context at 200k less its 33k buffer. A run
+# Every turn reads the whole context again, so Claude Code compacts a run's context: 33k tokens before the compact
+# window of the job's complexity, which Invoke-Worker sets for each run (docs/CONFIG.md, The compact window). A run
 # never hands off to a fresh session: that cost 24 turns of reading, a compaction 7.
-# Write the window in plain digits: Claude Code 2.1.296 reads '250k' as its 100k minimum.
-$env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = '200000'
 # Tools no run used in 631 logs; without them every turn reads 4,750 tokens less.
 $UnusedTools = 'Task,CronCreate,CronDelete,CronList,DesignSync,EnterWorktree,ExitWorktree,ListAgents,NotebookEdit,' +
     'PushNotification,RemoteTrigger,ReportFindings,SendMessage,WebFetch,WebSearch'
@@ -1176,11 +1175,18 @@ function Invoke-Worker($job, [string] $log, $paused) {
         $env:CLAUDE_CONFIG_DIR = $configDir
     }
     $previousAdvisor = Use-Advisor $advisor
-    # What the plugins set in the run's environment (docs/PLUGINS.md, GetRun): the run's process takes this script's.
-    $previousVariables = @{}
+    # What the run's process takes from this script's environment: what the plugins set (docs/PLUGINS.md, GetRun), then
+    # the compact window of the job's complexity, in plain digits (docs/CONFIG.md, The compact window).
+    $variables = @{}
     foreach ($name in @($given.Env.Keys)) {
+        $variables[$name] = $given.Env[$name]
+    }
+    $variables['CLAUDE_CODE_AUTO_COMPACT_WINDOW'] = [string](Get-ComplexityWindow (Get-ProjectComplexities) $job.Complexity)
+    Write-Log "compact window: $($variables['CLAUDE_CODE_AUTO_COMPACT_WINDOW'])"
+    $previousVariables = @{}
+    foreach ($name in @($variables.Keys)) {
         $previousVariables[$name] = [Environment]::GetEnvironmentVariable($name)
-        [Environment]::SetEnvironmentVariable($name, $given.Env[$name])
+        [Environment]::SetEnvironmentVariable($name, $variables[$name])
     }
     $runStartedAt = Get-Now
     $commentsCheckedAt = 0

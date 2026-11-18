@@ -53,8 +53,8 @@ try {
 . (Join-Path $PSScriptRoot 'limits.ps1')
 . (Join-Path $PSScriptRoot 'app\state.ps1')
 $models = Read-Models
-$own = '{ "name": "App", "complexities": { "medium": { "models": ["claude-sonnet-5-5@high"] },
-    "review": { "description": "A second look at a change", "models": ["claude-opus-5-5@high"], "advisor": true, "advisorFallback": "xhigh" },
+$own = '{ "name": "App", "compactWindow": 250000, "complexities": { "medium": { "models": ["claude-sonnet-5-5@high"] },
+    "review": { "description": "A second look at a change", "models": ["claude-opus-5-5@high"], "advisor": true, "advisorFallback": "xhigh", "compactWindow": 400000 },
     "tidy": { "description": "Small cleanups" } } }' | ConvertFrom-Json
 $list = Get-Complexities $models $own
 Assert-Equal (($list | ForEach-Object { $_.name }) -join ',') 'low,medium,high,review,tidy,design' 'the project''s own between high and design'
@@ -82,5 +82,15 @@ Assert-Equal "$($review.description)|$($review.model)|$($review.effort)|$($revie
 $threw = $false
 try { Get-Complexities $models ('{ "complexities": { "art": { "models": ["x"] } } }' | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'a complexity of the project''s own needs a description'
+# The compact window: the complexity's own, else the project's, else models.json's; a name not in the list has medium's.
+Assert-Equal "$(Get-ComplexityWindow $list 'low') $(Get-ComplexityWindow $list 'review') $(Get-ComplexityWindow $list 'none')" '250000 400000 250000' 'the project''s window, a complexity''s own, medium''s for no complexity'
+Assert-Equal (Get-ComplexityWindow (Get-Complexities $models $null) 'design') 200000 'models.json''s window with no config'
+Assert-Equal $review.compactWindow 400000 'the page gets each window'
+# Only what Claude Code takes: it read '250k' as its 100k minimum without a word.
+foreach ($bad in '"250k"', '99999', '"099999"', '1000001', '250000.5', '""') {
+    $threw = $false
+    try { Get-Complexities $models ("{ `"compactWindow`": $bad }" | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
+    Assert-Equal $threw $true "no compact window: $bad"
+}
 
 Write-Output 'ok'

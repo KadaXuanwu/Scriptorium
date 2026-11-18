@@ -389,6 +389,9 @@ function infoLimits(a) {
   return `<h3>${esc(a.name)}${who ? ` <span class="sub">${esc(who)}</span>` : ''}</h3>${items(lines)}`;
 }
 
+// Claude Code compacts a context this many tokens before its compact window (docs/CONFIG.md, The compact window).
+const COMPACT_BUFFER = 33000;
+
 // The project's environment in words: its plugins' titles, '' for a plain git repo.
 const environment = (s) => inWords((s.plugins || []).map((p) => esc(p.title || p.name)));
 
@@ -438,7 +441,8 @@ function info(s) {
       it takes. A ticket with no complexity label is medium.</p>
       ${items((s.complexities || []).map((c) => `<b>${esc(c.name)}</b> (${esc(c.description || c.name)}): ${esc(modelName(c.model))},
         ${esc(c.effort)} effort${c.advisor ? `, with ${esc(modelName(c.advisor))} as advisor${c.advisorFallback
-          ? `; ${esc(c.advisorFallback)} effort while the advisor is not there` : ''}` : ''}.`))}
+          ? `; ${esc(c.advisorFallback)} effort while the advisor is not there` : ''}` : ''}. Its context is
+        compacted near ${Math.round((c.compactWindow - COMPACT_BUFFER) / 1000)}k tokens.`))}
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
         not see the advice. A run keeps its advisor to its end; past the Fable advisor line (Limits), new runs start
         without one.</p>` : ''}`),

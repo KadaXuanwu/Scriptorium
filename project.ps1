@@ -33,9 +33,11 @@ function Read-Models {
 
 # The ticket complexities (docs/CONFIG.md, Complexities), the one list every script and the page read: models.json's,
 # with scriptorium.json's `complexities` over them, in this order: low, medium, high, the project's own, design. Each
-# @{ name; description; models; advisor; advisorFallback }. A complexity of the project's own needs a description; with
-# no models it runs on medium's. Throws for a missing description or a name that is no label.
+# @{ name; description; models; advisor; advisorFallback; compactWindow }. A complexity of the project's own needs a
+# description; with no models it runs on medium's. Its compact window is its own, else scriptorium.json's, else
+# models.json's. Throws for a missing description, a name that is no label or a window that Claude Code does not take.
 function Get-Complexities($models, $config) {
+    $window = ConvertTo-CompactWindow $(if ($config -and $null -ne $config.compactWindow) { $config.compactWindow } else { $models.compactWindow }) 'compactWindow'
     $base = @($models.complexities.PSObject.Properties | ForEach-Object { $_.Name })
     $changes = if ($config -and $config.complexities) { $config.complexities } else { [pscustomobject]@{} }
     $own = @($changes.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { $base -notcontains $_ })
@@ -45,7 +47,7 @@ function Get-Complexities($models, $config) {
         if ($name -cnotmatch '^[a-z0-9][a-z0-9-]*$') {
             throw "complexity '$name': lower-case letters, digits and hyphens only"
         }
-        $entry = @{ name = $name; description = ''; models = @(); advisor = $false; advisorFallback = '' }
+        $entry = @{ name = $name; description = ''; models = @(); advisor = $false; advisorFallback = ''; compactWindow = $window }
         foreach ($source in @($models.complexities.$name, $changes.$name)) {
             if (-not $source) {
                 continue
@@ -62,6 +64,9 @@ function Get-Complexities($models, $config) {
             if ($source.advisorFallback) {
                 $entry.advisorFallback = [string]$source.advisorFallback
             }
+            if ($null -ne $source.compactWindow) {
+                $entry.compactWindow = ConvertTo-CompactWindow $source.compactWindow "complexity '$name'"
+            }
         }
         if (-not $entry.description) {
             throw "complexity '$name' in scriptorium.json needs a description"
@@ -73,6 +78,22 @@ function Get-Complexities($models, $config) {
     }
     # The list unrolled, one complexity at a time, so a pipe or a foreach sees each: it is never empty.
     return $list
+}
+
+# A compact window as Claude Code takes it (docs/CONFIG.md, The compact window): whole tokens in plain digits, from
+# 100000 to 1000000. Throws for anything else: Claude Code read '250k' as its 100k minimum without a word.
+function ConvertTo-CompactWindow($value, [string] $where) {
+    if ("$value" -notmatch '^\d{6,7}$' -or [int]"$value" -lt 100000 -or [int]"$value" -gt 1000000) {
+        throw "${where}: '$value' is no compact window: write whole tokens in digits, from 100000 to 1000000"
+    }
+    return [int]"$value"
+}
+
+# The compact window of a ticket's complexity, from the list Get-Complexities gives; medium's for a name not in it,
+# as Get-TicketComplexity counts such a ticket.
+function Get-ComplexityWindow($complexities, [string] $name) {
+    $entry = @($complexities | Where-Object { $_.name -eq $name }) + @($complexities | Where-Object { $_.name -eq 'medium' })
+    return [int]$entry[0].compactWindow
 }
 
 # A complexity's candidate models, best first, from the list Get-Complexities gives; none for a name not in it.
