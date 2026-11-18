@@ -863,12 +863,12 @@ async function addWorker() {
   const options = accounts.map((a) => `<option value="${esc(a.name)}">${esc(a.name)}${outMark[a.status] || ''}</option>`);
   // The command-line login, offered as on a worker's card: only while no entry is that login.
   if (accounts.every((a) => a.own)) options.unshift('<option value="">command line</option>');
-  // Its project, while the PC has two or more.
-  const where = names.length > 1 ? `<label>Project<select name="project">${names.map((p) => `<option>${esc(p)}</option>`).join('')}</select></label>` : '';
-  const values = await ask('Add a worker', 'It starts as Active. It takes tickets when its copy of the repo is made and its environment is ready.', 'Add worker', {
-    fields: `${where}<label>Account<select name="account">${options.join('')}</select></label>`,
+  // The new worker is one of this address's project: its number and its accounts are that project's. A worker for
+  // another project comes with the worker numbers and accounts of the PC.
+  const values = await ask('Add a worker', `It starts as Active${names.length > 1 ? `, on ${home}` : ''}. It takes tickets when its copy of the repo is made and its environment is ready.`, 'Add worker', {
+    fields: `<label>Account<select name="account">${options.join('')}</select></label>`,
   });
-  if (values) await act(values.project || home, { action: 'add-worker', account: values.account || '' });
+  if (values) await act(home, { action: 'add-worker', account: values.account || '' });
 }
 
 // One account more: its name and email, then the sign-in on this tab (loginBox).
