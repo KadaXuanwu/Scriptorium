@@ -107,7 +107,7 @@ function Get-Advisor($advisor, [string] $complexity, [string] $model, [bool] $ha
 
 # The effort of a run whose complexity has an advisor that the account cannot give now (docs/QUEUE.md, Models):
 # models.json's `advisor.fallback` effort for that complexity, where a higher effort makes up for the
-# advisor, else $effort unchanged.
+# advisor, else $effort unchanged. $advisor: project.ps1's Get-AdvisorRule.
 function Get-FallbackEffort($advisor, [string] $complexity, [string] $model, [string] $effort, [bool] $hasAdvisor) {
     if (-not $complexity) {
         $complexity = 'medium'
@@ -118,9 +118,6 @@ function Get-FallbackEffort($advisor, [string] $complexity, [string] $model, [st
     $raised = if ($advisor.fallback) { [string]$advisor.fallback.$complexity } else { '' }
     return $(if ($raised) { $raised } else { $effort })
 }
-
-# The ticket complexities (docs/QUEUE.md, Labels).
-$Complexities = @('low', 'medium', 'high', 'design')
 
 # Whether the owner switched a ticket complexity off for a worker (`workers.<id>.complexity`, queue app, the
 # worker's card): the worker then takes no new ticket of it and leaves the answers and rebases

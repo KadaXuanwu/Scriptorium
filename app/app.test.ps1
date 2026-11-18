@@ -110,12 +110,17 @@ Assert-Equal (Get-RemoveRefusal ([pscustomobject]@{ state = 'running' }) $false 
 Assert-Equal (Get-RemoveRefusal ([pscustomobject]@{ state = 'paused'; ticket = 5; resetsAt = 9 }) $false $false) 'its run has not ended yet' 'a held run keeps it'
 Assert-Equal (Get-RemoveRefusal ([pscustomobject]@{ state = 'setup' }) $true $true) 'its setup still runs' 'not during its setup'
 Assert-Equal (Get-RemoveRefusal ([pscustomobject]@{ state = 'running' }) $false $false $false) '' 'a dead script''s run does not hold it'
-# A new worker's card: set up by the server, then its script opens Unity. A failed setup never reads as a silent script.
+# A new worker's card: set up by the server, then its plugins make its environment ready, in their words. A failed
+# setup never reads as a silent script; a hook that threw shows its error.
 $setup = @(@{ id = '4'; state = [pscustomobject]@{ state = 'setup-failed'; at = 0; error = 'git clone failed' } })
 $view = (New-Snapshot @{ now = 100000; slug = 'o/r'; runs = @(); settings = @{ workers = @{ '4' = @{ enabled = $false } } }; workers = $setup }).workers[0]
 Assert-Equal "$($view.activity) $($view.status) $($view.error)" 'setup-failed disabled git clone failed' 'a failed setup'
-$setup[0].state = [pscustomobject]@{ state = 'opening'; at = 10 }
-Assert-Equal (New-Snapshot @{ now = 20; slug = 'o/r'; runs = @(); workers = $setup }).workers[0].activity 'opening' 'opening Unity'
+$setup[0].state = [pscustomobject]@{ state = 'opening'; at = 10; report = 'Opening its editor' }
+$view = (New-Snapshot @{ now = 20; slug = 'o/r'; runs = @(); workers = $setup }).workers[0]
+Assert-Equal "$($view.activity): $($view.report)" 'opening: Opening its editor' 'a plugin makes the environment ready'
+$setup[0].state = [pscustomobject]@{ state = 'error'; at = 10; error = 'plugin x, Start: no editor' }
+$view = (New-Snapshot @{ now = 20; slug = 'o/r'; runs = @(); workers = $setup }).workers[0]
+Assert-Equal "$($view.activity): $($view.error)" 'error: plugin x, Start: no editor' 'a hook that threw'
 $busy = @{ id = '1'; status = 'active'; activity = 'running' }
 $old = @{ github = $false; workers = @($busy, @{ id = '4'; status = 'active'; activity = 'setup' }) }
 $new = @{ github = $false; workers = @($busy, @{ id = '4'; status = 'disabled'; activity = 'setup-failed' }) }

@@ -6,6 +6,7 @@
 . (Join-Path $PSScriptRoot '..\followup.ps1')
 . (Join-Path $PSScriptRoot '..\areas.ps1')
 . (Join-Path $PSScriptRoot '..\limits.ps1')
+. (Join-Path $PSScriptRoot '..\project.ps1')
 
 # A worker state older than this is a stopped script: idle ones refresh every poll (5 min), running ones every 30 s.
 $StaleSeconds = 900
@@ -604,10 +605,12 @@ function Get-AnswerRoute($item, [string] $text) {
 }
 
 # Everything the page shows. $data: now, slug, workers (id, state, progress, forced), control, usage,
-# settings, runs, gh (issues, prs, merged, titles, questions; $null until the first fetch), appUrl, logins, login.
+# settings, runs, gh (issues, prs, merged, titles, questions; $null until the first fetch), appUrl, logins, login, and
+# complexities (project.ps1, Get-Complexities; models.json's alone when left out).
 function New-Snapshot($data) {
     $now = [long]$data.now
-    $models = Get-Content (Join-Path $PSScriptRoot '..\models.json') -Raw | ConvertFrom-Json
+    $models = Read-Models
+    $complexities = if ($data.complexities) { @($data.complexities) } else { Get-Complexities $models $null }
     $workers = @()
     foreach ($worker in @($data.workers | Sort-Object { [int]$_.id })) {
         $s = $worker.state
@@ -617,16 +620,16 @@ function New-Snapshot($data) {
         $status = Get-WorkerStatus ([string]$s.state) (Get-Mode $data.control $id) $enabled $marked
         $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced }
         # The worker's complexity switches (limits.ps1): each with the model and effort its runs use (the worker's own
-        # or the settings' `model`, else the first candidate in models.json; the effort as in worker.ps1,
-        # Get-RunModel) and the PR jobs it holds while it is off.
+        # or the settings' `model`, else the complexity's first candidate; the effort as in worker.ps1, Get-RunModel)
+        # and the PR jobs it holds while it is off.
         $ownModel = if ($data.settings -and $data.settings.workers -and $data.settings.workers.$id) { $data.settings.workers.$id.model } else { $null }
-        $view.takes = @($Complexities | ForEach-Object {
-            $pick = if ($ownModel) { [string]$ownModel } elseif ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { [string]@($models.byComplexity.$_)[0] }
+        $view.takes = @($complexities | ForEach-Object {
+            $pick = if ($ownModel) { [string]$ownModel } elseif ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { [string]@($_.models)[0] }
             $model, $effort = $pick -split '@'
             if (-not $effort) {
                 $effort = if ($models.models.$model) { [string]$models.models.$model.effort } else { 'xhigh' }
             }
-            @{ name = $_; on = -not (Test-ComplexityOff $_ $data.settings $id); model = $model; effort = $effort; jobs = 0 }
+            @{ name = $_.name; on = -not (Test-ComplexityOff $_.name $data.settings $id); model = $model; effort = $effort; jobs = 0 }
         })
         # A run in flight: working, or waiting in paused.json for a limit reset, for room under the workers' limit
         # (it ended at a checkpoint there), for its account, or for the owner to set the paused worker active
@@ -639,10 +642,14 @@ function New-Snapshot($data) {
             if ($s.loggedOut) { 'signedout' } elseif ($s.atLimit) { 'room' } elseif ($s.stopped) { 'held' } elseif ([long]$s.resetsAt -le $now) { 'resuming' } else { 'limit' }
         } elseif ($s.state -eq 'signedout') { 'signedout' } elseif ($s.state -eq 'over-budget') { 'room' } elseif (
             # A worker the owner added: the server sets it up ('setup', or 'setup-failed' with the error), then its
-            # script opens its Unity editor ('opening': a first open imports everything).
-            @('setup', 'setup-failed', 'opening') -contains $s.state) { [string]$s.state } else { 'free' }
-        if ($s.state -eq 'setup-failed') {
+            # plugins make its environment ready ('opening', with their words in `report`: a first import can take
+            # long). 'error': a plugin's hook threw; the worker tries again at its next look.
+            @('setup', 'setup-failed', 'opening', 'error') -contains $s.state) { [string]$s.state } else { 'free' }
+        if (@('setup-failed', 'error') -contains $s.state) {
             $view.error = [string]$s.error
+        }
+        if ($s.state -eq 'opening') {
+            $view.report = [string]$s.report
         }
         # The account a held run or a waiting worker is on (its key in the queue's files), where the script names it.
         $view.on = if ($s.state -ne 'running' -and $s.account) { [string]$s.account } else { $null }
@@ -827,7 +834,21 @@ function New-Snapshot($data) {
         questions = @(); stuck = @(); held = @(); queued = @(); parked = @(); merged = @(); runs = @()
         left = @{ count = 0; seconds = 0; cost = 0.0 }
         # The advisor rule (models.json `advisor`, docs/QUEUE.md, Models), for the Info tab.
-        advisor = $models.advisor
+        advisor = Get-AdvisorRule $models $complexities
+        # Every complexity with its description, models, the first one's model and effort, and its advisor.
+        complexities = @($complexities | ForEach-Object {
+            $model, $effort = ([string]@($_.models)[0]) -split '@'
+            if (-not $effort) {
+                $effort = if ($models.models.$model) { [string]$models.models.$model.effort } else { 'xhigh' }
+            }
+            $rule = Get-AdvisorRule $models @($_)
+            @{ name = $_.name; description = $_.description; models = @($_.models); model = $model; effort = $effort
+                advisor = $(if ($rule.complexities.Count) { $rule.model } else { '' }); advisorFallback = $_.advisorFallback }
+        })
+        # The project's plugins (name, title, version, description) for the Info tab: none for a plain git repo.
+        plugins = @($data.plugins | Where-Object { $_ } | ForEach-Object {
+            @{ name = $_.Name; title = $_.Title; version = $_.Version; description = $_.Description }
+        })
     }
     $gh = $data.gh
     if ($gh) {

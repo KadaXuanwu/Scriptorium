@@ -6,12 +6,12 @@
     "claude-sonnet-5-5": { "effort": "xhigh", "price": [2, 10] },
     "claude-haiku-5-5": { "effort": "xhigh", "price": [0.1, 0.5] }
   },
-  "byComplexity": {
-    "low": ["claude-opus-5-5@medium"],
-    "medium": ["claude-opus-5-5@high"],
-    "high": ["claude-opus-5-5@xhigh"],
-    "design": ["claude-fable-5-2@high"]
+  "complexities": {
+    "low": { "description": "Clear what to do: a doc, a number, a rename, more of a pattern", "models": ["claude-opus-5-5@medium"] },
+    "medium": { "description": "Judgement within known patterns: a feature or a bug in one part", "models": ["claude-opus-5-5@high"], "advisor": true },
+    "high": { "description": "Hard to get right: core rules, work across parts, a bug nobody can explain", "models": ["claude-opus-5-5@xhigh"], "advisor": true },
+    "design": { "description": "The worker finds the shape of the solution, and the choice stays", "models": ["claude-fable-5-2@high"] }
   },
   "afterFable": "claude-opus-5-5@xhigh",
-  "advisor": { "model": "claude-fable-5-2", "complexities": ["medium", "high"], "fallback": {} }
+  "advisor": { "model": "claude-fable-5-2" }
 }

@@ -1,10 +1,9 @@
-# Sets up the work queue (docs/QUEUE.md): a clone per worker beside this checkout, Unity's YAML merge in every
-# checkout, the GitHub labels, and logon tasks for the workers and the merger. Safe to run again.
+# Sets up the work queue (docs/QUEUE.md): the plugins' Setup, a clone per worker beside this checkout prepared by the
+# plugins, the GitHub labels, and logon tasks for the workers and the merger. Safe to run again.
 param(
     # The project's main checkout.
     [Parameter(Mandatory = $true)] [string] $Project,
     [int] $Workers = 3,
-    [string] $UnityEditors = 'C:\Program Files\Unity\Hub\Editor',
     [switch] $Start
 )
 
@@ -16,18 +15,21 @@ $config = Read-Project $main
 $Repos = @($config.repos)
 $url = (& git -C $main remote get-url origin)
 
+$plugins = Import-Plugins $PSScriptRoot $config
+$say = { param($text) Write-Output "  $text" }
+$added = @(Invoke-Hooks $plugins 'Setup' $main $main $null $null $null $say $say | ForEach-Object { $_ } | Where-Object { $_ })
+if ($added.Count) {
+    Write-Output "The plugins added to the project (commit and push them): $($added -join ', ')"
+}
+
 $clones = @()
 for ($i = 1; $i -le $Workers; $i++) {
     $clone = "$main-w$i"
     if (-not (Test-Path $clone)) {
         & git clone $url $clone
     }
-    Copy-AssetStorePackages $main $clone
+    Initialize-Copy $main $plugins $clone "$i"
     $clones += $clone
-}
-
-foreach ($checkout in @($main) + $clones) {
-    Set-YamlMerge $checkout $main $UnityEditors
 }
 
 $labels = [ordered]@{
@@ -42,10 +44,9 @@ $labels = [ordered]@{
     'size:S' = @('bfdadc', 'Small usage: little to read and change')
     'size:M' = @('bfdadc', 'Medium usage: a feature''s worth of reading, changing and testing')
     'size:L' = @('bfdadc', 'Large usage: many files, long play-checks; goes to an account with much 5-hour room')
-    'complexity:low' = @('d4c5f9', 'Clear what to do: picks a cheaper model')
-    'complexity:medium' = @('d4c5f9', 'Judgement within known patterns: the default model')
-    'complexity:high' = @('d4c5f9', 'Hard to get right: core rules, cross-system design, tricky bugs: the strongest model')
-    'complexity:design' = @('d4c5f9', 'Decides more than how to build it, and it stays (rules, final looks, lasting code): runs on Fable')
+}
+foreach ($complexity in Get-Complexities (Read-Models) $config) {
+    $labels["complexity:$($complexity.name)"] = @('d4c5f9', $complexity.description)
 }
 for ($i = 1; $i -le $Workers; $i++) {
     $labels["worker:$i"] = @('0e8a16', "Claimed by worker $i")
@@ -70,7 +71,7 @@ $tasks = @{
     (Get-TaskName $config.name 'app') = "-File `"$PSScriptRoot\app\server.ps1`" $(Get-ProjectArg $main)"
 }
 for ($i = 1; $i -le $Workers; $i++) {
-    $tasks[(Get-WorkerTaskName $config.name $i)] = Get-WorkerArguments $main $i $clones[$i - 1] $UnityEditors
+    $tasks[(Get-WorkerTaskName $config.name $i)] = Get-WorkerArguments $main $i $clones[$i - 1]
 }
 foreach ($name in $tasks.Keys) {
     Register-QueueTask $name $tasks[$name] $main

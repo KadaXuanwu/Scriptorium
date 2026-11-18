@@ -17,7 +17,14 @@ $ErrorActionPreference = 'Stop'
 
 $Main = Resolve-Project $Project
 $config = Read-Project $Main
-Start-CodeWatch @((Join-Path $Main 'scriptorium.json'))
+# The project's plugins, for the Info tab; the page runs on without them when one does not load.
+$plugins = @()
+try {
+    $plugins = Import-Plugins (Split-Path $PSScriptRoot -Parent) $config
+} catch {
+    Add-Content (Join-Path $Main '.queue\app.log') "$(Get-Date -Format s) plugins: $_" -Encoding utf8
+}
+Start-CodeWatch (@((Join-Path $Main 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }))
 if (-not $Port) {
     $Port = [int]$config.port
 }
@@ -271,7 +278,7 @@ function Write-Setup([string] $id, [string] $state, [string] $reason) {
 # A new worker's setup (tasks.ps1, Install-Worker) in a background job: the clone takes minutes, and the page goes on.
 # Cmdlets stop at an error; a native command's error is its exit code, which Install-Worker checks.
 $installWorker = {
-    param([string] $tasks, [string] $Main, [string] $name, [string] $slug, [string] $id, [string] $editors)
+    param([string] $tasks, [string] $Main, [string] $name, [string] $slug, [string] $id)
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     Set-Location $Main
     Remove-Item Env:GH_CONFIG_DIR -ErrorAction SilentlyContinue
@@ -279,7 +286,7 @@ $installWorker = {
     $env:GIT_TERMINAL_PROMPT = '0'
     $env:GCM_INTERACTIVE = 'never'
     . $tasks
-    Install-Worker $Main $name $slug $id $editors
+    Install-Worker $Main $name $slug $id
 }
 # Worker id -> its setup job and when it started. A setup longer than this is ended and fails.
 $script:setups = @{}
@@ -318,7 +325,7 @@ function Update-Snapshot {
         now = Get-Now; slug = $slug; workers = $workers; control = $control
         usage = Read-Json (Join-Path $mainQueue 'usage.json'); out = Read-Json (Join-Path $mainQueue 'out.json'); settings = Read-Json (Join-Path $mainQueue 'settings.json')
         runs = Read-Runs; gh = $script:gh; appUrl = $appUrl; dispatch = Read-Json (Join-Path $mainQueue 'dispatch.json')
-        logins = @{}; login = Get-LoginView
+        logins = @{}; login = Get-LoginView; complexities = Get-Complexities (Read-Models) $config; plugins = $plugins
     }
     if ($data.settings -and $data.settings.accounts) {
         foreach ($property in $data.settings.accounts.PSObject.Properties) {
@@ -444,7 +451,7 @@ function Invoke-Action($request) {
             # Whether a worker takes the tickets of a complexity (docs/QUEUE.md, Settings, `workers.<id>.complexity`).
             $worker = [string]$request.worker
             $name = [string]$request.complexity
-            if ($worker -notmatch '^\d+$' -or $Complexities -cnotcontains $name) {
+            if ($worker -notmatch '^\d+$' -or @(Get-Complexities (Read-Models) $config | ForEach-Object { $_.name }) -cnotcontains $name) {
                 throw "no worker $worker or no complexity $name"
             }
             $settings = Read-SettingsToEdit
@@ -469,7 +476,7 @@ function Invoke-Action($request) {
             Remove-Item (Join-Path $mainQueue "force-$id.json") -ErrorAction SilentlyContinue
             Write-Setup $id 'setup' ''
             $script:setups[$id] = @{ at = Get-Now
-                job = Start-Job -ScriptBlock $installWorker -ArgumentList (Join-Path $PSScriptRoot '..\tasks.ps1'), $Main, $config.name, $slug, $id, (Get-UnityEditors $config.name) }
+                job = Start-Job -ScriptBlock $installWorker -ArgumentList (Join-Path $PSScriptRoot '..\tasks.ps1'), $Main, $config.name, $slug, $id }
             return "adding worker $id on $(if ($account) { $account } else { 'the command-line login' })"
         }
         'remove-worker' {

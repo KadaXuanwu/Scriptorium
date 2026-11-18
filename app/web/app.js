@@ -105,6 +105,8 @@ function activity(worker) {
   if (worker.activity === 'setup') return ['muted', 'history', 'Setting up its copy of the repo'];
   if (worker.activity === 'opening') return ['muted', 'history', 'Opening its Unity editor'];
   if (worker.activity === 'setup-failed') return ['bad', 'alert', 'Setup failed'];
+  // A plugin's hook threw (its text is in Now); the worker tries again at its next look.
+  if (worker.activity === 'error') return ['bad', 'alert', 'Its environment failed'];
   // Its account is out (docs/QUEUE.md, An account that is out): the cause, and when the workers test the account next.
   // `own`: its runs do not start although its account answers, so the cause is on this card (Now), not on Accounts.
   if (worker.activity === 'signedout') {
@@ -164,7 +166,7 @@ function workerCard(worker) {
   let force = '';
   if (worker.forced && !worker.run) force = `<button data-unforce="${id}">Cancel</button>`;
   else if (next) {
-    const can = worker.status === 'active' && !worker.run && !['down', 'signedout', 'setup', 'setup-failed'].includes(worker.activity);
+    const can = worker.status === 'active' && !worker.run && !['down', 'signedout', 'setup', 'setup-failed', 'error'].includes(worker.activity);
     force = `<button class="round" data-force="${id}" title="${can ? 'Take it now' : 'Its slot is not free'}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`;
   }
   const kind = next && { answered: 'your answers', 'needs-rebase': 'a rebase' }[next.kind];
@@ -355,12 +357,6 @@ function loginBox(login) {
 // snapshot, never typed into the text, and a change to a queue rule changes this text in the same pass (docs/APP.md,
 // Info). Drawn last, from a snapshot that may be older than this code (stored on the device): each field has a fallback,
 // and a fault shows a line, not a broken page.
-const complexityWords = {
-  low: 'clear work: a doc, a number, a rename',
-  medium: 'judgement inside one system',
-  high: 'core rules, speed, work across systems, a bug nobody can explain',
-  design: 'the worker must find the shape of the solution itself',
-};
 const setting = (text, tab) => `<a class="val" href="#${tab}">${text}</a>`;
 const items = (lines) => `<ul>${lines.filter(Boolean).map((line) => `<li>${line}</li>`).join('')}</ul>`;
 const section = (title, body) => `<section><h2>${title}</h2>${body}</section>`;
@@ -436,7 +432,8 @@ function info(s) {
       <p>The complexity of a ticket chooses the model. The size (S, M, L) only says how much usage it takes.</p>
       ${items(takes.map((t) => {
         const raised = asks(t) && advisor.fallback?.[t.name];
-        return `<b>${esc(t.name)}</b> (${esc(complexityWords[t.name] || t.name)}): ${esc(modelName(t.model))}, ${esc(t.effort)} effort${asks(t)
+        const words = (s.complexities || []).find((c) => c.name === t.name)?.description || t.name;
+        return `<b>${esc(t.name)}</b> (${esc(words)}): ${esc(modelName(t.model))}, ${esc(t.effort)} effort${asks(t)
           ? `, with ${esc(modelName(advisor.model))} as advisor${raised ? `; ${esc(raised)} effort while the advisor is not there` : ''}` : ''}.`;
       }))}
       ${advisor ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do not see the advice. A run

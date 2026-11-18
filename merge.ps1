@@ -59,7 +59,8 @@ function New-FollowUp($pr, [string] $where, [int] $ticket) {
         $createArgs = @('issue', 'create', '--title', (ConvertTo-NativeArg $item.title), '--body-file', $file, '--label', $state, '-R', $slug)
         # Changing a built default is a small edit (PLAYBOOK.md, Hold or merge), whatever the original's size.
         $own = if ($state -eq 'open-question') { @($labels) + 'size:S' } else { $labels }
-        foreach ($label in (Get-FollowUpLabels $own $item.body $thisRepo)) {
+        $names = @(Get-Complexities (Read-Models) $config | ForEach-Object { $_.name })
+        foreach ($label in (Get-FollowUpLabels $own $item.body $thisRepo $names)) {
             # gh refuses an unknown label, which would lose the follow-up; a run may name a new area.
             if ($label -like 'area:*' -and $known -notcontains $label) {
                 & gh label create $label --color c5def5 -R $slug | Out-Null

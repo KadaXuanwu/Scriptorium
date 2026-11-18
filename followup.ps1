@@ -69,15 +69,17 @@ function Get-GenerationLine([int] $generation) {
 # A follow-up's labels (a follow-up decides its own size, complexity and area): $ticketLabels
 # with each line of the body in place of the labels of its kind. `**Size:**` gives `size:S`/`M`/`L`, `**Complexity:**`
 # `complexity:*`, `**Area:**` its `area:*` names, and `**Repo:** <Name>` the repo its work is in (PLAYBOOK.md,
-# Another repository; a name in $thisRepo, this repo's GitHub name or the project's, is this repo). A line without a
-# valid value changes nothing.
-function Get-FollowUpLabels([string[]] $ticketLabels, [string] $body, [string[]] $thisRepo = @()) {
+# Another repository; a name in $thisRepo, this repo's GitHub name or the project's, is this repo). $complexities: the
+# names a Complexity line may give (project.ps1, Get-Complexities). A line without a valid value changes nothing.
+function Get-FollowUpLabels([string[]] $ticketLabels, [string] $body, [string[]] $thisRepo = @(),
+    [string[]] $complexities = @('low', 'medium', 'high', 'design')) {
     $labels = @($ticketLabels)
     $size = [regex]::Match($body, '(?mi)^\*\*Size:?\*\*:?[ \t`]*(?:size:)?([SML])\b')
     if ($size.Success) {
         $labels = @($labels | Where-Object { $_ -notlike 'size:*' }) + "size:$($size.Groups[1].Value.ToUpperInvariant())"
     }
-    $complexity = [regex]::Match($body, '(?mi)^\*\*Complexity:?\*\*:?[ \t`]*(?:complexity:)?(low|medium|high|design)\b')
+    $names = ($complexities | Sort-Object Length -Descending | ForEach-Object { [regex]::Escape($_) }) -join '|'
+    $complexity = [regex]::Match($body, "(?mi)^\*\*Complexity:?\*\*:?[ \t``]*(?:complexity:)?($names)(?![\w-])")
     if ($complexity.Success) {
         $labels = @($labels | Where-Object { $_ -notlike 'complexity:*' }) + "complexity:$($complexity.Groups[1].Value.ToLowerInvariant())"
     }

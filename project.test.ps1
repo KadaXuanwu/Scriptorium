@@ -41,4 +41,40 @@ try {
     Remove-Item $dir -Recurse -Force
 }
 
+# The complexities: models.json's, with the project's over them; its own stand between high and design. Every place
+# reads this one list: the run's model and advisor, a follow-up's label, the page.
+. (Join-Path $PSScriptRoot 'followup.ps1')
+. (Join-Path $PSScriptRoot 'limits.ps1')
+. (Join-Path $PSScriptRoot 'app\state.ps1')
+$models = Read-Models
+$own = '{ "name": "App", "complexities": { "medium": { "models": ["claude-sonnet-5-5@high"] },
+    "review": { "description": "A second look at a change", "models": ["claude-opus-5-5@high"], "advisor": true, "advisorFallback": "xhigh" },
+    "tidy": { "description": "Small cleanups" } } }' | ConvertFrom-Json
+$list = Get-Complexities $models $own
+Assert-Equal (($list | ForEach-Object { $_.name }) -join ',') 'low,medium,high,review,tidy,design' 'the project''s own between high and design'
+Assert-Equal "$(($list | Where-Object { $_.name -eq 'medium' }).models) $(($list | Where-Object { $_.name -eq 'medium' }).advisor)" 'claude-sonnet-5-5@high True' 'a change keeps what it does not name'
+Assert-Equal ($list | Where-Object { $_.name -eq 'tidy' }).models (($list | Where-Object { $_.name -eq 'medium' }).models) 'no models: medium''s'
+# As the worker reads them: through a pipe, one complexity at a time.
+function Get-Listed { return Get-Complexities $models $own }
+Assert-Equal @(Get-Listed | Where-Object { $_.name -eq 'design' }).Count 1 'a pipe sees each complexity'
+Assert-Equal ((Get-ComplexityModels (Get-Listed) 'design') -join ',') 'claude-fable-5-2@high' 'the models of one complexity'
+Assert-Equal (Get-ComplexityModels (Get-Listed) 'none').Count 0 'no models for a name not in the list'
+Assert-Equal (Get-TicketComplexity @('P1', 'complexity:design') (Get-Listed)) 'design' 'a ticket''s complexity'
+Assert-Equal (Get-TicketComplexity @('complexity:review') (Get-Listed)) 'review' 'a complexity of the project''s own'
+Assert-Equal (Get-TicketComplexity @('complexity:art', 'size:S') (Get-Listed)) 'medium' 'a label not in the list counts as medium'
+Assert-Equal (Get-TicketComplexity @() (Get-Listed)) 'medium' 'no label counts as medium'
+$rule = Get-AdvisorRule $models $list
+Assert-Equal "$($rule.model) $($rule.complexities -join ',') $($rule.fallback.review)" 'claude-fable-5-2 medium,high,review xhigh' 'the advisor rule'
+Assert-Equal (Get-FallbackEffort $rule 'review' 'claude-opus-5-5' 'high' $false) 'xhigh' 'the project''s fallback effort'
+Assert-Equal ((Get-FollowUpLabels @('area:api') "**Complexity:** review" @() @($list | ForEach-Object { $_.name })) -join ',') 'area:api,complexity:review' 'a follow-up of the project''s complexity'
+Assert-Equal ((Get-FollowUpLabels @('area:api') "**Complexity:** review") -join ',') 'area:api' 'not without the project''s list'
+$snapshot = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); complexities = $list
+    workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
+Assert-Equal (($snapshot.workers[0].takes | ForEach-Object { $_.name }) -join ',') 'low,medium,high,review,tidy,design' 'a worker takes each'
+$review = $snapshot.complexities | Where-Object { $_.name -eq 'review' }
+Assert-Equal "$($review.description)|$($review.model)|$($review.effort)|$($review.advisor)" 'A second look at a change|claude-opus-5-5|high|claude-fable-5-2' 'the page gets each complexity'
+$threw = $false
+try { Get-Complexities $models ('{ "complexities": { "art": { "models": ["x"] } } }' | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
+Assert-Equal $threw $true 'a complexity of the project''s own needs a description'
+
 Write-Output 'ok'

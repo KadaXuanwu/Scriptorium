@@ -2,6 +2,7 @@
 # worker and Remove (app/server.ps1). Dot-sourced; nothing runs on load.
 
 . (Join-Path $PSScriptRoot 'project.ps1')
+. (Join-Path $PSScriptRoot 'plugins.ps1')
 
 # Logon tasks: hidden, one instance each, no time limit (a ticket can take hours). Through a headless console: with
 # Windows Terminal as the default terminal, powershell's -WindowStyle Hidden still opens a window, and closing it kills
@@ -20,55 +21,26 @@ function Get-WorkerTaskName([string] $name, [string] $id) {
     return Get-TaskName $name "worker $id"
 }
 
-function Get-WorkerArguments([string] $main, [string] $id, [string] $clone, [string] $unityEditors) {
-    return "-File `"$PSScriptRoot\worker.ps1`" $(Get-ProjectArg $main) -Id $id -Clone `"$clone`" -UnityEditors `"$unityEditors`""
+function Get-WorkerArguments([string] $main, [string] $id, [string] $clone) {
+    return "-File `"$PSScriptRoot\worker.ps1`" $(Get-ProjectArg $main) -Id $id -Clone `"$clone`""
 }
 
-# The Unity editors folder setup.ps1 gave the workers, from a worker's task; Unity Hub's default without one.
-function Get-UnityEditors([string] $name) {
-    foreach ($task in @(Get-ScheduledTask -TaskName (Get-WorkerTaskName $name '*') -ErrorAction SilentlyContinue)) {
-        if ($task.Actions[0].Arguments -match '-UnityEditors "([^"]+)"') {
-            return $Matches[1]
-        }
+# Makes a worker copy able to work (docs/PLUGINS.md, PrepareCopy): each plugin adds what git does not hold and its
+# per-checkout git config. Throws with the plugin's name at the first hook that fails.
+function Initialize-Copy([string] $main, $plugins, [string] $clone, [string] $id) {
+    $machine = $null
+    $file = Join-Path $main '.queue\settings.json'
+    if (Test-Path $file) {
+        $machine = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
     }
-    return 'C:\Program Files\Unity\Hub\Editor'
-}
-
-# .gitattributes routes Unity's YAML through this driver; the driver itself is per checkout.
-function Set-YamlMerge([string] $checkout, [string] $main, [string] $unityEditors) {
-    $version = ((Get-Content (Join-Path $main 'Unity\ProjectSettings\ProjectVersion.txt'))[0] -split ' ')[1]
-    $yamlMerge = (Join-Path $unityEditors "$version\Editor\Data\Tools\UnityYAMLMerge.exe").Replace('\', '/')
-    & git -C $checkout config merge.unityyamlmerge.name 'Unity SmartMerge'
-    & git -C $checkout config merge.unityyamlmerge.driver "'$yamlMerge' merge -h -p --force %O %B %A %A"
-    & git -C $checkout config merge.unityyamlmerge.recursive binary
-}
-
-# The Asset Store packages a new clone lacks (Unity/AssetStore.json): they are not in git, and a fresh clone cannot
-# import them alone (AI/PACKAGES.md). Copied from the main checkout, root folder and its .meta; then our patched files
-# go back to what git has.
-function Copy-AssetStorePackages([string] $main, [string] $clone) {
-    foreach ($package in (Get-Content (Join-Path $main 'Unity\AssetStore.json') -Raw -ErrorAction Stop | ConvertFrom-Json).Packages) {
-        $from = (Join-Path $main "Unity\$($package.Root)").Replace('/', '\')
-        $to = (Join-Path $clone "Unity\$($package.Root)").Replace('/', '\')
-        if (-not (Test-Path $from) -or (Test-Path (Join-Path $clone "Unity\$($package.Probe)"))) {
-            continue
-        }
-        & robocopy $from $to /E /NFL /NDL /NJH /NJS /NP | Out-Null
-        if ($LASTEXITCODE -ge 8) {
-            throw "copying $($package.Root) into $clone failed"
-        }
-        Copy-Item "$from.meta" "$to.meta" -ErrorAction SilentlyContinue
-        # Only a root with tracked files: on none, git checkout writes an error.
-        if (& git -C $clone ls-files -- "Unity/$($package.Root)") {
-            & git -C $clone checkout -- "Unity/$($package.Root)"
-        }
-    }
+    $say = { param($text) Write-Output "  $text" }
+    Invoke-Hooks $plugins 'PrepareCopy' $main $clone $id (Join-Path $clone '.queue') $machine $say $say | Out-Null
 }
 
 # One worker more (the queue app's Add a worker): its clone beside the main checkout (one left by a removed worker of
-# that number is used again) with the Asset Store packages, Unity's YAML merge in it, its `worker:N` label in this repo
-# and in each repo a `repo:<Name>` label names, and its logon task, started. Throws at the first step that fails.
-function Install-Worker([string] $main, [string] $name, [string] $slug, [string] $id, [string] $unityEditors) {
+# that number is used again) prepared by the plugins, its `worker:N` label in this repo and in each repo a
+# `repo:<Name>` label names, and its logon task, started. Throws at the first step that fails.
+function Install-Worker([string] $main, [string] $name, [string] $slug, [string] $id) {
     $clone = "$main-w$id"
     if (-not (Test-Path $clone)) {
         & git clone --quiet (& git -C $main remote get-url origin) $clone
@@ -76,8 +48,7 @@ function Install-Worker([string] $main, [string] $name, [string] $slug, [string]
             throw "git clone into $clone failed"
         }
     }
-    Copy-AssetStorePackages $main $clone
-    Set-YamlMerge $clone $main $unityEditors
+    Initialize-Copy $main (Import-Plugins $PSScriptRoot (Read-Project $main)) $clone $id | Out-Null
     $repos = @($slug) + @(& gh label list -R $slug --search 'repo:' --limit 100 --json name -q '.[].name' |
         Where-Object { $_ -like 'repo:*' } | ForEach-Object { "$($slug.Split('/')[0])/$($_.Substring(5))" })
     foreach ($repo in $repos) {
@@ -86,7 +57,7 @@ function Install-Worker([string] $main, [string] $name, [string] $slug, [string]
             throw "the label worker:$id could not be made in $repo"
         }
     }
-    Register-QueueTask (Get-WorkerTaskName $name $id) (Get-WorkerArguments $main $id $clone $unityEditors) $main
+    Register-QueueTask (Get-WorkerTaskName $name $id) (Get-WorkerArguments $main $id $clone) $main
     Start-ScheduledTask -TaskName (Get-WorkerTaskName $name $id) -ErrorAction Stop
 }
 

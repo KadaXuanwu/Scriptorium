@@ -1,6 +1,6 @@
-# A worker script (docs/QUEUE.md): keeps its clone's Unity editor open, claims the next job (the dispatcher: a new
-# ticket goes to the idle worker whose account's free room most wants spending) and starts a run, a headless Claude
-# session on it with Unity MCP pinned to that editor. Watches the plan's usage while a run works, and resumes a run
+# A worker script (docs/QUEUE.md): has its plugins make its clone's environment ready, claims the next job (the
+# dispatcher: a new ticket goes to the idle worker whose account's free room most wants spending) and starts a run, a
+# headless Claude session on it with what the plugins give it (docs/PLUGINS.md). Watches the plan's usage while a run works, and resumes a run
 # the usage limit cut off once the limit resets. Loops until stopped; started at logon by setup.ps1's task.
 param(
     # The project's main checkout.
@@ -8,14 +8,14 @@ param(
     [Parameter(Mandatory = $true)] [int] $Id,
     # The worker's copy: `<main>-w<Id>` beside the main checkout when left out.
     [string] $Clone,
-    [int] $PollSeconds = 300,
-    [string] $UnityEditors = 'C:\Program Files\Unity\Hub\Editor'
+    [int] $PollSeconds = 300
 )
 
 $ErrorActionPreference = 'Stop'
 # gh writes UTF-8; Windows PowerShell would read it in the console's old code page and garble titles.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot 'project.ps1')
+. (Join-Path $PSScriptRoot 'plugins.ps1')
 . (Join-Path $PSScriptRoot 'budget.ps1')
 . (Join-Path $PSScriptRoot 'restart.ps1')
 . (Join-Path $PSScriptRoot 'areas.ps1')
@@ -26,7 +26,9 @@ $config = Read-Project $Project
 if (-not $Clone) {
     $Clone = "$Project-w$Id"
 }
-Start-CodeWatch @((Join-Path $Project 'scriptorium.json'))
+$plugins = Import-Plugins $PSScriptRoot $config
+# A pull of a plugin restarts the worker as a pull of Scriptorium does.
+Start-CodeWatch (@((Join-Path $Project 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }))
 
 # One loop per worker: stopping the task ends only its console host, so an older loop may still run, on old code.
 # End it with its run; the ticket resumes here (PLAYBOOK.md, 3). Only this project's worker of this number.
@@ -36,7 +38,6 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
 
 $me = "worker:$Id"
 $Clone = (Resolve-Path $Clone).Path
-$assets = (Join-Path $Clone 'Unity\Assets').Replace('\', '/')
 $queueDir = Join-Path $Clone '.queue'
 $pausedFile = Join-Path $queueDir 'paused.json'
 $warnFile = Join-Path $queueDir 'limit.md'
@@ -86,11 +87,7 @@ function Get-Size($item) {
 
 # How hard the ticket is to get right, which picks its model (Models); size is only what it costs.
 function Get-Complexity($item) {
-    $label = Get-Names $item | Where-Object { $_ -match '^complexity:(low|medium|high|design)$' } | Select-Object -First 1
-    if ($label) {
-        return $label.Substring(11)
-    }
-    return 'medium'
+    return Get-TicketComplexity (Get-Names $item) (Get-ProjectComplexities)
 }
 
 function Write-Log([string] $Text) {
@@ -215,77 +212,18 @@ function Get-JobDir([string] $slug) {
     return $dir
 }
 
-# A checkout's Unity project: the checkout itself or its Unity folder; none for a repo without one.
-function Get-UnityProject([string] $dir) {
-    foreach ($project in @($dir, (Join-Path $dir 'Unity'))) {
-        if (Test-Path (Join-Path $project 'ProjectSettings\ProjectVersion.txt')) {
-            return $project.Replace('\', '/')
-        }
+# Calls one hook of the project's plugins (plugins.ps1; docs/PLUGINS.md) for $copy, the checkout the call is about.
+# -Report: between jobs the worker's state says what a plugin does (`opening` with its words), kept fresh, so the queue
+# app does not read a long wait (a first import) as a silent script. Not over a held run: its state names the run, and
+# the app and the other scripts read a state without one as a run that has ended. A hook that throws stops the call.
+function Invoke-WorkerHooks([string] $hook, [string] $copy, [switch] $Report) {
+    $log = { param($text) Write-Log "$text" }
+    $report = if ($Report) {
+        { param($text) if (-not (Test-Path $pausedFile)) { Write-State 'opening' @{ report = [string]$text } } }
+    } else {
+        $log
     }
-    return $null
-}
-
-# A project's editor as Unity MCP names it (Unity@<hash>), from its status file.
-function Get-UnityInstance([string] $assetsPath = $assets) {
-    foreach ($file in Get-ChildItem "$HOME\.unity-mcp\unity-mcp-status-*.json" -ErrorAction SilentlyContinue) {
-        $status = Get-Content $file.FullName -Raw | ConvertFrom-Json
-        if ($status.project_path -eq $assetsPath) {
-            return "Unity@$($file.BaseName.Substring('unity-mcp-status-'.Length))"
-        }
-    }
-    return $null
-}
-
-function Test-UnityReady([string] $assetsPath) {
-    foreach ($file in Get-ChildItem "$HOME\.unity-mcp\unity-mcp-status-*.json" -ErrorAction SilentlyContinue) {
-        $status = Get-Content $file.FullName -Raw | ConvertFrom-Json
-        if ($status.project_path -eq $assetsPath -and $status.reason -eq 'ready') {
-            return $true
-        }
-    }
-    return $false
-}
-
-# The editors open on a project path that matches the pattern (a regex), batch-mode imports left out.
-function Get-Editors([string] $pattern) {
-    return @(Get-CimInstance Win32_Process -Filter "Name='Unity.exe'" |
-        Where-Object { $_.CommandLine -and $_.CommandLine.Replace('\', '/') -match $pattern -and $_.CommandLine -notlike '*-batchMode*' })
-}
-
-# shortcut: another repo's editor stays open after its job, beside the clone's own; close it if memory gets tight.
-# An open editor holds Temp/UnityLockfile exclusively; Unity's own "another instance" check reads the same lock.
-# The process list missed the clone's open editor now and then, and each miss opened a second one.
-function Test-ProjectOpen([string] $project) {
-    $lock = "$project/Temp/UnityLockfile"
-    if (-not (Test-Path $lock)) {
-        return $false
-    }
-    try {
-        [System.IO.File]::Open($lock, 'Open', 'ReadWrite', 'None').Dispose()
-        return $false
-    } catch {
-        return $true
-    }
-}
-
-# $Report: between jobs, the worker's state says it opens its editor, kept fresh, so the queue app does not read the
-# wait as a silent script (a new worker's first open).
-function Start-UnityIfClosed([string] $project = (Join-Path $Clone 'Unity').Replace('\', '/'), [switch] $Report) {
-    if (Test-ProjectOpen $project) {
-        return
-    }
-    $version = ((Get-Content (Join-Path $project 'ProjectSettings\ProjectVersion.txt'))[0] -split ' ')[1]
-    Write-Log "starting Unity $version on $project"
-    Start-Process (Join-Path $UnityEditors "$version\Editor\Unity.exe") -ArgumentList "-projectPath `"$project`""
-    # A first open imports everything; give it up to 90 minutes before the session tries anyway.
-    for ($i = 0; $i -lt 180 -and -not (Test-UnityReady "$project/Assets"); $i++) {
-        # Not over a held run: its state names the run, and the app and the other scripts read a state without one as
-        # a run that has ended.
-        if ($Report -and -not (Test-Path $pausedFile)) {
-            Write-State 'opening'
-        }
-        Start-Sleep 30
-    }
+    return Invoke-Hooks $plugins $hook $Project $copy $Id $queueDir (Read-Settings) $report $log
 }
 
 # The main checkout's .queue/settings.json (docs/QUEUE.md, Settings), read before every decision and run so a change
@@ -381,17 +319,11 @@ function Test-Enabled([int] $worker) {
     return -not ($json -and $json.workers -and $json.workers."$worker" -and $json.workers."$worker".enabled -eq $false)
 }
 
-# Disabled: its paused run is dropped (its ticket goes back to the queue, Get-NextJob) and its editors close, the
-# clone's and any other repo's `<Name>-w<Id>`, to free the memory.
+# Disabled: its paused run is dropped (its ticket goes back to the queue, Get-NextJob).
 function Disable-Worker {
     if (Test-Path $pausedFile) {
         Remove-Item $pausedFile
         Write-Log 'disabled: dropped the paused run; its ticket goes back to the queue'
-    }
-    $pattern = [regex]::Escape((Split-Path $Clone -Parent).Replace('\', '/')) + "/[^/]+-w$Id\b"
-    foreach ($editor in Get-Editors $pattern) {
-        Write-Log "disabled: closing the editor $($editor.ProcessId)"
-        & taskkill /T /F /PID $editor.ProcessId | Out-Null
     }
     Write-State 'disabled'
 }
@@ -681,14 +613,21 @@ function Get-Out([string] $configDir) {
     return $record
 }
 
-function Read-Models {
-    return Get-Content (Join-Path $PSScriptRoot 'models.json') -Raw | ConvertFrom-Json
+# The ticket complexities (project.ps1, Get-Complexities): models.json's with the project's over them.
+function Get-ProjectComplexities {
+    return Get-Complexities (Read-Models) $config
 }
 
-# The playbooks a run follows, in order (docs/PLUGINS.md, The playbook): the base's by path (the run gets the install
-# folder with --add-dir), then the project's own from origin/main of the clone.
+
+# The playbooks a run follows, in order (docs/PLUGINS.md, The playbook): the base's and each plugin's by path (the run
+# gets their folders with --add-dir), then the project's own from origin/main of the clone.
 function Get-Playbooks {
     $books = @("$($PSScriptRoot.Replace('\', '/'))/PLAYBOOK.md")
+    foreach ($plugin in $plugins) {
+        if (Test-Path (Join-Path $plugin.Dir 'PLAYBOOK.md')) {
+            $books += "$($plugin.Dir.Replace('\', '/'))/PLAYBOOK.md"
+        }
+    }
     if ($config.playbook) {
         $books += "git -C '$($Clone.Replace('\', '/'))' show origin/main:$($config.playbook)"
     }
@@ -742,7 +681,7 @@ function Test-ModelLeft([string] $complexity, $settings, [string] $account) {
     if (-not $complexity) {
         $complexity = 'medium'
     }
-    $picks = if ($settings.model) { @([string]$settings.model) } else { @((Read-Models).byComplexity.$complexity) }
+    $picks = if ($settings.model) { @([string]$settings.model) } else { Get-ComplexityModels (Get-ProjectComplexities) $complexity }
     return [bool]($picks | Where-Object { -not (Test-ModelRefused $account ($_ -split '@')[0]) })
 }
 
@@ -762,7 +701,7 @@ function Get-RunModel([string] $complexity, $settings, [string] $account, [switc
     } elseif ($settings.model) {
         $pick = [string]$settings.model
     } else {
-        $candidates = @($list.byComplexity.$complexity)
+        $candidates = Get-ComplexityModels (Get-ProjectComplexities) $complexity
         $pick = [string]($candidates | Where-Object { -not (Test-ModelRefused $account ($_ -split '@')[0]) } | Select-Object -First 1)
         if (-not $pick) {
             $pick = [string]$candidates[-1]
@@ -1108,20 +1047,15 @@ function Add-History($job, [string] $account, [string] $model, [string] $text, [
 function Invoke-Worker($job, [string] $log, $paused) {
     $slug = Get-JobRepo $job
     $dir = Get-JobDir $slug
-    $jobAssets = $assets
+    # The environment of the job's checkout (the main loop's Start covered the clone), then what the run gets from the
+    # plugins (docs/PLUGINS.md, GetRun). A hook that throws starts no run: the ticket stays this worker's.
     if ($dir -ne $Clone) {
-        $project = Get-UnityProject $dir
-        $jobAssets = $null
-        if ($project) {
-            Start-UnityIfClosed $project
-            $jobAssets = "$project/Assets"
-        }
+        Invoke-WorkerHooks 'Start' $dir | Out-Null
     }
+    $given = Merge-RunAnswers (Invoke-WorkerHooks 'GetRun' $dir)
+    # Always a config, with no server when no plugin gives one: the queue app ends a run by this file's path.
     $mcpConfig = Join-Path $queueDir 'mcp.json'
-    $uvx = (Get-Command uvx).Source.Replace('\', '/')
-    $config = '{"mcpServers":{"UnityMCP":{"type":"stdio","command":"' + $uvx +
-        '","args":["--from","mcpforunityserver==10.3.0","mcp-for-unity"],"env":{"UNITY_MCP_DEFAULT_INSTANCE":"' + $jobAssets + '"}}}}'
-    [System.IO.File]::WriteAllText($mcpConfig, $config)
+    [System.IO.File]::WriteAllText($mcpConfig, (ConvertTo-McpConfig $given.McpServers))
 
     # A resumed run keeps the model, effort and account its session started on.
     $settings = Get-RunSettings $Id
@@ -1145,7 +1079,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     }
     # The run's advisor (limits.ps1, Get-Advisor): one for the whole session, like its model, so a resume and a
     # compaction see the same tools. A session held before the advisor existed has none recorded: it gets one now.
-    $advisorOf = (Read-Models).advisor
+    $advisorOf = Get-AdvisorRule (Read-Models) (Get-ProjectComplexities)
     $hasAdvisor = -not (Test-ModelRefused (Get-Account $configDir) ([string]$advisorOf.model) -Advisor)
     $advisor = Get-Advisor $advisorOf $job.Complexity $model $hasAdvisor
     if ($paused -and $null -ne $paused.Advisor) {
@@ -1198,29 +1132,22 @@ function Invoke-Worker($job, [string] $log, $paused) {
         $prompt += " Your account reached its weekly Fable limit, so this job runs on ${model}: the PR already holds the " +
             "ticket's decisions."
     }
-    # The server pins by UNITY_MCP_DEFAULT_INSTANCE, but a session that starts while only another editor answers
-    # selects that one for good; selecting this one first rules that out.
-    $instance = $null
-    if ($jobAssets) {
-        $instance = Get-UnityInstance $jobAssets
-    }
-    if ($instance) {
-        $prompt += " Your Unity editor is $instance (project $jobAssets): make set_active_instance('$instance') your first " +
-            "Unity MCP call, again after any MCP reconnect."
-    } elseif (-not $jobAssets) {
-        $prompt += " This repo has no Unity project: no Unity MCP."
+    if ($given.Prompt) {
+        $prompt += " $($given.Prompt)"
     }
     # Claude Code's own commit and PR attribution off: CLAUDE.md allows none. The advisor on (Use-Advisor turns it off).
     $runSettings = Join-Path $queueDir 'run-settings.json'
     $advisorSetting = if ($advisor) { ",`"advisorModel`":`"$advisor`"" } else { '' }
     [System.IO.File]::WriteAllText($runSettings, '{"includeCoAuthoredBy":false,"attribution":{"commit":"","pr":""}' + $advisorSetting + '}')
     # The same for the run and for the compaction of its session (Compress-Session).
-    # The base's tools, then the project's (docs/CONFIG.md, allowedTools). The install folder holds the playbook.
-    $tools = @(@('mcp__UnityMCP', 'Bash(git:*)', 'Bash(gh:*)') + @($config.allowedTools) | Select-Object -Unique) -join ','
+    # The base's tools, the project's and the plugins' (Get-RunTools). The install and plugin folders hold the playbooks.
     $sessionArgs = @('--permission-mode', 'auto', '--mcp-config', "`"$mcpConfig`"",
         '--strict-mcp-config', '--settings', "`"$runSettings`"",
-        '--allowedTools', "`"$tools`"", '--disallowedTools', "`"$UnusedTools`"", '--output-format', 'stream-json', '--verbose',
-        '--model', $model, '--effort', $effort, '--add-dir', "`"$PSScriptRoot`"")
+        '--allowedTools', "`"$(Get-RunTools $config $given)`"", '--disallowedTools', "`"$UnusedTools`"", '--output-format', 'stream-json', '--verbose',
+        '--model', $model, '--effort', $effort)
+    foreach ($folder in @(@($PSScriptRoot) + @($plugins | ForEach-Object { $_.Dir } | Where-Object { $_ -notlike "$PSScriptRoot\*" }))) {
+        $sessionArgs += @('--add-dir', "`"$folder`"")
+    }
     if ($dir -ne $Clone) {
         # The playbook, CLAUDE.md and the usage warning stay in the clone.
         $sessionArgs += @('--add-dir', "`"$Clone`"")
@@ -1282,12 +1209,11 @@ function Invoke-Worker($job, [string] $log, $paused) {
     } finally {
         $env:CLAUDE_CONFIG_DIR = $previousConfigDir
         $env:CLAUDE_CODE_DISABLE_ADVISOR_TOOL = $previousAdvisor
-        # However the run ended, its editor leaves play mode (the Unity plugin's editor script).
-        if ($jobAssets) {
-            $temp = Join-Path ($jobAssets -replace '/Assets$', '') 'Temp'
-            if (Test-Path $temp) {
-                Set-Content (Join-Path $temp 'QueueRunEnded') '' -Encoding utf8
-            }
+        # However the run ended, the plugins leave its environment clean (EndRun). An error there is no run's.
+        try {
+            Invoke-WorkerHooks 'EndRun' $dir | Out-Null
+        } catch {
+            Write-Log "EndRun error: $_"
         }
     }
 
@@ -1556,7 +1482,7 @@ while ($true) {
             Start-Sleep 30
             continue
         }
-        Start-UnityIfClosed -Report
+        Invoke-WorkerHooks 'Start' $Clone -Report | Out-Null
         Set-GitHubIdentity (Get-RunSettings $Id).ghConfigDir
         $mode = Get-Control
         # Paused from the queue app: no new job until the owner sets the worker active. A stop also holds a run
@@ -1767,6 +1693,11 @@ while ($true) {
         }
     } catch {
         Write-Log "error: $_"
+        # A plugin's hook that threw (Start, GetRun): no run starts, the card shows the error, and the worker tries
+        # again at its next look (docs/PLUGINS.md, When a hook throws).
+        if ("$_" -like 'plugin *') {
+            Write-State 'error' @{ error = "$_" }
+        }
     }
     # A force from the queue app since this poll began, or changed code, wakes the next one early.
     $wake = (Get-Now) + $PollSeconds
