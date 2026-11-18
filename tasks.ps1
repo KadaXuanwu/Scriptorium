@@ -17,6 +17,21 @@ function Register-QueueTask([string] $name, [string] $arguments, [string] $main)
     Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -Settings $settings -Force -ErrorAction Stop | Out-Null
 }
 
+# The projects that Scriptorium runs on this PC, each with its name and its page's port: from the logon tasks of the
+# pages. The lookup takes half a second, so the page's server asks at its start and every few minutes.
+function Get-PcProjects {
+    $found = @()
+    foreach ($task in @(Get-ScheduledTask -TaskName (Get-TaskName '*' 'app') -ErrorAction SilentlyContinue)) {
+        try {
+            $project = Read-Project (Get-TaskProject "$($task.Actions[0].Arguments)")
+            $found += [pscustomobject]@{ name = [string]$project.name; port = [int]$project.port }
+        } catch {
+            # A task whose project is gone or has no scriptorium.json: not a project of the list.
+        }
+    }
+    return $found
+}
+
 function Get-WorkerTaskName([string] $name, [string] $id) {
     return Get-TaskName $name "worker $id"
 }

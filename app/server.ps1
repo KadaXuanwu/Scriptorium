@@ -57,16 +57,17 @@ function Get-Now {
     return [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 }
 
-# The page's address on the owner's devices: the one that Tailscale Serve gives this page's port (project.ps1,
-# Get-ServeUrl), else localhost. A push asks again: setup can make the address while this server runs.
-function Get-AppUrl {
-    $url = Get-ServeUrl (Read-Serve) $Port
-    if ($url) {
-        return $url
-    }
-    return "http://127.0.0.1:$Port"
+# The PC's projects with their pages' addresses (state.ps1, Get-ProjectViews), for the page's project switch, the
+# pages that may ask here and the pushes; and this page's own address on the owner's devices ($appUrl): the one that
+# Tailscale Serve gives its port, else localhost. Read at the start and every five minutes: the lookup of the logon
+# tasks takes half a second, and setup can add a project or an address while this server runs.
+function Update-Projects {
+    $found = @(Get-PcProjects | Where-Object { $_.name -ne $config.name }) + [pscustomobject]@{ name = [string]$config.name; port = $Port }
+    $script:projects = @(Get-ProjectViews $found (Read-Serve))
+    $own = $script:projects | Where-Object { $_.name -eq $config.name }
+    $script:appUrl = if ($own.url) { $own.url } else { $own.local }
 }
-$appUrl = Get-AppUrl
+Update-Projects
 
 # GitHub, fetched in a background job so the page never waits on it: open tickets, worker PRs in every repo a ticket
 # names, recent merges, titles of closed tickets, and each held ticket's last worker question. All as the owner.
@@ -321,6 +322,7 @@ function Update-Snapshot {
         now = Get-Now; slug = $slug; workers = $workers; control = $control
         usage = Read-Json (Join-Path $mainQueue 'usage.json'); out = Read-Json (Join-Path $mainQueue 'out.json'); settings = $saved
         runs = Read-Runs; gh = $script:gh; appUrl = $appUrl; dispatch = Read-Json (Join-Path $mainQueue 'dispatch.json')
+        name = $config.name; projects = $script:projects
         logins = @{}; login = Get-LoginView; complexities = Get-Complexities (Read-Models) $config $saved; plugins = $plugins
     }
     if ($data.settings -and $data.settings.accounts) {
@@ -349,7 +351,7 @@ function Send-Notification($note, $settings) {
     $server = if ($settings.ntfy.server) { $settings.ntfy.server.TrimEnd('/') } else { 'https://ntfy.sh' }
     try {
         Invoke-RestMethod -Method Post -Uri "$server/$($settings.ntfy.topic)" -Body ([System.Text.Encoding]::UTF8.GetBytes($note.message)) -Headers @{
-            Title = $note.title; Priority = "$($note.priority)"; Tags = $note.tags; Click = "$(Get-AppUrl)/#$($note.click)"
+            Title = $note.title; Priority = "$($note.priority)"; Tags = $note.tags; Click = Get-PushUrl $script:projects $config.name $appUrl $note.click
         } | Out-Null
         Write-AppLog "notified: $($note.title): $($note.message)"
     } catch {
@@ -789,6 +791,15 @@ function Send-Response($context, [int] $status, [string] $type, [byte[]] $bytes)
     $response.StatusCode = $status
     $response.ContentType = $type
     $response.Headers['Cache-Control'] = 'no-store'
+    # The page of another project of this PC may read and act here, and no other address's page (state.ps1,
+    # Get-PageOrigin): the one app shows every project.
+    $origin = Get-PageOrigin $script:projects ([string]$context.Request.Headers['Origin'])
+    if ($origin) {
+        $response.Headers['Access-Control-Allow-Origin'] = $origin
+        $response.Headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Queue'
+        $response.Headers['Access-Control-Max-Age'] = '600'
+        $response.Headers['Vary'] = 'Origin'
+    }
     $response.ContentLength64 = $bytes.Length
     $response.OutputStream.Write($bytes, 0, $bytes.Length)
     $response.Close()
@@ -801,6 +812,12 @@ function Send-Json($context, [int] $status, [string] $json) {
 function Invoke-Request($context) {
     $request = $context.Request
     $path = $request.Url.AbsolutePath
+    if ($request.HttpMethod -eq 'OPTIONS') {
+        # A browser asks this before another address's page acts here. Send-Response gives the yes to a page of
+        # this PC's projects; without it the browser sends nothing more.
+        Send-Response $context 204 'text/plain' ([byte[]]@())
+        return
+    }
     if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/state') {
         Send-Json $context 200 $script:json
         return
@@ -880,6 +897,7 @@ $pending = $listener.GetContextAsync()
 $ghJob = $null
 $script:nextGh = 0
 $script:nextLocal = 0
+$script:nextProjects = (Get-Now) + 300
 while ($true) {
     try {
         if ($pending.Wait(500)) {
@@ -910,6 +928,10 @@ while ($true) {
             }
         }
         $now = Get-Now
+        if ($now -ge $script:nextProjects) {
+            Update-Projects
+            $script:nextProjects = $now + 300
+        }
         if (-not $ghJob -and $now -ge $script:nextGh) {
             $ghJob = Start-Job -ScriptBlock $fetch -ArgumentList $Main, $slug
             $script:nextGh = $now + 60

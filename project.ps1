@@ -222,6 +222,14 @@ function Get-ServeCommand($serve, [int] $port) {
     return "serve --bg --https=$at $port"
 }
 
+# The project of a logon task, from the task's arguments (Get-ProjectArg wrote them), or '' when they name none.
+function Get-TaskProject([string] $arguments) {
+    if ($arguments -match '-Project (?:"([^"]+)"|(\S+))') {
+        return "$($Matches[1])$($Matches[2])"
+    }
+    return ''
+}
+
 # Whether a process's command line runs $script (worker.ps1, merge.ps1, server.ps1) for this project. The path as a
 # whole argument: another project, a path that starts with this one, or a queue from before -Project never matches.
 # conhost passes a path with no space on without its quotes, so the quotes are optional.

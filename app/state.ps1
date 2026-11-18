@@ -638,8 +638,36 @@ function Get-AnswerRoute($item, [string] $text) {
     throw "not a question: $($item.kind)"
 }
 
+# One app for every project of the PC (docs/APP.md, Projects). The PC's projects as the page needs them: each
+# with its name, its page's address on this PC (`local`) and on the owner's Tailscale devices (`url`, '' without one).
+# $projects: name and port (tasks.ps1, Get-PcProjects); $serve: project.ps1, Read-Serve.
+function Get-ProjectViews($projects, $serve) {
+    return @($projects | Sort-Object { $_.name } | ForEach-Object {
+        @{ name = [string]$_.name; local = "http://127.0.0.1:$($_.port)"; url = [string](Get-ServeUrl $serve $_.port) }
+    })
+}
+
+# The origin of a page that may read and act here from another address, or '': only the page of a project of this
+# PC, at an address that this server found itself. An exact match, and the answer is the list's own entry. This list
+# is the whole guard: the header X-Queue stops another site's page only while the server says no to its browser.
+function Get-PageOrigin($views, [string] $origin) {
+    if (-not $origin) {
+        return ''
+    }
+    return [string](@($views | ForEach-Object { $_.local; $_.url }) | Where-Object { $_ -and $_ -ceq $origin } | Select-Object -First 1)
+}
+
+# The address that a push opens: the app's address with the project named, so the one app shows the project of the
+# push and not the one that was open last. The app's address is the PC's plain Tailscale address (no port) when a
+# project of the PC has it: the owner's phone app is there. Else this project's own address ($own).
+function Get-PushUrl($views, [string] $name, [string] $own, [string] $click) {
+    $plain = [string](@($views | ForEach-Object { $_.url }) | Where-Object { $_ -and $_ -notmatch ':\d+$' } | Select-Object -First 1)
+    return "$(if ($plain) { $plain } else { $own })/?project=$([uri]::EscapeDataString($name))#$click"
+}
+
 # Everything the page shows. $data: now, slug, workers (id, state, progress, forced), control, usage,
-# settings, runs, gh (issues, prs, merged, titles, questions; $null until the first fetch), appUrl, logins, login, and
+# settings, runs, gh (issues, prs, merged, titles, questions; $null until the first fetch), appUrl, logins, login,
+# name and projects (this project's name and the PC's projects, Get-ProjectViews), and
 # complexities (project.ps1, Get-Complexities; models.json's alone when left out).
 function New-Snapshot($data) {
     $now = [long]$data.now
@@ -861,6 +889,8 @@ function New-Snapshot($data) {
 
     $snapshot = @{
         now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; login = $data.login; github = [bool]$data.gh
+        # This project's name and the PC's projects, for the page's project switch.
+        name = [string]$data.name; projects = @($data.projects | Where-Object { $_ })
         questions = @(); stuck = @(); held = @(); queued = @(); parked = @(); merged = @(); runs = @()
         left = @{ count = 0; seconds = 0; cost = 0.0 }
         # The advisor rule (models.json `advisor`, docs/QUEUE.md, Models), for the Info tab.

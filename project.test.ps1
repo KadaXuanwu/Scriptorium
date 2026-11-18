@@ -171,4 +171,25 @@ Assert-Equal (Get-ServeCommand $path 8770) 'serve --bg --https=8443 8770' 'port 
 $forward = '{"TCP":{"443":{"TCPForward":"127.0.0.1:22"}}}' | ConvertFrom-Json
 Assert-Equal (Get-ServeCommand $forward 8770) 'serve --bg --https=8443 8770' 'also a forwarder at port 443'
 
+# One app for every project of the PC: the projects with their addresses, the pages that may ask a server, and the
+# address a push opens.
+Assert-Equal (Get-TaskProject '-File "C:\S\app\server.ps1" -Project "D:\My Work\App"') 'D:\My Work\App' 'a task''s project, with a space'
+Assert-Equal "$(Get-TaskProject '-File C:\S\app\server.ps1 -Project D:\Work\App -Port 9')|$(Get-TaskProject '-File C:\S\x.ps1')" 'D:\Work\App|' 'a bare path, and no project'
+$pc = @([pscustomobject]@{ name = 'Game'; port = 8770 }, [pscustomobject]@{ name = 'App'; port = 8771 }, [pscustomobject]@{ name = 'Tool'; port = 8772 })
+$views = Get-ProjectViews $pc $two
+Assert-Equal (($views | ForEach-Object { "$($_.name) $($_.local) $($_.url)" }) -join '; ') 'App http://127.0.0.1:8771 https://pc.tail.ts.net:8443; Game http://127.0.0.1:8770 https://pc.tail.ts.net; Tool http://127.0.0.1:8772 ' 'each project with its two addresses'
+$alone = @(Get-ProjectViews @($pc[0]) $null)
+Assert-Equal "$($alone.Count) $($alone[0].name) $($alone[0].url)" '1 Game ' 'one project, no Tailscale'
+Assert-Equal "$(Get-PageOrigin $views 'http://127.0.0.1:8771')|$(Get-PageOrigin $views 'https://pc.tail.ts.net')|$(Get-PageOrigin $views 'https://pc.tail.ts.net:8443')" 'http://127.0.0.1:8771|https://pc.tail.ts.net|https://pc.tail.ts.net:8443' 'the pages of the PC''s projects may ask'
+foreach ($foreign in 'https://evil.example', 'http://127.0.0.1:9999', 'https://pc.tail.ts.net:9443', 'https://pc.tail.ts.net.evil.example', 'HTTPS://PC.TAIL.TS.NET', 'http://127.0.0.1:8771/', 'null', '') {
+    Assert-Equal (Get-PageOrigin $views $foreign) '' "no other page may ask: '$foreign'"
+}
+Assert-Equal (Get-PageOrigin @() 'http://127.0.0.1:8770') '' 'no list, no page'
+Assert-Equal (Get-PushUrl $views 'App' 'https://pc.tail.ts.net:8443' 'questions') 'https://pc.tail.ts.net/?project=App#questions' 'a push opens the app at the plain address, with its project named'
+Assert-Equal (Get-PushUrl $views 'Game' 'https://pc.tail.ts.net' 'workers') 'https://pc.tail.ts.net/?project=Game#workers' 'also the push of the project that has the plain address'
+Assert-Equal (Get-PushUrl (Get-ProjectViews $pc $null) 'App' 'http://127.0.0.1:8771' 'queue') 'http://127.0.0.1:8771/?project=App#queue' 'without Tailscale, the project''s own address'
+$snapshot = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); name = 'App'; projects = $views }
+Assert-Equal "$($snapshot.name) $(@($snapshot.projects).Count) $($snapshot.projects[0].name)" 'App 3 App' 'the snapshot names the project and lists the PC''s projects'
+Assert-Equal @((New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).projects).Count 0 'a snapshot without the list'
+
 Write-Output 'ok'

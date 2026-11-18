@@ -61,7 +61,7 @@ function markdown(text) {
   return esc(text)
     .replace(/!\[([^\]]*)\]\(https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/blob\/(shots-t\d+)\/([\w.-]+\.(?:png|jpe?g))(?:\?raw=true)?\)/gi,
       (all, alt, branch, name) => {
-        const src = `/api/shot?branch=${branch}&amp;name=${name}`;
+        const src = `${api('api/shot')}?branch=${branch}&amp;name=${name}`;
         return `<a class="shot" href="${src}" target="_blank"><img src="${src}" alt="${alt}" loading="lazy"></a>`;
       })
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)|(https:\/\/[^\s<]*[^\s<.,;:!?)\]])/g, (all, label, href, bare) => {
@@ -604,8 +604,44 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 
-// The last state reached, kept on the device: with the PC off the app still opens on it, greyed out under a banner.
-const stored = 'scriptorium-state';
+// One app for every project of the PC (docs/APP.md, Projects): the page shows one project at a time. `base` is the
+// address of the shown project's server: '' for the project of this address, else that project's own address, and the
+// page then loads everything from there. The choice stays on the device. A push names its project in the address
+// (?project=), which wins once. A switch reloads the page, so no draft, dialog or late answer of one project reaches
+// another: both can have a worker 1.
+const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ } };
+const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
+// A page at the PC's own address uses each project's address on the PC. A page on a Tailscale device uses the
+// Tailscale one, and a project without it cannot show there.
+const addressOf = (p) => (location.hostname === '127.0.0.1' ? p?.local : p?.url);
+let projects = kept('scriptorium-projects') || [];
+const asked = new URLSearchParams(location.search).get('project');
+if (asked) {
+  keep('scriptorium-project', asked);
+  history.replaceState(null, '', location.pathname + location.hash);
+}
+const project = kept('scriptorium-project') || '';
+const there = addressOf(projects.find((p) => p.name === project));
+const base = there && there !== location.origin ? there : '';
+const api = (path) => (base ? `${base}/` : '') + path;
+
+// The project switch, above every view while the PC has two projects or more. `shown`: the project on the page.
+function drawProjects(shown) {
+  const box = $('project');
+  box.hidden = projects.length < 2;
+  if (box.hidden || document.activeElement === box) return;
+  box.innerHTML = projects.map((p) => `<option value="${esc(p.name)}"${p.name === shown ? ' selected' : ''}${addressOf(p) ? '' : ' disabled'}>
+    ${esc(p.name)}${addressOf(p) ? '' : ' (on the PC only)'}</option>`).join('');
+}
+$('project').addEventListener('change', (e) => {
+  keep('scriptorium-project', e.target.value);
+  location.reload();
+});
+drawProjects(base ? project : projects.find((p) => addressOf(p) === location.origin)?.name);
+
+// The last state reached, kept on the device, one for each project: with the PC off the app still opens on it, greyed
+// out under a banner.
+const stored = base ? `scriptorium-state:${project}` : 'scriptorium-state';
 function remember(snapshot) {
   try { localStorage.setItem(stored, JSON.stringify({ snapshot, at: Date.now() })); } catch (e) { /* private mode */ }
 }
@@ -620,7 +656,8 @@ function setOffline(offline) {
   banner.hidden = !offline;
   if (offline) {
     const last = recall();
-    banner.textContent = `Can't reach your PC${last ? ` since ${clock(last.at)}` : ''}. Is it on, and Tailscale connected?`;
+    // Another project's server can be down while this address answers: the banner names what does not answer.
+    banner.textContent = `Can't reach ${base ? project : 'your PC'}${last ? ` since ${clock(last.at)}` : ''}. Is ${base ? 'the PC' : 'it'} on, and Tailscale connected?`;
   }
 }
 
@@ -647,9 +684,17 @@ function draw(animate, fetch) {
 async function refresh(animate) {
   const fetched = ++fetches;
   try {
-    const response = await fetch('api/state', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+    const response = await fetch(api('api/state'), { cache: 'no-store', signal: AbortSignal.timeout(8000) });
     const snapshot = await response.json();
     if (!snapshot.workers) throw new Error('no state');
+    if (snapshot.projects?.length) {
+      projects = snapshot.projects;
+      keep('scriptorium-projects', projects);
+      // A choice from before the page knew the project's address (the first visit, from a push): it knows it now.
+      const wanted = addressOf(projects.find((p) => p.name === project));
+      if (!base && wanted && wanted !== location.origin) return location.reload();
+    }
+    drawProjects(snapshot.name);
     fresh = snapshot;
     remember(snapshot);
     setOffline(false);
@@ -677,7 +722,7 @@ async function act(body, { keys = [], apply, after, done } = {}) {
   if (keys.length) draw(true, 0);
   let ok = false;
   try {
-    const response = await fetch('api/action', {
+    const response = await fetch(api('api/action'), {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Queue': '1' }, body: JSON.stringify(body),
     });
     const result = await response.json();
@@ -891,7 +936,7 @@ document.addEventListener('click', async (e) => {
     $('steps-list').innerHTML = '<li>Loading...</li>';
     $('steps').showModal();
     try {
-      const log = await (await fetch(`api/log?worker=${encodeURIComponent(data.steps)}`, { cache: 'no-store' })).json();
+      const log = await (await fetch(api(`api/log?worker=${encodeURIComponent(data.steps)}`), { cache: 'no-store' })).json();
       $('steps-list').innerHTML = (log.steps || []).map((s) => `<li>${esc(s)}</li>`).join('') || '<li>No run yet.</li>';
     } catch (err) {
       $('steps-list').innerHTML = '<li>Cannot reach Scriptorium.</li>';

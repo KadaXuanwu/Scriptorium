@@ -23,7 +23,7 @@ and the page show the mark alone, with no background: `mark-on-light.png` in the
 | Queue files | The live state in `.queue/` (main checkout and copies), written by the scripts and the runs (Data) | no |
 | Server | Reads both, serves the page and one snapshot (`/api/state`), does the owner's actions (`/api/action`), shows a run's steps (`/api/log?worker=N`), sends pushes. It listens on localhost only. It reads GitHub once a minute in a background job and the local files every 10 s. An action's GitHub writes also run in a background job, so a slow GitHub delays only that action's answer, never the page | no |
 | Tailscale | Tailscale Serve puts the server on the owner's devices with a certificate, at an address of its own for each project (Setup); nothing is open to the internet | no |
-| ntfy | Pushes to the phone; a tap opens the page on that tab | no |
+| ntfy | Pushes to the phone; a tap opens the page on that project and tab | no |
 
 No chat between agents: the scripts coordinate the runs, and a run reads only its own ticket. The server, the page and
 the pushes use no model (except an account's Ping): every choice below is a script's.
@@ -197,7 +197,30 @@ focus.
 **With the PC off** (or Tailscale disconnected) the page still opens: it is kept on the device (`web/sw.js`), with the
 last state it reached, greyed out under a banner.
 
-Actions need the `X-Queue: 1` header, so no other website open in a browser can trigger them.
+Actions need the `X-Queue: 1` header, so no other website open in a browser can trigger them: a browser asks the
+server first, and the server says yes only to the pages of this PC's projects (Projects).
+
+## Projects
+
+One app shows every project that Scriptorium runs on the PC. Each project keeps its own queue, workers and page
+server ([README.md](../README.md), Limits); the page shows one project at a time.
+
+- **The switch** is a list above every view, while the PC has two projects or more. A choice reloads the page on that
+  project and stays on the device. So nothing of one project (a draft, an open dialog, a late answer) reaches
+  another: both can have a worker 1.
+- **How:** the page stays at its address and loads the other project's state, steps and pictures from that project's
+  own server, and it sends the owner's actions there. A page on the PC uses the project's address on the PC; a page on
+  a Tailscale device uses its Tailscale address (Setup). A project with no Tailscale address shows on the PC only.
+- **The list** is in every snapshot (`name`, `projects`): the server takes it from the logon tasks of the pages
+  (`Get-PcProjects`, [tasks.ps1](../tasks.ps1)) and from Tailscale's mapping, at its start and every five minutes.
+- **The guard:** a server answers the page of another address only when that address is in its own list
+  (`Get-PageOrigin`, [state.ps1](../app/state.ps1)): an exact match, never the asking page's own word. Every other
+  site's page stays out, as before.
+- **A push** opens the app with its project named (`?project=<name>`), at the PC's plain Tailscale address when a
+  project has it: the phone app is there. Without Tailscale it opens the project's own address on the PC.
+- **A project whose server does not answer** shows its last state greyed out under the banner, which names it. The
+  switch still works.
+- The last state on the device is kept for each project.
 
 ## Notifications
 
@@ -238,6 +261,6 @@ reads what Tailscale serves (`tailscale serve status --json`) and never changes 
   `https://<name>:8443`. Not the page's own port: Windows keeps that port for the page's server alone.
 - A page that has an address keeps it. Setup prints the address at its end.
 
-The server reads its address from the same mapping (`Get-ServeUrl`, [project.ps1](../project.ps1)), at its start and
-for each push, so a push opens the page of its own project. Without an address the push opens localhost. To take an
-address away: `tailscale serve --https=<its port> off` (443 for the plain one).
+The server reads the addresses from the same mapping (`Get-ServeUrl`, [project.ps1](../project.ps1)), at its start
+and every five minutes. The one app uses them to show each project (Projects). To take an address away:
+`tailscale serve --https=<its port> off` (443 for the plain one).
