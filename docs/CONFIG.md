@@ -41,7 +41,7 @@ An entry under `complexities` changes one of the four or adds one of the project
 | Key | What |
 | --- | ---- |
 | `description` | One line for the GitHub label and the page. Needed for a complexity of the project's own |
-| `models` | The models its runs use, each as `model@effort`, the first that the account still has |
+| `models` | The models its runs use, each as `model@effort`, the first that the account still has. Left out for a complexity of the project's own: the models of `medium` |
 | `advisor` | `true`: its runs may ask the advisor model |
 | `advisorFallback` | The effort its runs get when the account has no advisor left |
 

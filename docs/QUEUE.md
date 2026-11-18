@@ -303,5 +303,6 @@ next look. With no plugin, a run gets no MCP server and only the base's tools.
 ## Working a job
 
 The run follows [PLAYBOOK.md](../PLAYBOOK.md), then each plugin's playbook, then the project's own (`playbook` in
-`scriptorium.json`). The worker script names them by path in the run's first message and gives the run the Scriptorium
-folder with `--add-dir`; the project's own it reads from `origin/main`.
+`scriptorium.json`). Before each run, the worker script copies the first two into `.queue/playbooks` of the worker's
+copy and names them in the run's first message; the project's own the run reads from `origin/main`. A run gets no
+folder of Scriptorium or of a plugin, so it cannot change the code that runs it.

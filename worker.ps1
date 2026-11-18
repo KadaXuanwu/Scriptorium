@@ -619,13 +619,21 @@ function Get-ProjectComplexities {
 }
 
 
-# The playbooks a run follows, in order (docs/PLUGINS.md, The playbook): the base's and each plugin's by path (the run
-# gets their folders with --add-dir), then the project's own from origin/main of the clone.
+# The playbooks a run follows, in order (docs/PLUGINS.md, The playbook): the base's and each plugin's, copied into the
+# clone's queue folder before each run, then the project's own from origin/main of the clone. The run reads the copies:
+# it gets no folder of Scriptorium or of a plugin, so it cannot change the code that runs it.
 function Get-Playbooks {
-    $books = @("$($PSScriptRoot.Replace('\', '/'))/PLAYBOOK.md")
+    $folder = Join-Path $queueDir 'playbooks'
+    New-Item -ItemType Directory -Force $folder | Out-Null
+    $sources = [ordered]@{ 'PLAYBOOK.md' = (Join-Path $PSScriptRoot 'PLAYBOOK.md') }
     foreach ($plugin in $plugins) {
-        if (Test-Path (Join-Path $plugin.Dir 'PLAYBOOK.md')) {
-            $books += "$($plugin.Dir.Replace('\', '/'))/PLAYBOOK.md"
+        $sources["plugin-$($plugin.Name).md"] = Join-Path $plugin.Dir 'PLAYBOOK.md'
+    }
+    $books = @()
+    foreach ($name in $sources.Keys) {
+        if (Test-Path $sources[$name]) {
+            Copy-Item $sources[$name] (Join-Path $folder $name) -Force
+            $books += "$($folder.Replace('\', '/'))/$name"
         }
     }
     if ($config.playbook) {
@@ -1118,7 +1126,8 @@ function Invoke-Worker($job, [string] $log, $paused) {
     }
     $prompt += " You run on $model at $effort effort: name both in the PR body. Your queue folder is " +
         "$($queueDir.Replace('\', '/')): at each checkpoint write progress.json there and look for limit.md, stop.md " +
-        "and comments.md there (PLAYBOOK.md, Checkpoints)."
+        "and comments.md there (PLAYBOOK.md, Checkpoints). The Scriptorium folder is $($PSScriptRoot.Replace('\', '/')): " +
+        "run a script of it where a playbook says so, and change no file in it."
     # The rest of a Fable job (docs/QUEUE.md, The Fable limit). The note carries the whole
     # instruction, so a run that read an older playbook follows it too.
     if ($paused -and $paused.FableOut -and $job.Kind -eq 'ticket') {
@@ -1140,14 +1149,11 @@ function Invoke-Worker($job, [string] $log, $paused) {
     $advisorSetting = if ($advisor) { ",`"advisorModel`":`"$advisor`"" } else { '' }
     [System.IO.File]::WriteAllText($runSettings, '{"includeCoAuthoredBy":false,"attribution":{"commit":"","pr":""}' + $advisorSetting + '}')
     # The same for the run and for the compaction of its session (Compress-Session).
-    # The base's tools, the project's and the plugins' (Get-RunTools). The install and plugin folders hold the playbooks.
+    # The base's tools, the project's and the plugins' (Get-RunTools).
     $sessionArgs = @('--permission-mode', 'auto', '--mcp-config', "`"$mcpConfig`"",
         '--strict-mcp-config', '--settings', "`"$runSettings`"",
         '--allowedTools', "`"$(Get-RunTools $config $given)`"", '--disallowedTools', "`"$UnusedTools`"", '--output-format', 'stream-json', '--verbose',
         '--model', $model, '--effort', $effort)
-    foreach ($folder in @(@($PSScriptRoot) + @($plugins | ForEach-Object { $_.Dir } | Where-Object { $_ -notlike "$PSScriptRoot\*" }))) {
-        $sessionArgs += @('--add-dir', "`"$folder`"")
-    }
     if ($dir -ne $Clone) {
         # The playbook, CLAUDE.md and the usage warning stay in the clone.
         $sessionArgs += @('--add-dir', "`"$Clone`"")
