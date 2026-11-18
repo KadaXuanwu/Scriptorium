@@ -1050,6 +1050,11 @@ document.addEventListener('change', async (e) => {
   } else if (data.compact !== undefined) {
     e.target.blur();
     const value = Math.round(Number(e.target.value)) * 1000 + COMPACT_BUFFER;
+    if (!(value >= 100000 && value <= 1000000)) {
+      toast(`Between ${e.target.min}k and ${e.target.max}k tokens`);
+      e.target.value = Math.round((state.compactWindow - COMPACT_BUFFER) / 1000);
+      return;
+    }
     await act({ action: 'compact-window', value }, {
       keys: ['compact'],
       apply: (s) => {
