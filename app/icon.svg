@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Source of web/icon-192.png and web/icon-512.png: inkscape icon.svg -w 512 -o web/icon-512.png -->
+  <defs>
+    <clipPath id="band"><rect x="0" y="156" width="512" height="208"/></clipPath>
+  </defs>
+  <rect width="512" height="512" fill="#1d2126"/>
+  <path d="M256 76l160 50v120c0 100-70 168-160 196C166 414 96 346 96 246V126z" fill="#2a3038" stroke="#6ea8e0" stroke-width="16"/>
+  <g clip-path="url(#band)" stroke="#e6e3dd" stroke-width="36" fill="none">
+    <path d="M206 140v240"/>
+    <path d="M206 272L330 136"/>
+    <path d="M240 236L328 380"/>
+  </g>
+</svg>

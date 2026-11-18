@@ -1,0 +1,17 @@
+{
+  "updated": "2026-11-17",
+  "models": {
+    "claude-fable-5-2": { "effort": "xhigh", "price": [8, 40] },
+    "claude-opus-5-5": { "effort": "medium", "price": [4, 20] },
+    "claude-sonnet-5-5": { "effort": "xhigh", "price": [2, 10] },
+    "claude-haiku-5-5": { "effort": "xhigh", "price": [0.1, 0.5] }
+  },
+  "byComplexity": {
+    "low": ["claude-opus-5-5@medium"],
+    "medium": ["claude-opus-5-5@high"],
+    "high": ["claude-opus-5-5@xhigh"],
+    "design": ["claude-fable-5-2@high"]
+  },
+  "afterFable": "claude-opus-5-5@xhigh",
+  "advisor": { "model": "claude-fable-5-2", "complexities": ["medium", "high"], "fallback": {} }
+}
