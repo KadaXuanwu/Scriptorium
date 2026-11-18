@@ -101,9 +101,10 @@ const cross = (kind, key, name) => `<button class="x" data-remove="${kind}" data
 // What the worker does now: a tone, an icon and a few words.
 function activity(worker) {
   if (worker.activity === 'down') return ['bad', 'alert', `Script silent for ${duration(state.now - worker.at)}`];
-  // A worker the owner added: the server makes its clone, then its script opens its editor (a first import).
+  // A worker the owner added: the server makes its clone, then its plugins make its environment ready, in their own
+  // words (a first import can take long).
   if (worker.activity === 'setup') return ['muted', 'history', 'Setting up its copy of the repo'];
-  if (worker.activity === 'opening') return ['muted', 'history', 'Opening its Unity editor'];
+  if (worker.activity === 'opening') return ['muted', 'history', esc(worker.report || 'Getting its environment ready')];
   if (worker.activity === 'setup-failed') return ['bad', 'alert', 'Setup failed'];
   // A plugin's hook threw (its text is in Now); the worker tries again at its next look.
   if (worker.activity === 'error') return ['bad', 'alert', 'Its environment failed'];
@@ -388,15 +389,18 @@ function infoLimits(a) {
   return `<h3>${esc(a.name)}${who ? ` <span class="sub">${esc(who)}</span>` : ''}</h3>${items(lines)}`;
 }
 
+// The project's environment in words: its plugins' titles, '' for a plain git repo.
+const environment = (s) => inWords((s.plugins || []).map((p) => esc(p.title || p.name)));
+
 function info(s) {
   const blocking = s.questions.filter((q) => q.blocking).length;
-  const takes = s.workers[0]?.takes || [];
   const advisor = s.advisor;
-  const asks = (t) => advisor && (advisor.complexities || []).includes(t.name) && t.model !== advisor.model;
   const working = (s.accounts || []).filter((a) => (a.uses || []).some((u) => u.startsWith('worker:')));
+  const plugins = s.plugins || [];
   return [
     section('In short', `<p>Workers are Claude sessions on this PC that build tickets (GitHub issues) on their own, one at
-      a time. Each works in its own copy of the project with its own Unity editor, tests its work and opens a pull request
+      a time. Each works in its own copy of the project${plugins.length ? `, with its environment (${environment(s)})` : ''},
+      tests its work and opens a pull request
       (PR), which a merger merges into main. You decide what to build; the scripts manage the work. This page shows what they
       do, asks what only you can decide, and holds their limits.</p>`),
     section('What needs you', items([
@@ -429,15 +433,18 @@ function info(s) {
     }))}
       <p>Active takes tickets. Paused takes none and keeps its ticket. Disabled takes none, and other workers take its
         ticket. Force (the arrow on Next) gives a free worker its next ticket now, past the limits.</p>
-      <p>The complexity of a ticket chooses the model. The size (S, M, L) only says how much usage it takes.</p>
-      ${items(takes.map((t) => {
-        const raised = asks(t) && advisor.fallback?.[t.name];
-        const words = (s.complexities || []).find((c) => c.name === t.name)?.description || t.name;
-        return `<b>${esc(t.name)}</b> (${esc(words)}): ${esc(modelName(t.model))}, ${esc(t.effort)} effort${asks(t)
-          ? `, with ${esc(modelName(advisor.model))} as advisor${raised ? `; ${esc(raised)} effort while the advisor is not there` : ''}` : ''}.`;
-      }))}
-      ${advisor ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do not see the advice. A run
-        keeps its advisor to its end; past the Fable advisor line (Limits), new runs start without one.</p>` : ''}`),
+      <p>A worker's Takes menu shows the model of each complexity for that worker, where the settings change it.</p>`),
+    section('Complexities', `<p>The complexity of a ticket chooses the model. The size (S, M, L) only says how much usage
+      it takes. A ticket with no complexity label is medium.</p>
+      ${items((s.complexities || []).map((c) => `<b>${esc(c.name)}</b> (${esc(c.description || c.name)}): ${esc(modelName(c.model))},
+        ${esc(c.effort)} effort${c.advisor ? `, with ${esc(modelName(c.advisor))} as advisor${c.advisorFallback
+          ? `; ${esc(c.advisorFallback)} effort while the advisor is not there` : ''}` : ''}.`))}
+      ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
+        not see the advice. A run keeps its advisor to its end; past the Fable advisor line (Limits), new runs start
+        without one.</p>` : ''}`),
+    section('Plugins', plugins.length
+      ? items(plugins.map((p) => `<b>${esc(p.title || p.name)}</b> ${esc(p.version)}: ${esc(p.description)}`))
+      : '<p>None: a plain git repo.</p>'),
     section('Limits', `<p>Each account has three usage windows: 5 hours, the week, and the Fable week (Fable alone). The
       workers use all the room you give them and stop at the lines you set (${setting('Accounts', 'accounts')}). A run that
       reaches a stop line ends at its next checkpoint, and the same session goes on when the account has room again; one
@@ -446,7 +453,7 @@ function info(s) {
     section('In the background', `<p>Three kinds of script run on this PC as Windows tasks with no window. They start
       when you log on and need nothing from you.</p>
       ${items([
-        '<b>A worker script</b> for each worker keeps its Unity editor open, chooses its next job, starts the run and checks how the run ended. A free worker looks for a job every few minutes, and at once for Force.',
+        `<b>A worker script</b> for each worker has its plugins make its environment ready${plugins.length ? '' : ' (none here)'}, chooses its next job, starts the run and checks how the run ended. A free worker looks for a job every few minutes, and at once for Force.`,
         '<b>The merger</b> looks at the open PRs every few minutes. It merges each worker PR that GitHub can merge and no question holds, oldest first. A PR that conflicts with main, or that has a comment of yours its run did not read, goes back to its worker.',
         '<b>This page\'s server</b> reads GitHub once a minute and the workers\' files every few seconds, sends the pushes and does what you click. Tailscale puts it on your phone; nothing is open to the internet. With the PC off, the page shows the last state it had, greyed out.',
         'The scripts and this page use no model; only the runs do. Two small exceptions: with no run for a while, a worker reads an account\'s usage with a one-word request, and Ping starts an account\'s 5-hour window.',
@@ -678,8 +685,9 @@ async function addWorker() {
   const options = accounts.map((a) => `<option value="${esc(a.name)}">${esc(a.name)}${outMark[a.status] || ''}</option>`);
   // The command-line login, offered as on a worker's card: only while no entry is that login.
   if (accounts.every((a) => a.own)) options.unshift('<option value="">command line</option>');
-  const values = await ask('Add a worker', 'It starts as Active. It takes tickets when its copy of the repo is made and its '
-    + 'Unity editor has imported the project for the first time.', 'Add worker', {
+  const plugins = state.plugins || [];
+  const values = await ask('Add a worker', 'It starts as Active. It takes tickets when its copy of the repo is made'
+    + (plugins.length ? ` and its environment (${inWords(plugins.map((p) => p.title || p.name))}) is ready.` : '.'), 'Add worker', {
     fields: `<label>Account<select name="account">${options.join('')}</select></label>`,
   });
   if (values) await act({ action: 'add-worker', account: values.account || '' });

@@ -138,6 +138,12 @@ $take = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = @{ model
 Assert-Equal "$($take.model) $($take.effort)" 'some-model low' 'a model override with its effort'
 $take = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = @{ model = 'some-model' }; workers = $idle }).workers[0].takes[0]
 Assert-Equal "$($take.model) $($take.effort)" 'some-model xhigh' 'a model not in the list runs at xhigh'
+# The plugins and the complexities, for the Info tab: none for a plain git repo; models.json's four without a config.
+$info = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @()
+    plugins = @(@{ Name = 'unity'; Title = 'Scriptorium for Unity'; Version = '1.0.0'; Description = 'One editor each.'; Hooks = @{} }) }
+Assert-Equal (($info.plugins | ForEach-Object { "$($_.name) $($_.title) $($_.version) $($_.description)" }) -join '|') 'unity Scriptorium for Unity 1.0.0 One editor each.' 'the plugins'
+Assert-Equal @((New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).plugins).Count 0 'no plugin'
+Assert-Equal (($info.complexities | ForEach-Object { "$($_.name)=$($_.effort)/$($_.advisor -ne '')" }) -join ' ') 'low=medium/False medium=high/True high=xhigh/True design=high/False' 'each complexity with its effort and advisor'
 # The advisor rule from models.json, for the Info tab.
 $advisor = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).advisor
 Assert-Equal "$($advisor.model) $(@($advisor.complexities) -join ',')" 'claude-fable-5-2 medium,high' 'the advisor rule'
@@ -365,6 +371,8 @@ Assert-Equal "$(Route 'followup' '' '1. Do this? Default: yes.') $(Route 'follow
 # Steps: a tool call names the tool and what it does; words are shown as said.
 Assert-Equal (Get-StepText '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git push","description":"Push the branch"}}]}}') 'Bash: Push the branch' 'tool step'
 Assert-Equal (Get-StepText '{"type":"assistant","message":{"content":[{"type":"text","text":"Rungs  pass."}]}}') 'Rungs pass.' 'text step'
+Assert-Equal (Get-StepText '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__UnityMCP__manage_scene","input":{"action":"save"}}]}}') 'UnityMCP manage_scene: save' 'an MCP tool step'
+Assert-Equal (Get-StepText '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__my_db__run_query","input":{}}]}}') 'my_db run_query' 'a server name with an underscore'
 Assert-Equal (Get-StepText '{"type":"user"}') '' 'not a step'
 Assert-Equal (Get-StepText '{"type":"result","stop_reason":"end_turn"}') '' 'a turn end is not a step'
 

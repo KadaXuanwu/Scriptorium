@@ -213,7 +213,8 @@ function Get-StepText([string] $line) {
         $toolInput = $item.input
         $detail = @($toolInput.description, $toolInput.command, $toolInput.file_path, $toolInput.pattern, $toolInput.action) |
             Where-Object { $_ } | Select-Object -First 1
-        $text = "$($item.name -replace '^mcp__UnityMCP__', 'Unity ')$(if ($detail) { ': ' + (($detail -replace '\s+', ' ').Trim()) })"
+        # An MCP tool's name `mcp__<Server>__<tool>` reads `<Server> <tool>`.
+        $text = "$($item.name -replace '^mcp__(.+?)__', '$1 ')$(if ($detail) { ': ' + (($detail -replace '\s+', ' ').Trim()) })"
     } else {
         return $null
     }
