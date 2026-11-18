@@ -33,12 +33,14 @@ function Read-Models {
 
 # The ticket complexities (docs/CONFIG.md, Complexities), the one list every script and the page read: models.json's,
 # with scriptorium.json's `complexities` over them, in this order: low, medium, high, the project's own, design. Each
-# @{ name; description; models; advisor; advisorFallback; compactWindow }. A complexity of the project's own needs a
-# description; with no models it runs on medium's. Its compact window is its own, else the project's (Get-CompactWindow;
-# $settings is the PC's settings.json, where the page saves it). Throws for a missing description, a name that is no
-# label or a window that Claude Code does not take.
+# @{ name; description; models; advisor; advisorFallback; compactAt }. A complexity of the project's own needs a
+# description; with no models it runs on medium's. Its compact size (docs/CONFIG.md, The compact size) is the one
+# the owner set on the page ($settings: the PC's settings.json, `complexities.<name>.compactAt`), else its own in
+# scriptorium.json, else the project's, else models.json's. Throws for a missing description, a name that is no
+# label or a compact size out of range.
 function Get-Complexities($models, $config, $settings) {
-    $window = Get-CompactWindow $models $config $settings
+    $compactAt = ConvertTo-CompactAt $(if ($config -and $null -ne $config.compactAt) { $config.compactAt } else { $models.compactAt }) 'compactAt'
+    $paged = if ($settings -and $settings.complexities) { $settings.complexities } else { [pscustomobject]@{} }
     $base = @($models.complexities.PSObject.Properties | ForEach-Object { $_.Name })
     $changes = if ($config -and $config.complexities) { $config.complexities } else { [pscustomobject]@{} }
     $own = @($changes.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { $base -notcontains $_ })
@@ -48,7 +50,7 @@ function Get-Complexities($models, $config, $settings) {
         if ($name -cnotmatch '^[a-z0-9][a-z0-9-]*$') {
             throw "complexity '$name': lower-case letters, digits and hyphens only"
         }
-        $entry = @{ name = $name; description = ''; models = @(); advisor = $false; advisorFallback = ''; compactWindow = $window }
+        $entry = @{ name = $name; description = ''; models = @(); advisor = $false; advisorFallback = ''; compactAt = $compactAt }
         foreach ($source in @($models.complexities.$name, $changes.$name)) {
             if (-not $source) {
                 continue
@@ -65,9 +67,12 @@ function Get-Complexities($models, $config, $settings) {
             if ($source.advisorFallback) {
                 $entry.advisorFallback = [string]$source.advisorFallback
             }
-            if ($null -ne $source.compactWindow) {
-                $entry.compactWindow = ConvertTo-CompactWindow $source.compactWindow "complexity '$name'"
+            if ($null -ne $source.compactAt) {
+                $entry.compactAt = ConvertTo-CompactAt $source.compactAt "complexity '$name'"
             }
+        }
+        if ($paged.$name -and $null -ne $paged.$name.compactAt) {
+            $entry.compactAt = ConvertTo-CompactAt $paged.$name.compactAt "settings.json, complexity '$name'"
         }
         if (-not $entry.description) {
             throw "complexity '$name' in scriptorium.json needs a description"
@@ -81,32 +86,27 @@ function Get-Complexities($models, $config, $settings) {
     return $list
 }
 
-# A compact window as Claude Code takes it (docs/CONFIG.md, The compact window): whole tokens in plain digits, from
-# 100000 to 1000000. Throws for anything else: Claude Code read '250k' as its 100k minimum without a word.
-function ConvertTo-CompactWindow($value, [string] $where) {
-    if ("$value" -notmatch '^\d{6,7}$' -or [int]"$value" -lt 100000 -or [int]"$value" -gt 1000000) {
-        throw "${where}: '$value' is no compact window: write whole tokens in digits, from 100000 to 1000000"
+# A compact size (docs/CONFIG.md, The compact size): the context size at which a run compacts, in whole tokens in
+# plain digits, from 67000 to 967000, which are the windows Claude Code takes (Get-CompactWindow). Throws for
+# anything else: Claude Code read '250k' as its minimum without a word.
+function ConvertTo-CompactAt($value, [string] $where) {
+    if ("$value" -notmatch '^\d{5,6}$' -or [int]"$value" -lt 67000 -or [int]"$value" -gt 967000) {
+        throw "${where}: '$value' is no compact size: write whole tokens in digits, from 67000 to 967000"
     }
     return [int]"$value"
 }
 
-# The compact window of a run whose complexity has none of its own: the one the owner set on the page (settings.json,
-# this PC), else scriptorium.json's, else models.json's.
-function Get-CompactWindow($models, $config, $settings) {
-    $value = $models.compactWindow
-    foreach ($source in @($config, $settings)) {
-        if ($source -and $null -ne $source.compactWindow) {
-            $value = $source.compactWindow
-        }
-    }
-    return ConvertTo-CompactWindow $value 'compactWindow'
+# The window that makes Claude Code compact a run at $at tokens (CLAUDE_CODE_AUTO_COMPACT_WINDOW, from 100000 to
+# 1000000): Claude Code compacts 33000 tokens before its window (measured with Claude Code 2.1.323).
+function Get-CompactWindow([int] $at) {
+    return $at + 33000
 }
 
-# The compact window of a ticket's complexity, from the list Get-Complexities gives; medium's for a name not in it,
+# The compact size of a ticket's complexity, from the list Get-Complexities gives; medium's for a name not in it,
 # as Get-TicketComplexity counts such a ticket.
-function Get-ComplexityWindow($complexities, [string] $name) {
+function Get-ComplexityCompactAt($complexities, [string] $name) {
     $entry = @($complexities | Where-Object { $_.name -eq $name }) + @($complexities | Where-Object { $_.name -eq 'medium' })
-    return [int]$entry[0].compactWindow
+    return [int]$entry[0].compactAt
 }
 
 # A complexity's candidate models, best first, from the list Get-Complexities gives; none for a name not in it.

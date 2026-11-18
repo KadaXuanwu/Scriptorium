@@ -10,7 +10,7 @@ their pull requests. The owner talks only to the front desk and to the page.
 | Front desk | The owner's own Claude Code session in the main checkout, with the ticket skill (`.claude/skills/ticket`). It files tickets, reports the queue and passes answers on. Also any work by hand | yes |
 | Worker 1 to N | A copy of the repo (`<main>-w1`, `-w2` and on, beside the main checkout), its environment (the plugins) and its worker script. Each can be disabled (Settings, `enabled`). The page adds and removes workers ([APP.md](APP.md), Workers) | no |
 | Worker script | [worker.ps1](../worker.ps1), one for each worker. It has the plugins make the environment ready (Start), dispatches (Dispatching; the scripts share a lock, so never the same ticket twice), starts a run, and checks that it ended in a PR, a question or a pause. However a run ends, the plugins leave the environment clean (EndRun) | no |
-| Run | One headless Claude Code session that does one job in a worker's copy, with what the plugins give it (GetRun); fresh for each job. Each turn reads the whole context again, so the cost of a turn grows with the context. Claude Code compacts it 33k tokens before the compact window of the ticket's complexity: at 167k with the 200000 of `models.json` ([CONFIG.md](CONFIG.md), The compact window). A run never hands off to a fresh session: that read 24 turns again, a compaction 7. The tools no run uses are blocked (`$UnusedTools` in the worker script): 4,750 tokens less on every turn | yes |
+| Run | One headless Claude Code session that does one job in a worker's copy, with what the plugins give it (GetRun); fresh for each job. Each turn reads the whole context again, so the cost of a turn grows with the context. Claude Code compacts it at the compact size of the ticket's complexity: at 167k with the default of `models.json` ([CONFIG.md](CONFIG.md), The compact size). A run never hands off to a fresh session: that read 24 turns again, a compaction 7. The tools no run uses are blocked (`$UnusedTools` in the worker script): 4,750 tokens less on every turn | yes |
 | Page | [APP.md](APP.md): one web page on the owner's PC and phone with each worker's status and tickets, the questions for the owner, the queue with what is left, and the accounts with their stop lines; ntfy pushes | no |
 | Merger | [merge.ps1](../merge.ps1): squash-merges every worker PR that GitHub can merge, oldest first. It labels a conflicting one `needs-rebase`, and one with an owner's comment that its run never marked read `answered`, for its worker ([comments.ps1](../comments.ps1)). It files a merged PR's follow-ups and open questions, each with its generation, a soft cap from 2 ([followup.ps1](../followup.ps1)) | no |
 
@@ -80,7 +80,7 @@ More rules:
   a run seldom reaches the stop line. Defaults: S 90 %, M 75 %, L 50 %. The week has none: there only the ceiling holds
   a new ticket back.
 - **Complexity switches:** the owner switches a complexity off and on for each worker (Settings,
-  `workers.<id>.complexity`; the worker's Takes menu). Off: that worker takes no new ticket of it, forced or not, and the
+  `workers.<id>.complexity`; the worker's Config). Off: that worker takes no new ticket of it, forced or not, and the
   answers and rebases of its PRs of it wait. A ticket already started goes on, also a held run that resumes. The test is
   `Test-ComplexityOff` ([limits.ps1](../limits.ps1)), the same for the workers and the page.
 - **Fits:** an account takes a new ticket while its 5-hour usage is under the pick-up limit of the ticket's size and
@@ -184,8 +184,9 @@ the next. Setup writes a first one.
 - `keep`: the share of a whole week that each human use's usage guard holds on its account, for example
   `{ "frontdesk": 0.1, "personal": 0.15 }` (the defaults). The guard keeps the part of it for the time left; 0 keeps
   nothing. The page's guard sliders set it.
-- `compactWindow`: the compact window of the runs on this PC, over `scriptorium.json`'s ([CONFIG.md](CONFIG.md), The
-  compact window). A complexity with a window of its own keeps it. The page's Workers tab sets it.
+- `complexities.<name>.compactAt`: the compact size of a complexity's runs on this PC, for example
+  `{ "design": { "compactAt": 250000 } }`, over `scriptorium.json`'s ([CONFIG.md](CONFIG.md), The compact size). It is
+  the same for every worker. A worker's Config sets it.
 - `model`: overrides the complexities' models for every run, or one worker's in `workers.<id>`: a full id, at its
   effort in `models.json` (xhigh if it is not listed). Left out: the complexity picks.
 - `ghConfigDir`: a `gh` login folder (`GH_CONFIG_DIR`) signed in as a GitHub bot account for the worker. Its comments,
@@ -197,7 +198,7 @@ the next. Setup writes a first one.
 - `ntfy.topic`, `ntfy.server`: the page's pushes ([APP.md](APP.md), Notifications).
 - `workers.<id>`: `model` or `ghConfigDir` for that worker only, `enabled`, `assignedOnly` and `complexity`.
 - `workers.<id>.complexity`: the worker's complexity switches, for example `{ "design": false }`: it takes no ticket of
-  a complexity set to false (Dispatching). Left out: every complexity is on. The worker's Takes menu sets it.
+  a complexity set to false (Dispatching). Left out: every complexity is on. The worker's Config sets it.
 - `workers.<id>.assignedOnly: true` keeps a worker to the tickets labelled `worker:<id>` and their PRs: no worker gives
   it a new ticket, and it takes none. The front desk labels the ticket.
 - `workers.<id>.enabled: false` disables a worker, for example one whose borrowed account is gone. The page's worker

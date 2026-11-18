@@ -327,7 +327,6 @@ function Update-Snapshot {
         usage = Read-Json (Join-Path $mainQueue 'usage.json'); out = Read-Json (Join-Path $mainQueue 'out.json'); settings = $saved
         runs = Read-Runs; gh = $script:gh; appUrl = $appUrl; dispatch = Read-Json (Join-Path $mainQueue 'dispatch.json')
         logins = @{}; login = Get-LoginView; complexities = Get-Complexities (Read-Models) $config $saved; plugins = $plugins
-        compactWindow = Get-CompactWindow (Read-Models) $config $saved
     }
     if ($data.settings -and $data.settings.accounts) {
         foreach ($property in $data.settings.accounts.PSObject.Properties) {
@@ -526,13 +525,24 @@ function Invoke-Action($request) {
             Save-Settings $settings
             return "keep: $use $value"
         }
-        'compact-window' {
-            # The compact window of the runs on this PC (docs/CONFIG.md, The compact window).
-            $window = ConvertTo-CompactWindow $request.value 'compactWindow'
+        'compact-at' {
+            # The compact size of a complexity's runs on this PC (docs/QUEUE.md, Settings,
+            # `complexities.<name>.compactAt`).
+            $name = [string]$request.complexity
+            if (@(Get-Complexities (Read-Models) $config | ForEach-Object { $_.name }) -cnotcontains $name) {
+                throw "no complexity $name"
+            }
+            $at = ConvertTo-CompactAt $request.value 'compactAt'
             $settings = Read-SettingsToEdit
-            $settings | Add-Member -NotePropertyName compactWindow -NotePropertyValue $window -Force
+            if (-not $settings.complexities) {
+                $settings | Add-Member -NotePropertyName complexities -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            if (-not $settings.complexities.$name) {
+                $settings.complexities | Add-Member -NotePropertyName $name -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            $settings.complexities.$name | Add-Member -NotePropertyName compactAt -NotePropertyValue $at -Force
             Save-Settings $settings
-            return "compact window: $window"
+            return "compact at: $name $at"
         }
         'login' {
             # An account new to the register gets its own config folder, ~/.claude-<name>.

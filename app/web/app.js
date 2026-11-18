@@ -16,6 +16,7 @@ const busyClass = (key) => (ops.has(key) ? ' busy' : '');
 const busyAttr = (key) => (ops.has(key) ? ' inert aria-busy="true"' : '');
 const workerOf = (s, id) => s.workers.find((w) => w.id === id);
 const accountOf = (s, name) => s.accounts.find((a) => a.name === name);
+const complexityOf = (s, name) => (s.complexities || []).find((c) => c.name === name);
 const rowOf = (s, number) => [...s.queued, ...s.parked].find((row) => row.number === number);
 
 // Redraws a list only when it changed and holds no field in use, so typing, the phone keyboard and open folds
@@ -181,14 +182,10 @@ function workerCard(worker) {
     class="${worker.status === s ? 'on' : ''}${worker.pending?.to === s ? ' pending' : ''}"${worker.status === s ? ` style="view-transition-name:seg-${id}"` : ''}>${icon(statusIcons[s])}<span>${statusNames[s]}</span></button>`).join('');
   const pending = worker.pending ? `<div class="pending-note">${pendingVerbs[worker.pending.to]} ${howNames[worker.pending.how]}</div>` : '';
 
-  // The complexity switches of the worker (docs/QUEUE.md, Settings, `workers.<id>.complexity`): a menu with one for
-  // each ticket complexity and the model its runs use. Off: the worker takes no new ticket of it and leaves the
-  // answers and rebases of its PRs of it (`jobs`) until it is on again.
+  // Config opens the worker's config (drawConfig). Its button counts the complexities the worker takes while one is off.
   const all = worker.takes || [];
   const on = all.filter((t) => t.on).length;
-  const takes = `<details class="menu" data-key="takes-${id}"><summary aria-label="Tickets worker ${id} takes">${icon('queue')}Takes ${on}/${all.length}</summary>
-      <div class="pop">${all.map((t) => `<button class="take${t.on ? ' on' : ''}" data-take="${esc(t.name)}" data-worker="${id}" aria-pressed="${t.on}">
-        ${icon(t.on ? 'check' : 'lock')}<span><b>${esc(t.name)}</b><small>${esc(modelName(t.model))}${t.effort ? ` · ${esc(t.effort)}` : ''}${!t.on && t.jobs ? ` · holds ${t.jobs} PR job${t.jobs === 1 ? '' : 's'}` : ''}</small></span></button>`).join('')}</div></details>`;
+  const config = `<button class="config-open" data-config="${id}" aria-label="Config of worker ${id}">${icon('config')}Config${on < all.length ? ` <small>${on}/${all.length}</small>` : ''}</button>`;
 
   const accounts = state.accounts || [];
   const options = accounts.map((a) => `<option value="${esc(a.name)}"${a.name === worker.account ? ' selected' : ''}>${esc(a.name)}${outMark[a.status] || ''}</option>`);
@@ -202,9 +199,26 @@ function workerCard(worker) {
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
     <div class="worker-tools"><label>${icon('accounts')}<select data-assign="${id}" aria-label="Account of worker ${id}">${options.join('')}</select></label>
-      ${takes}<button data-steps="${id}">${icon('steps')}Steps</button></div>
+      ${config}<button data-steps="${id}">${icon('steps')}Steps</button></div>
     <div class="slot now"><span class="slot-label">Now</span><div class="slot-body">${now}</div></div>
     <div class="slot next"><span class="slot-label">Next</span><div class="slot-body">${nextBody}</div>${force}</div></article>`;
+}
+
+// A worker's config, the dialog its Config button opens: a row for each complexity with the model and effort of its
+// runs. The switch (docs/QUEUE.md, Settings, `workers.<id>.complexity`) is this worker's: off, it takes no new ticket
+// of the complexity and leaves the answers and rebases of its PRs of it (`jobs`) until it is on again. The compact
+// size (`complexities.<name>.compactAt`) is the same for every worker.
+let configOf = null;
+function drawConfig() {
+  const worker = workerOf(state, configOf);
+  if (!worker) { $('config').close(); return; }
+  const id = esc(worker.id);
+  $('config-title').textContent = `Worker ${worker.id}: config`;
+  put($('config-body'), `<table class="config"><thead><tr><th>Worker ${id} takes</th><th>Compacts near <small>all workers</small></th></tr></thead>
+    <tbody>${(worker.takes || []).map((t) => `<tr><td><button class="take${t.on ? ' on' : ''}" data-take="${esc(t.name)}" data-worker="${id}" aria-pressed="${t.on}">
+        ${icon(t.on ? 'check' : 'lock')}<span><b>${esc(t.name)}</b><small>${esc(modelName(t.model))}${t.effort ? ` · ${esc(t.effort)}` : ''}${!t.on && t.jobs ? ` · holds ${t.jobs} PR job${t.jobs === 1 ? '' : 's'}` : ''}</small></span></button></td>
+      <td><label class="compact"><input type="number" inputmode="numeric" min="67" max="967" step="1" value="${Math.round(complexityOf(state, t.name).compactAt / 1000)}"
+        data-compact="${esc(t.name)}" aria-label="Thousands of tokens at which a ${esc(t.name)} run compacts its context">k tokens</label></td></tr>`).join('')}</tbody></table>`);
 }
 
 // ---- Questions
@@ -389,9 +403,6 @@ function infoLimits(a) {
   return `<h3>${esc(a.name)}${who ? ` <span class="sub">${esc(who)}</span>` : ''}</h3>${items(lines)}`;
 }
 
-// Claude Code compacts a context this many tokens before its compact window (docs/CONFIG.md, The compact window).
-const COMPACT_BUFFER = 33000;
-
 // The project's environment in words: its plugins' titles, '' for a plain git repo.
 const environment = (s) => inWords((s.plugins || []).map((p) => esc(p.title || p.name)));
 
@@ -436,13 +447,18 @@ function info(s) {
     }))}
       <p>Active takes tickets. Paused takes none and keeps its ticket. Disabled takes none, and other workers take its
         ticket. Force (the arrow on Next) gives a free worker its next ticket now, past the limits.</p>
-      <p>A worker's Takes menu shows the model of each complexity for that worker, where the settings change it.</p>`),
+      <p>A worker's ${setting('Config', 'workers')} sets what it takes. It shows the model of each complexity for that
+        worker, where the settings change it.</p>`),
     section('Complexities', `<p>The complexity of a ticket chooses the model. The size (S, M, L) only says how much usage
       it takes. A ticket with no complexity label is medium.</p>
-      ${items((s.complexities || []).map((c) => `<b>${esc(c.name)}</b> (${esc(c.description || c.name)}): ${esc(modelName(c.model))},
-        ${esc(c.effort)} effort${c.advisor ? `, with ${esc(modelName(c.advisor))} as advisor${c.advisorFallback
-          ? `; ${esc(c.advisorFallback)} effort while the advisor is not there` : ''}` : ''}. Its context is
-        compacted near ${setting(`${Math.round((c.compactWindow - COMPACT_BUFFER) / 1000)}k tokens`, 'workers')}.`))}
+      <div class="scroll"><table><thead><tr><th>Complexity</th><th>For</th><th>Model</th><th>Effort</th><th>Advisor</th><th>Compacts near</th></tr></thead>
+        <tbody>${(s.complexities || []).map((c) => `<tr><th scope="row">${esc(c.name)}</th><td>${esc(c.description || c.name)}</td>
+          <td>${esc(modelName(c.model))}</td><td>${esc(c.effort)}</td>
+          <td>${c.advisor ? `${esc(modelName(c.advisor))}${c.advisorFallback ? `<small>${esc(c.advisorFallback)} effort without it</small>` : ''}` : 'None'}</td>
+          <td>${setting(`${Math.round(c.compactAt / 1000)}k&nbsp;tokens`, 'workers')}</td></tr>`).join('')}</tbody></table></div>
+      <p>Compacts near: when the context of a run reaches this size, Claude Code replaces the older part with a summary.
+        A larger size keeps more of the work in view and uses more for each turn. A worker's ${setting('Config', 'workers')}
+        sets it for all workers, from the next run.</p>
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
         not see the advice. A run keeps its advisor to its end; past the Fable advisor line (Limits), new runs start
         without one.</p>` : ''}`),
@@ -477,7 +493,7 @@ function info(s) {
         GitHub as a comment, and the page changes the labels for you. GitHub builds and tests nothing: the run's own tests
         are the check.</p>`),
     section('The tabs', items([
-      `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account and Takes. The last tile adds a worker; the cross on a card removes a disabled worker, and its copy of the project stays on the PC.`,
+      `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account and Config. The last tile adds a worker; the cross on a card removes a disabled worker, and its copy of the project stays on the PC.`,
       `${setting('Accounts', 'accounts')}: usage and the limits above; drag a handle to move one. The last tile adds an account and signs it in; the cross on a card removes an account that nothing uses.`,
       `${setting('Questions', 'questions')}: decisions for you, blocking first.`,
       `${setting('Queue', 'queue')}: Up next with why each ticket waits, Stuck, On hold and Parked.`,
@@ -514,13 +530,7 @@ function render() {
   put($('all-buttons'), `<button data-status="active" data-worker="all">${icon('play')}All active</button>
     <button data-status="paused" data-worker="all">${icon('pause')}Pause all</button>`);
   put($('worker-list'), (s.workers.map(workerCard).join('') || quiet('No worker has reported yet.')) + addTile('worker', 'Add a worker'));
-  // Where a run's context is compacted (docs/CONFIG.md, The compact window): the field takes that size in thousands
-  // of tokens, and the server gets the window, which is the buffer larger.
-  put($('run-settings'), s.compactWindow ? `<label class="compact">Runs compact their context near
-    <input type="number" inputmode="numeric" min="${(100000 - COMPACT_BUFFER) / 1000}" max="${(1000000 - COMPACT_BUFFER) / 1000}" step="1"
-      value="${Math.round((s.compactWindow - COMPACT_BUFFER) / 1000)}" data-compact="" aria-label="Thousands of tokens at which a run compacts its context">
-    k tokens</label><p class="hint">Claude Code then replaces the older part with a summary. A larger size keeps more of the work in
-    view and uses more for each turn. It applies from the next run.</p>` : '');
+  if ($('config').open) drawConfig();
 
   // An answer being typed survives a redraw of its list.
   const typed = {};
@@ -803,8 +813,6 @@ const answer = (key, text) => act({ action: 'answer', key, text }, {
 });
 
 document.addEventListener('click', async (e) => {
-  // A click outside an open menu closes it.
-  for (const menu of document.querySelectorAll('details.menu[open]')) if (!menu.contains(e.target)) menu.removeAttribute('open');
   const target = e.target.closest('button');
   if (!target) return;
   const data = target.dataset;
@@ -858,6 +866,10 @@ document.addEventListener('click', async (e) => {
     await (data.add === 'worker' ? addWorker() : addAccount());
   } else if (data.remove) {
     await (data.remove === 'worker' ? removeWorker(data.name) : removeAccount(data.name));
+  } else if (data.config) {
+    configOf = data.config;
+    drawConfig();
+    $('config').showModal();
   } else if (data.steps) {
     $('steps-title').textContent = `Worker ${data.steps}: latest run`;
     $('steps-list').innerHTML = '<li>Loading...</li>';
@@ -1047,22 +1059,20 @@ document.addEventListener('change', async (e) => {
       keys: [`account:${data.account}`],
       apply: (s) => { accountOf(s, data.account)[data.window].pickUp[data.pick] = value; },
     });
-  } else if (data.compact !== undefined) {
+  } else if (data.compact) {
+    // The compact size of a complexity (drawConfig): typed in thousands of tokens, saved in tokens.
     e.target.blur();
-    const value = Math.round(Number(e.target.value)) * 1000 + COMPACT_BUFFER;
-    if (!(value >= 100000 && value <= 1000000)) {
+    const name = data.compact;
+    const value = Math.round(Number(e.target.value));
+    if (!(value >= e.target.min && value <= e.target.max)) {
       toast(`Between ${e.target.min}k and ${e.target.max}k tokens`);
-      e.target.value = Math.round((state.compactWindow - COMPACT_BUFFER) / 1000);
+      e.target.value = Math.round(complexityOf(state, name).compactAt / 1000);
       return;
     }
-    await act({ action: 'compact-window', value }, {
-      keys: ['compact'],
-      apply: (s) => {
-        // A complexity with a window of its own keeps it.
-        for (const c of s.complexities || []) if (c.compactWindow === s.compactWindow) c.compactWindow = value;
-        s.compactWindow = value;
-      },
-      done: (s) => s.compactWindow === value,
+    await act({ action: 'compact-at', complexity: name, value: value * 1000 }, {
+      keys: [`compact:${name}`],
+      apply: (s) => { complexityOf(s, name).compactAt = value * 1000; },
+      done: (s) => complexityOf(s, name).compactAt === value * 1000,
     });
   } else if (data.guard) {
     e.target.blur();

@@ -65,9 +65,15 @@ error is in Now), or Script silent (its state file is older than 15 minutes: the
 works). When its account is out, the line names the cause and the next test: Account signed out, Subscription refused
 or Runs do not start.
 
-**Takes,** beside Steps: a menu with the worker's complexity switches, one for each complexity with the model and effort
-of its runs. Press one to switch it off or on again (`workers.<id>.complexity`). Off: this worker takes no new ticket of
-that complexity and leaves the answers and rebases of its PRs of it. A ticket already started goes on.
+**Config,** beside Steps, opens the worker's config: a dialog with a row for each complexity, which shows the model and
+effort of its runs. Each change saves at once.
+
+- **The switch** is this worker's (`workers.<id>.complexity`). Press it to switch the complexity off or on again. Off:
+  this worker takes no new ticket of that complexity and leaves the answers and rebases of its PRs of it. A ticket
+  already started goes on. While a complexity is off, the Config button counts the ones the worker takes.
+- **Compacts near** is the compact size of the complexity in thousands of tokens ([CONFIG.md](CONFIG.md), The compact
+  size). It is the same for every worker, is saved for this PC (`complexities.<name>.compactAt`) and applies from the
+  next run. The Info tab shows it for each complexity.
 
 Each card has two slots:
 
@@ -97,11 +103,6 @@ first, in the page's one dialog.
 - **Remove** takes only a disabled worker with no run in flight (`Get-RemoveRefusal`). The server ends its task and its
   loop (`Uninstall-Worker`), then deletes its state and force files, its settings entry, its control entries and its
   place in each account's uses. Its copy stays: it may hold work that no checkpoint pushed.
-
-**The compact size.** Under the cards, one field says near how many thousand tokens a run compacts its context. The
-page saves it as the compact window of this PC, which is Claude Code's 33k buffer larger ([CONFIG.md](CONFIG.md), The
-compact window), and it applies from the next run. A complexity with a window of its own keeps it; the Info tab
-shows where each compacts.
 
 ### Questions
 
@@ -170,7 +171,7 @@ Recent merges in every repo; recent runs with model, duration and cost.
 ### Info
 
 What the queue does and what to expect, for someone who does not know it, in plain sections: In short, What needs you,
-How a ticket goes through, Who builds what, Complexities (the model, effort and advisor of each complexity, the
+How a ticket goes through, Who builds what, Complexities (a table with the model, effort, advisor and compact size of each complexity, the
 project's own among them), Plugins (each active plugin's title, version and description, or "None: a plain git repo"),
 Limits, In the background, GitHub and The tabs. Each value the owner sets links to the tab that sets it. Every setting
 and reading comes from the snapshot; none is typed into the text, and no environment is named in it. **A change to a

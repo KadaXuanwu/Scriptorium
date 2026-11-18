@@ -837,7 +837,7 @@ function New-Snapshot($data) {
         # The advisor rule (models.json `advisor`, docs/QUEUE.md, Models), for the Info tab.
         advisor = Get-AdvisorRule $models $complexities
         # Every complexity with its description, models, the first one's model and effort, its advisor and its compact
-        # window.
+        # size.
         complexities = @($complexities | ForEach-Object {
             $model, $effort = ([string]@($_.models)[0]) -split '@'
             if (-not $effort) {
@@ -846,10 +846,8 @@ function New-Snapshot($data) {
             $rule = Get-AdvisorRule $models @($_)
             @{ name = $_.name; description = $_.description; models = @($_.models); model = $model; effort = $effort
                 advisor = $(if ($rule.complexities.Count) { $rule.model } else { '' }); advisorFallback = $_.advisorFallback
-                compactWindow = $_.compactWindow }
+                compactAt = $_.compactAt }
         })
-        # The compact window of a run whose complexity has none of its own, which the Workers tab sets.
-        compactWindow = $data.compactWindow
         # The project's plugins (name, title, version, description) for the Info tab: none for a plain git repo.
         plugins = @($data.plugins | Where-Object { $_ } | ForEach-Object {
             @{ name = $_.Name; title = $_.Title; version = $_.Version; description = $_.Description }

@@ -13,6 +13,6 @@
     "design": { "description": "The worker finds the shape of the solution, and the choice stays", "models": ["claude-fable-5-2@high"] }
   },
   "afterFable": "claude-opus-5-5@xhigh",
-  "compactWindow": 200000,
+  "compactAt": 167000,
   "advisor": { "model": "claude-fable-5-2" }
 }

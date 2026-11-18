@@ -53,8 +53,8 @@ $accessFile = Join-Path $mainQueueDir 'access.json'
 # Forced from the queue app: the next job starts past the area, room and ceiling checks; the run ending clears it.
 $forceFile = Join-Path $mainQueueDir "force-$Id.json"
 New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir | Out-Null
-# Every turn reads the whole context again, so Claude Code compacts a run's context: 33k tokens before the compact
-# window of the job's complexity, which Invoke-Worker sets for each run (docs/CONFIG.md, The compact window). A run
+# Every turn reads the whole context again, so Claude Code compacts a run's context at the compact size of the job's
+# complexity, which Invoke-Worker sets for each run (docs/CONFIG.md, The compact size). A run
 # never hands off to a fresh session: that cost 24 turns of reading, a compaction 7.
 # Tools no run used in 631 logs; without them every turn reads 4,750 tokens less.
 $UnusedTools = 'Task,CronCreate,CronDelete,CronList,DesignSync,EnterWorktree,ExitWorktree,ListAgents,NotebookEdit,' +
@@ -614,7 +614,7 @@ function Get-Out([string] $configDir) {
 }
 
 # The ticket complexities (project.ps1, Get-Complexities): models.json's with the project's over them, and the
-# compact window the owner set on the page.
+# compact sizes the owner set on the page.
 function Get-ProjectComplexities {
     return Get-Complexities (Read-Models) $config (Read-Settings)
 }
@@ -1177,13 +1177,14 @@ function Invoke-Worker($job, [string] $log, $paused) {
     }
     $previousAdvisor = Use-Advisor $advisor
     # What the run's process takes from this script's environment: what the plugins set (docs/PLUGINS.md, GetRun), then
-    # the compact window of the job's complexity, in plain digits (docs/CONFIG.md, The compact window).
+    # the window that compacts the run at the compact size of the job's complexity (docs/CONFIG.md, The compact size).
     $variables = @{}
     foreach ($name in @($given.Env.Keys)) {
         $variables[$name] = $given.Env[$name]
     }
-    $variables['CLAUDE_CODE_AUTO_COMPACT_WINDOW'] = [string](Get-ComplexityWindow (Get-ProjectComplexities) $job.Complexity)
-    Write-Log "compact window: $($variables['CLAUDE_CODE_AUTO_COMPACT_WINDOW'])"
+    $compactAt = Get-ComplexityCompactAt (Get-ProjectComplexities) $job.Complexity
+    $variables['CLAUDE_CODE_AUTO_COMPACT_WINDOW'] = [string](Get-CompactWindow $compactAt)
+    Write-Log "compacts at $compactAt"
     $previousVariables = @{}
     foreach ($name in @($variables.Keys)) {
         $previousVariables[$name] = [Environment]::GetEnvironmentVariable($name)

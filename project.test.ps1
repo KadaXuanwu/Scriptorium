@@ -53,8 +53,8 @@ try {
 . (Join-Path $PSScriptRoot 'limits.ps1')
 . (Join-Path $PSScriptRoot 'app\state.ps1')
 $models = Read-Models
-$own = '{ "name": "App", "compactWindow": 250000, "complexities": { "medium": { "models": ["claude-sonnet-5-5@high"] },
-    "review": { "description": "A second look at a change", "models": ["claude-opus-5-5@high"], "advisor": true, "advisorFallback": "xhigh", "compactWindow": 400000 },
+$own = '{ "name": "App", "compactAt": 250000, "complexities": { "medium": { "models": ["claude-sonnet-5-5@high"] },
+    "review": { "description": "A second look at a change", "models": ["claude-opus-5-5@high"], "advisor": true, "advisorFallback": "xhigh", "compactAt": 400000 },
     "tidy": { "description": "Small cleanups" } } }' | ConvertFrom-Json
 $list = Get-Complexities $models $own
 Assert-Equal (($list | ForEach-Object { $_.name }) -join ',') 'low,medium,high,review,tidy,design' 'the project''s own between high and design'
@@ -82,18 +82,25 @@ Assert-Equal "$($review.description)|$($review.model)|$($review.effort)|$($revie
 $threw = $false
 try { Get-Complexities $models ('{ "complexities": { "art": { "models": ["x"] } } }' | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'a complexity of the project''s own needs a description'
-# The compact window: the complexity's own, else the project's, else models.json's; a name not in the list has medium's.
-Assert-Equal "$(Get-ComplexityWindow $list 'low') $(Get-ComplexityWindow $list 'review') $(Get-ComplexityWindow $list 'none')" '250000 400000 250000' 'the project''s window, a complexity''s own, medium''s for no complexity'
-Assert-Equal (Get-ComplexityWindow (Get-Complexities $models $null) 'design') 200000 'models.json''s window with no config'
-# The page's window (settings.json) goes over the project's, and a complexity's own stays.
-$paged = Get-Complexities $models $own ('{ "compactWindow": 283000 }' | ConvertFrom-Json)
-Assert-Equal "$(Get-ComplexityWindow $paged 'low') $(Get-ComplexityWindow $paged 'review') $(Get-CompactWindow $models $own $null)" '283000 400000 250000' 'the page''s window over the project''s'
-Assert-Equal $review.compactWindow 400000 'the page gets each window'
-# Only what Claude Code takes: it read '250k' as its 100k minimum without a word.
-foreach ($bad in '"250k"', '99999', '"099999"', '1000001', '250000.5', '""') {
+# The compact size: the complexity's own, else the project's, else models.json's; a name not in the list has medium's.
+Assert-Equal "$(Get-ComplexityCompactAt $list 'low') $(Get-ComplexityCompactAt $list 'review') $(Get-ComplexityCompactAt $list 'none')" '250000 400000 250000' 'the project''s compact size, a complexity''s own, medium''s for no complexity'
+Assert-Equal (Get-ComplexityCompactAt (Get-Complexities $models $null) 'design') 167000 'models.json''s compact size with no config'
+# The page's size for a complexity (settings.json) goes over the project's and over the complexity's own; one for
+# a name not in the list changes nothing.
+$paged = Get-Complexities $models $own ('{ "complexities": { "review": { "compactAt": 90000 }, "low": { "compactAt": 300000 }, "gone": { "compactAt": 1 } } }' | ConvertFrom-Json)
+Assert-Equal "$(Get-ComplexityCompactAt $paged 'low') $(Get-ComplexityCompactAt $paged 'review') $(Get-ComplexityCompactAt $paged 'high')" '300000 90000 250000' 'the page''s compact size over the project''s'
+Assert-Equal $review.compactAt 400000 'the page gets each compact size'
+# Claude Code gets the window that compacts there: 33k more.
+Assert-Equal (Get-CompactWindow 250000) 283000 'the window of a compact size'
+# Only what makes a window Claude Code takes (100k to 1M): it read '250k' as its minimum without a word.
+Assert-Equal "$(ConvertTo-CompactAt 67000 'x') $(ConvertTo-CompactAt '967000' 'x')" '67000 967000' 'the ends of the range'
+foreach ($bad in '"250k"', '66999', '967001', '250000.5', '""') {
     $threw = $false
-    try { Get-Complexities $models ("{ `"compactWindow`": $bad }" | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
-    Assert-Equal $threw $true "no compact window: $bad"
+    try { Get-Complexities $models ("{ `"compactAt`": $bad }" | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
+    Assert-Equal $threw $true "no compact size: $bad"
 }
+$threw = $false
+try { Get-Complexities $models $null ('{ "complexities": { "low": { "compactAt": 5 } } }' | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
+Assert-Equal $threw $true 'a bad compact size in settings.json stops the scripts'
 
 Write-Output 'ok'
