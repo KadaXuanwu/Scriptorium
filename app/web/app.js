@@ -292,7 +292,8 @@ function drawConfigOf(worker) {
 // there. A pick that is not the base's shows the base's under it. Each field has a fallback for an older snapshot.
 const pickList = (list, value, label) => [...new Set([...list, value])].filter(Boolean)
   .map((v) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label(v))}</option>`).join('');
-const fallbackName = (effort) => (effort ? `${effort} without it` : 'same effort without it');
+// At most 17 letters: a phone cuts a longer entry in its list (168 px wide at 375 px).
+const fallbackName = (effort) => `${effort || 'same'} without it`;
 
 function complexityRow(c) {
   const name = esc(c.name);

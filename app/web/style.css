@@ -140,7 +140,7 @@ main { min-width: 0; min-height: 0; display: flex; flex-direction: column; paddi
 }
 .grid > .card { margin: 0; }
 
-/* Info: the rules in short, plain sections with no cards, in a column narrow enough to read.
+/* Details, the info: the rules in short, plain sections with no cards, in a column narrow enough to read.
    A setting is a link to its tab. */
 .info { max-width: 760px; font-size: 14px; line-height: 1.5; }
 .info section + section { margin-top: 28px; }
@@ -245,7 +245,7 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 }
 /* A card whose action the server has not confirmed yet: a turning ring at the right end of its head line (of a row:
    in the place of its control), inside the card, and its controls greyed. */
-.card.busy > :first-child::after, .row.busy::after {
+.card.busy > :first-child::after, .row.busy::after, .settings-head.busy::after, .config-row.busy > .config-name:first-child::after {
   content: "";
   width: 20px;
   height: 20px;
@@ -263,6 +263,8 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 .row.busy { position: relative; }
 .row.busy::after { position: absolute; right: 0; top: calc(50% - 10px); }
 .row.busy > :is(button, select) { visibility: hidden; }
+/* A row of Details: the ring goes under the name, where no control stands. */
+.config-row.busy > .config-name:first-child::after { display: block; margin: 4px 0 0; }
 /* The account's status chip already sits at the right end: the ring goes beside it. */
 .account.busy > :first-child::after { margin-left: 0; }
 .busy :is(button, select, textarea, input) { opacity: 0.45; }
