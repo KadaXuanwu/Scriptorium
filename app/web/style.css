@@ -201,6 +201,8 @@ option { background: var(--card); color: var(--ink); font-weight: 600; }
   select, ::picker(select) { appearance: base-select; }
   select { display: inline-flex; align-items: center; gap: 6px; }
   select::picker-icon { color: var(--muted); }
+  /* A select that cannot open now shows no arrow. */
+  select:disabled::picker-icon { display: none; }
   ::picker(select) { margin-block: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); }
   option { padding: 6px 12px; border-radius: 8px; font-size: 14px; }
   option:hover, option:focus-visible { background: var(--raised); outline: none; }
