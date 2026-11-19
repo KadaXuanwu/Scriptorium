@@ -661,9 +661,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 .who select.badge:disabled { cursor: default; }
 /* Under a finger it is 30px high. */
 @media (pointer: coarse) { .who select.badge { min-height: 30px; } }
-/* The project of the Queue (app.js, render): all of them or one, in a select. One project gives it the project's mark. */
-#queue-projects:empty { display: none; }
-#queue-projects select.of { border-color: transparent; background: color-mix(in srgb, var(--of) 20%, transparent); color: color-mix(in srgb, var(--of) 65%, var(--ink)); }
+/* The project of the Queue and History (app.js, render): all of them or one, in a select. One project gives it the
+   project's mark. As high as the title's line also under a finger, so the header is as high as on the other tabs. */
+.projects:empty { display: none; }
+.projects select { min-height: 36px; }
+.projects select.of { border-color: transparent; background: color-mix(in srgb, var(--of) 20%, transparent); color: color-mix(in srgb, var(--of) 65%, var(--ink)); }
 #offline, #notice {
   margin: 12px 28px 0;
   padding: 10px 14px;
@@ -703,11 +705,11 @@ body.offline .view button, body.offline .view select, body.offline .view textare
   .brand { display: none; }
   nav a { flex: 1; }
   h1 { font-size: 20px; }
-  .view > header { padding: 14px 16px 10px; }
-  .pane { padding: 2px 16px 20px; scrollbar-gutter: auto; }
+  .view > header { padding: 14px 10px 10px; }
+  .pane { padding: 2px 10px 20px; scrollbar-gutter: auto; }
   .split, .split.wide { display: block; overflow-y: auto; overscroll-behavior: contain; }
-  .split > .pane, .split > .pane + .pane { overflow: visible; padding: 2px 16px 4px; }
-  #offline, #notice { margin: 12px 16px 0; }
+  .split > .pane, .split > .pane + .pane { overflow: visible; padding: 2px 10px 4px; }
+  #offline, #notice { margin: 12px 10px 0; }
   #toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
 }
 /* A phone: the header's buttons do not fit beside the title, so they take a line of their own, each as wide as the

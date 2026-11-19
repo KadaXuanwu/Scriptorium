@@ -643,10 +643,10 @@ function count(id, n, hot) {
 
 const quiet = (text) => `<div class="quiet">${text}</div>`;
 
-// The Queue shows every project ('') or the one its select names; the choice stays on the device.
+// The Queue and History show every project ('') or the one their select names: one choice for both, kept on the device.
 const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ } };
 const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
-let queueOf = kept('scriptorium-queue') || '';
+let shownOf = kept('scriptorium-queue') || '';
 
 function render() {
   const s = states[home];
@@ -686,14 +686,16 @@ function render() {
 
   // The Queue: every project in one list, or one project (its select). A project's own order stays; between the
   // projects the priority decides.
-  if (!names.includes(queueOf)) queueOf = '';
-  const shown = ({ p }) => !queueOf || p === queueOf;
+  if (!names.includes(shownOf)) shownOf = '';
+  const shown = ({ p }) => !shownOf || p === shownOf;
+  // The select of a tab: All and each project, each with the count of its items in `list`.
+  const projectPick = (label, list) => (names.length > 1 ? `<select data-shown${shownOf ? ` class="of" style="--of:${colorOf(shownOf)}"` : ''} aria-label="${label}">${
+    [['', 'All'], ...names.map((p) => [p, p])].map(([value, text]) => `<option value="${esc(value)}"${shownOf === value ? ' selected' : ''}>${esc(text)} · ${
+      list.filter(({ p }) => !value || p === value).length}</option>`).join('')}</select>` : '');
   const rank = ({ item }) => (['P0', 'P1', 'P2'].indexOf(item.priority) + 4) % 4;
   const queued = all('queued');
-  put($('queue-projects'), names.length > 1 ? `<select data-queue${queueOf ? ` class="of" style="--of:${colorOf(queueOf)}"` : ''} aria-label="The project of the queue">${
-    [['', 'All'], ...names.map((p) => [p, p])].map(([value, label]) => `<option value="${esc(value)}"${queueOf === value ? ' selected' : ''}>${esc(label)} · ${
-      queued.filter(({ p }) => !value || p === value).length}</option>`).join('')}</select>` : '');
-  const left = names.filter((p) => !queueOf || p === queueOf).map((p) => states[p].left)
+  put($('queue-projects'), projectPick('The project of the queue', queued));
+  const left = names.filter((p) => !shownOf || p === shownOf).map((p) => states[p].left)
     .reduce((sum, l) => ({ count: sum.count + l.count, seconds: sum.seconds + l.seconds, cost: sum.cost + l.cost }), { count: 0, seconds: 0, cost: 0 });
   put($('queue-stats'), left.count ? `<span><b>${left.count}</b> tickets</span>
     ${left.seconds ? `<span><b>≈ ${Math.round(left.seconds / 3600)} h</b> of runs</span>` : ''}
@@ -715,8 +717,10 @@ function render() {
   });
   if (code && $('login-code')) $('login-code').value = code;
 
-  put($('merged-list'), drawEach(all('merged').sort((a, b) => new Date(b.item.mergedAt) - new Date(a.item.mergedAt)), mergedRow) || quiet('None yet.'));
-  put($('run-list'), drawEach(all('runs').sort((a, b) => b.item.at - a.item.at), runRow) || quiet('None yet.'));
+  const merged = all('merged');
+  put($('history-projects'), projectPick('The project of the history', merged));
+  put($('merged-list'), drawEach(merged.filter(shown).sort((a, b) => new Date(b.item.mergedAt) - new Date(a.item.mergedAt)), mergedRow) || quiet('None yet.'));
+  put($('run-list'), drawEach(all('runs').filter(shown).sort((a, b) => b.item.at - a.item.at), runRow) || quiet('None yet.'));
 
   $('stamp').textContent = `Updated ${new Date(s.now * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
@@ -1282,9 +1286,9 @@ document.addEventListener('contextmenu', (e) => { if (hold) e.preventDefault(); 
 document.addEventListener('change', async (e) => {
   const data = e.target.dataset;
   const project = projectOf(e.target);
-  if (data.queue !== undefined) {
-    queueOf = e.target.value;
-    keep('scriptorium-queue', queueOf);
+  if (data.shown !== undefined) {
+    shownOf = e.target.value;
+    keep('scriptorium-queue', shownOf);
     e.target.blur();
     draw(false);
   } else if (data.assign) {
