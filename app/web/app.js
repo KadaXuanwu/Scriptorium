@@ -338,7 +338,7 @@ function settingsBlock() {
     <div class="config-row${busyClass('advisor-model')}"${busyAttr('advisor-model')}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
       <select data-advisor-model aria-label="Model of the advisor">${pickList(state.models || [], advisor.model, modelName)}</select>
       ${base && base !== advisor.model ? `<small>Default: ${esc(modelName(base))}</small>` : ''}</div>
-    ${override}<p class="settings-note">A change counts from the next run. A run in progress or on hold keeps its model, its effort and its advisor.</p></section>`;
+    ${override}</section>`;
 }
 
 // ---- Questions
