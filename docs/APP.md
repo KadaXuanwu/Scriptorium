@@ -3,7 +3,9 @@
 One web page shows the queue ([QUEUE.md](QUEUE.md)) to the owner: which ticket each worker has, what is unclear, what is
 left and what it costs. The owner never manages the workflow there: the scripts do. On a phone it installs to the home
 screen like an app. Its name is Scriptorium. Its icon is drawn in `app/icon.svg`, which also says how to export the
-PNGs. The home screen gets the tile, because a home screen gives a picture a background of its own. The browser tab
+PNGs. The home screen gets the tile, because a home screen gives a picture a background of its own. The start screen
+of the installed app shows that tile too, on the manifest's `background_color`: this is the tile's own colour, so
+the tile shows no edge there. The browser tab
 and the page show the mark alone, with no background: `mark-on-light.png` in the light colour scheme and
 `mark-on-dark.png` in the dark one.
 
