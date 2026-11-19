@@ -184,7 +184,8 @@ left of the handle, in its colour. Under the meter each guard has a slider: its 
 
 On a touch screen a slider moves only after a hold of 0.3 s on its handle, so a scroll never moves one.
 
-Also: **Sign in** (again) and **Ping**. The last tile adds an account: a dialog asks for its name and email, and the
+Also: **Sign in**, only while the account is signed out, and **Ping**. To change an account's login, remove the account
+and add one. The last tile adds an account: a dialog asks for its name and email, and the
 sign-in starts on this tab. The cross on a card removes an account that nothing uses: its login is signed out, and its
 folder stays.
 

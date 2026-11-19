@@ -468,7 +468,8 @@ function accountCard(a) {
     : 'No worker waits for it now. A worker that gets this account tests it at once.';
   const out = a.out ? `<div class="reason">${markdown(a.out.text || '')}<small>${test}</small></div>` : '';
   const name = esc(a.name);
-  const buttons = [`<button data-login="${name}"${a.signedIn ? '' : ' class="primary"'}>${a.signedIn ? 'Sign in again' : 'Sign in'}</button>`];
+  // Sign in only while the account is signed out: to change the login of an account, remove it and add one.
+  const buttons = a.status === 'signedout' ? [`<button class="primary" data-login="${name}">Sign in</button>`] : [];
   if (a.signedIn) buttons.push(`<button data-ping="${name}" title="Starts its 5-hour window now (about 770 tokens)">Ping</button>`);
   const card = `account:${a.name}`;
   return `<article class="card account ${tone}${busyClass(card)}"${busyAttr(card)}>
@@ -556,7 +557,7 @@ function info(s) {
         candidates with a picture of each, the first built in, and you pick.`,
       `${setting('Stuck', 'queue')} runs (Queue): a run that ended with no PR and no question. Nothing retries by itself:
         read the reason, then Retry (${s.stuck.length} now).`,
-      `${setting('Accounts', 'accounts')} that are signed out or refuse runs: their workers wait. Sign in again, or give the
+      `${setting('Accounts', 'accounts')} that are signed out or refuse runs: their workers wait. Sign in, or give the
         workers another account.`,
       'Your phone gets a push for a blocking question, a stuck run, a limit, an account that is out and a merge.',
     ])),

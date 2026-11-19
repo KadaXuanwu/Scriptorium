@@ -684,7 +684,7 @@ function Invoke-Action($request) {
             $entry = $settings.accounts.$name
             # Add an account: a name in use would sign that account in again, maybe as someone else.
             if ($request.new -and $entry) {
-                throw "an account named $name exists: use Sign in again on its card"
+                throw "an account named $name exists: pick another name, or remove that account first"
             }
             if (-not $entry) {
                 $entry = [pscustomobject]@{ configDir = "$($HOME.Replace('\', '/'))/.claude-$name"; uses = [object[]]@() }
