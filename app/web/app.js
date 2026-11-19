@@ -526,17 +526,17 @@ function infoLimits(a) {
   const guards = (week.guards || []).map((g) => `${esc((guardNames[g.use] || g.use).toLowerCase())} ${at(g.share)}`);
   const design = fable?.pickUp?.design ?? 1;
   const fableNow = !fable || fable.used == null ? ''
-    : fable.used >= fable.ceiling ? ' Now past both lines: no design ticket starts, and new runs get no Fable advisor.'
-      : fable.used >= design ? ' Now past the design line: no design ticket starts, and new runs still get the Fable advisor.' : '';
+    : fable.used >= fable.ceiling ? ' Both lines are passed now.'
+      : fable.used >= design ? ' The design line is passed now.' : '';
   const lines = [
-    five.pickUp && `<b>5 hours:</b> ${now(five)}No new L ticket from ${at(five.pickUp.L)}, no new M from ${at(five.pickUp.M)},
-      no new S from ${at(five.pickUp.S)}. Workers stop at ${at(five.ceiling)}.`,
+    five.pickUp && `<b>5 hours:</b> ${now(five)}No new L ticket from ${at(five.pickUp.L)}, M from ${at(five.pickUp.M)},
+      S from ${at(five.pickUp.S)}. Workers stop at ${at(five.ceiling)}.`,
     week.stopAt != null && `<b>Week:</b> ${now(week)}${guards.length
-      ? `Your stop line is ${at(week.stopAt)}. Below it the workers keep room for people: ${guards.join(' and ')} of a
-        whole week, less as the reset comes closer. Now that is ${percent(week.kept)}, so the workers stop at ${percent(week.ceiling)}.`
+      ? `Your stop line is ${at(week.stopAt)}. Below it the workers leave room for people (${guards.join(' and ')} of a
+        week, less as the reset comes closer): now ${percent(week.kept)}, so they stop at ${percent(week.ceiling)}.`
       : `Workers stop at ${at(week.stopAt)}.`}`,
-    fable ? `<b>Fable week:</b> ${now(fable)}Only a Fable run updates this reading. No new design ticket from
-        ${at(design)}. No Fable advisor for new runs from ${at(fable.ceiling)}.${fableNow}`
+    fable ? `<b>Fable week:</b> ${now(fable)}Only Fable runs update it. No new design ticket from ${at(design)}, and no
+        Fable advisor for new runs from ${at(fable.ceiling)}.${fableNow}`
       : '<b>Fable week:</b> no reading yet. The first Fable run gives one.',
   ];
   const who = (a.uses || []).map(useName).join(', ');
@@ -554,93 +554,92 @@ function info(s) {
   // What can differ between the PC's projects, for each of them: its plugins.
   const per = s.per || [{ name: '', plugins }];
   return [
-    section('In short', `<p>Workers are Claude sessions on this PC that build tickets (GitHub issues) on their own, one at
-      a time. Each works in its own copy of the project${plugins.length ? `, with its environment (${environment(s)})` : ''},
-      tests its work and opens a pull request
-      (PR), which a merger merges into main. You decide what to build; the scripts manage the work. This page shows what they
-      do, asks what only you can decide, and holds their limits.</p>`),
+    section('In short', `<p>Workers are Claude sessions on this PC. Each builds tickets (GitHub issues) on its own, one at
+      a time, in its own copy of the project${plugins.length ? `, with its environment (${environment(s)})` : ''}. It tests
+      its work and opens a pull request (PR), and a merger merges the PR into main. You decide what to build; the scripts
+      do the rest.</p>`),
     section('What needs you', items([
-      `${setting('Questions', 'questions')}: a worker asks only about the product (a rule, a look, what a user sees), never
-        about the workflow. A blocking question holds its PR or ticket until you answer (${blocking} now); answer
-        the others when you like. Accept default takes the worker's proposal. A new look comes as three
-        candidates with a picture of each, the first built in, and you pick.`,
-      `${setting('Stuck', 'queue')} runs (Queue): a run that ended with no PR and no question. Nothing retries by itself:
-        read the reason, then Retry (${s.stuck.length} now).`,
-      `${setting('Accounts', 'accounts')} that are signed out or refuse runs: their workers wait. Sign in, or give the
-        workers another account.`,
+      `${setting('Questions', 'questions')}: only about the product (a rule, a look, what a user sees), never the workflow.
+        A blocking question holds its PR or ticket until you answer (${blocking} now); answer the others when you like.
+        Accept default takes the worker's proposal. A new look comes as three candidates with a picture each, the first
+        built in.`,
+      `${setting('Stuck', 'queue')} runs (Queue) ended with no PR and no question. Nothing retries by itself: read the
+        reason, then Retry (${s.stuck.length} now).`,
+      `${setting('Accounts', 'accounts')} that are signed out or refuse runs: their workers wait until you sign in or
+        give them another account.`,
       'Your phone gets a push for a blocking question, a stuck run, a limit, an account that is out and a merge.',
     ])),
     section('How a ticket goes through', `<ol>
-      <li>A ticket with a priority (P0, P1, P2) waits in the ${setting('Queue', 'queue')}. One with no priority is Parked:
-        no worker takes it.</li>
-      <li>Queue order: the priority, then the bigger ticket (L, M, S), then the older one.</li>
-      <li><b>Now</b> on a queued ticket gives it to one worker at once. The first choice is a worker whose ticket in
-        work changes the same files, then a free worker, then the worker whose account has the most room. A worker in a
-        run ends it at the next checkpoint, and that ticket goes back to the queue.</li>
-      <li>A free worker takes the answers and rebases of its own PRs first, then its own ticket, then the first queued ticket
-        that its account has room for (Limits).</li>
-      <li>Two tickets that change the same files (the same area) never run at the same time. A ticket "Blocked by" others
-        waits until they close.</li>
-      <li>A run ends in a PR, in a question for you, or held at a limit (Limits). The merged PR closes its ticket.</li>
-      <li>A merged PR can add new tickets: follow-ups and open questions. A follow-up without a question joins the queue;
-        the others wait under Questions.</li>
+      <li>A ticket with a priority (P0, P1, P2) waits in the ${setting('Queue', 'queue')}, in this order: the priority,
+        then the larger size (L, M, S), then the older ticket. A ticket with no priority is Parked: no worker takes it.</li>
+      <li><b>Now</b> gives a queued ticket to one worker at once: first a worker whose ticket in work changes the same
+        files, then a free worker, then the worker whose account has the most room. A worker in a run ends it at the
+        next checkpoint, and that ticket goes back to the queue.</li>
+      <li>A free worker takes, in order: the answers and rebases of its own PRs, its own ticket, the first queued ticket
+        its account has room for (Limits).</li>
+      <li>Two tickets of the same area (the same files) never run at the same time. A ticket "Blocked by" others waits
+        until they close.</li>
+      <li>A run ends in a PR, in a question for you, or held at a limit (Limits). The merged PR closes its ticket and can
+        add follow-ups and open questions: a follow-up without a question joins the queue, the others wait under
+        Questions.</li>
     </ol>`),
     section('Who builds what', `${items(s.workers.map((w) => {
       const off = (w.takes || []).filter((t) => !t.on).map((t) => t.name);
       return `Worker ${esc(w.id)}${w.project ? ` (${esc(w.project)})` : ''}: ${setting(esc(statusNames[w.status] || w.status), 'workers')}${w.account ? ` on ${esc(w.account)}` : ''}${off.length
         ? `, takes no ${setting(esc(off.join(', ')), 'workers')} tickets` : ''}.`;
     }))}
-      <p>Active takes tickets. Paused takes none and keeps its ticket. Disabled takes none, and other workers take its
-        ticket. Force (the arrow on Next) gives a free worker its next ticket now, past the limits.</p>
+      <p>Active takes tickets. Paused takes none and keeps its ticket. Disabled takes none, other workers take its
+        ticket, and its plugins close what they opened for it. Force (the arrow on Next) gives a free worker its next
+        ticket now, past the limits.</p>
       <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes.${per.length > 1
         ? ` The project on a worker's ${setting('card', 'workers')} moves the worker to another project.` : ''}</p>`),
-    section('Complexities', `<p>The complexity of a ticket chooses the model. The size (S, M, L) only says how much usage
-      it takes. A ticket with no complexity label is medium.</p>
-      <p>Compacts near: when the context of a run reaches this size, Claude Code replaces the older part with a summary.
-        A larger size keeps more of the work in view and uses more for each turn.</p>
-      <p>${setting('Details', 'details')} (above) sets the model, the effort, the compact size and the advisor of a
-        complexity for all workers${per.length > 1 ? ' of its project' : ''}, from the next run. A run in progress or on
-        hold keeps its model, its effort and its advisor.</p>
+    section('Complexities', `<p>A ticket's complexity chooses the model; its size (S, M, L) only says how much usage it
+      takes. A ticket with no complexity label is medium.</p>
+      <p>Compacts near: at this context size, Claude Code replaces the older part of a run with a summary. A larger
+        size keeps more in view and uses more each turn.</p>
+      <p>${setting('Details', 'details')} (above) sets each complexity's model, effort, compact size and advisor for all
+        workers${per.length > 1 ? ' of its project' : ''}, from the next run. A run in progress or on hold keeps its
+        model, effort and advisor.</p>
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
-        not see the advice. A run keeps its advisor to its end; past the Fable advisor line (Limits), new runs start
-        without the Fable advisor.</p>` : ''}`),
+        not see the advice. A run keeps its advisor to the end, but past the Fable advisor line (Limits) new runs start
+        without it.</p>` : ''}`),
     section('Plugins', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${(p.plugins || []).length
       ? items(p.plugins.map((x) => `<b>${esc(x.title || x.name)}</b> ${esc(x.version)}: ${esc(x.description)}`))
       : '<p>None: a plain git repo.</p>'}`).join('')),
-    section('Limits', `<p>Each account has three usage windows: 5 hours, the week, and the Fable week (Fable alone). The
-      workers use all the room you give them and stop at the lines you set (${setting('Accounts', 'accounts')}). A run that
-      reaches a stop line ends at its next checkpoint, and the same session goes on when the account has room again; one
-      that the plan's own limit cuts off goes on after the reset.</p>
+    section('Limits', `<p>Each account has three usage windows: 5 hours, the week and the Fable week (Fable runs only).
+      The workers use all the room you give them and stop at the lines you set (${setting('Accounts', 'accounts')}). A
+      run that reaches a stop line ends at its next checkpoint, and its session goes on when the account has room again;
+      a run that the plan's own limit cuts off goes on after the reset.</p>
       ${working.length ? working.map(infoLimits).join('') : quiet('No account has a worker.')}`),
     section('In the background', `<p>Three kinds of script run on this PC as Windows tasks with no window. They start
       when you log on and need nothing from you.</p>
       ${items([
-        `<b>A worker script</b> for each worker has its plugins make its environment ready${plugins.length ? '' : ' (none here)'}, chooses its next job, starts the run and checks how the run ended. A free worker looks for a job every few minutes, and at once for Force.`,
-        '<b>The merger</b> looks at the open PRs every few minutes. It merges each worker PR that GitHub can merge and no question holds, oldest first. A PR that conflicts with main, or that has a comment of yours its run did not read, goes back to its worker.',
-        '<b>This page\'s server</b> reads GitHub once a minute and the workers\' files every few seconds, sends the pushes and does what you click. Tailscale puts it on your phone; nothing is open to the internet. With the PC off, the page shows the last state it had, greyed out.',
-        'The scripts and this page use no model; only the runs do. Two small exceptions: with no run for a while, a worker reads an account\'s usage with a one-word request, and Ping starts an account\'s 5-hour window.',
-        'A change to the queue\'s scripts loads by itself: a worker restarts on the new code between jobs, so a run never changes code halfway.',
+        `<b>A worker script</b> for each worker has its plugins make its environment ready${plugins.length ? '' : ' (none here)'}, chooses its next job, starts the run and checks how it ended. A free worker looks for a job every few minutes, and at once on Force.`,
+        '<b>The merger</b> looks at the open PRs every few minutes and merges, oldest first, each worker PR that GitHub can merge and no question holds. A PR that conflicts with main, or has a comment of yours its run did not read, goes back to its worker.',
+        '<b>This page\'s server</b> reads GitHub once a minute and the workers\' files every few seconds, sends the pushes and does what you click. Tailscale puts it on your phone; nothing is open to the internet. With the PC off, the page shows its last state, greyed out.',
+        'Only the runs use a model, with two small exceptions: a worker with no run for a while reads an account\'s usage with a one-word request, and Ping starts an account\'s 5-hour window.',
+        'A change to the queue\'s scripts loads by itself: a worker restarts on the new code between jobs, never in a run.',
       ])}`),
     section('GitHub', `<p>GitHub holds the record of all work: the tickets, the PRs, every question and answer. The scripts
       read what to do from the labels:</p>
       ${items([
         '<b>P0, P1, P2</b>, <b>size</b>, <b>complexity</b> and <b>area</b>: the priority, usage, model and files above.',
         '<b>worker:N</b>: the worker that has the ticket, until its PR merges.',
-        '<b>needs-owner</b>: waits on you. <b>answered</b>: you answered, and its worker applies the answer. <b>needs-rebase</b>: the PR conflicts with main, and its worker rebases it.',
+        '<b>needs-owner</b>: waits on you. <b>answered</b>: its worker applies your answer. <b>needs-rebase</b>: the PR conflicts with main, and its worker rebases it.',
         '<b>follow-up</b> and <b>open-question</b>: tickets from a merged PR that wait under Questions.',
       ])}
-      <p>Each worker writes as its own GitHub bot where it has one, else as you, and starts each comment with "Worker N:". At each checkpoint a run pushes
-        its work to its own branch, so a stop loses little. Any other comment is yours: on a ticket or its PR it overrides
-        the ticket, and the run reads it at its next checkpoint, marks it 👀 and replies. An answer on this page goes to
-        GitHub as a comment, and the page changes the labels for you. GitHub builds and tests nothing: the run's own tests
-        are the check.</p>`),
+      <p>Each worker writes as its own GitHub bot where it has one, else as you, and starts each comment with "Worker N:".
+        At each checkpoint a run pushes its work to its branch, so a stop loses little. Any other comment is yours: on a
+        ticket or its PR it overrides the ticket, and the run reads it at its next checkpoint, marks it 👀 and replies. An
+        answer on this page goes to GitHub as a comment, and the page sets the labels. GitHub builds and tests nothing:
+        the run's own tests are the check.</p>`),
     section('The tabs', items([
-      `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account${per.length > 1 ? ', project' : ''} and Config. The last tile adds a worker; the cross on a card removes a disabled worker, and its copy of the project stays on the PC.`,
-      `${setting('Accounts', 'accounts')}: usage and the limits above; drag a handle to move one. The last tile adds an account and signs it in; the cross on a card removes an account that nothing uses.`,
+      `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account${per.length > 1 ? ', project' : ''} and Config. The last tile adds a worker; a card's cross removes a disabled worker, and its copy of the project stays on the PC unless you tick Delete in the dialog.`,
+      `${setting('Accounts', 'accounts')}: usage and the limits above; drag a handle to move one. The last tile adds an account and signs it in; a card's cross removes an account that nothing uses.`,
       `${setting('Questions', 'questions')}: decisions for you, blocking first.`,
       `${setting('Queue', 'queue')}: Up next with why each ticket waits, Stuck, On hold and Parked.`,
       `${setting('History', 'history')}: merged PRs, and each run with its model, time and cost.`,
-      `${setting('Details', 'details')}: the settings that are the same for all workers of a project${per.length > 1 ? ', and its colour' : ''}, then this text.`,
+      `${setting('Details', 'details')}: each project's settings for all its workers${per.length > 1 ? ' and its colour' : ''}, then this text.`,
     ])),
   ].join('');
 }
