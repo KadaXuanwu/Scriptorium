@@ -691,8 +691,6 @@ function render() {
   put($('details-projects'), projectPick('The project of the details'));
 
   const workersShown = workers.filter(shown);
-  const active = workersShown.filter(({ item }) => item.status === 'active').length;
-  $('workers-sub').textContent = `${active} of ${workersShown.length} active`;
   put($('all-buttons'), `<button data-status="active" data-worker="all">${icon('play')}All active</button>
     <button data-status="paused" data-worker="all">${icon('pause')}Pause all</button>`);
   put($('worker-list'), (drawEach(workersShown, workerCard) || quiet('No worker has reported yet.')) + addTile('worker', 'Add a worker'));
