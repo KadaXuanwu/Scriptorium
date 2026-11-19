@@ -155,7 +155,6 @@ function Get-AdvisorRule($models, $complexities) {
     }
 }
 
-# A logon task's name: `Scriptorium <name> worker 3`, `Scriptorium <name> merger`, `Scriptorium <name> app`.
 # The lowest worker number nothing holds (the page's Add a worker, setup.ps1): $taken are the numbers with a state file
 # in the project or a task in any project of the PC. A removed worker's number comes back, and with it its clone.
 function Get-FreeWorkerId($taken) {
@@ -167,6 +166,7 @@ function Get-FreeWorkerId($taken) {
     return [string]$id
 }
 
+# A logon task's name: `Scriptorium <name> worker 3`, `Scriptorium <name> merger`, `Scriptorium <name> app`.
 function Get-TaskName([string] $name, [string] $role) {
     return "Scriptorium $name $role"
 }
