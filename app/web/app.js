@@ -642,7 +642,7 @@ function count(id, n, hot) {
 
 const quiet = (text) => `<div class="quiet">${text}</div>`;
 
-// The Queue shows every project ('') or the one its chips name; the choice stays on the device.
+// The Queue shows every project ('') or the one its select names; the choice stays on the device.
 const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ } };
 const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
 let queueOf = kept('scriptorium-queue') || '';
@@ -683,15 +683,15 @@ function render() {
   put($('open-list'), drawEach(open, questionCard) || (loaded ? quiet('No open question.') : loading));
   document.querySelectorAll('#questions textarea').forEach((t) => { if (typed[typedKey(t)]) t.value = typed[typedKey(t)]; });
 
-  // The Queue: every project in one list, or one project (its chips). A project's own order stays; between the
+  // The Queue: every project in one list, or one project (its select). A project's own order stays; between the
   // projects the priority decides.
   if (!names.includes(queueOf)) queueOf = '';
   const shown = ({ p }) => !queueOf || p === queueOf;
   const rank = ({ item }) => (['P0', 'P1', 'P2'].indexOf(item.priority) + 4) % 4;
   const queued = all('queued');
-  put($('queue-projects'), names.length > 1 ? `<div class="seg" role="group" aria-label="The projects of the queue">${[['', 'All'], ...names.map((p) => [p, p])]
-    .map(([value, label]) => `<button data-queue="${esc(value)}" class="${queueOf === value ? 'on' : ''}" aria-pressed="${queueOf === value}"${value ? ` style="--of:${colorOf(value)}"` : ''}>${esc(label)}
-      <small>${queued.filter(({ p }) => !value || p === value).length}</small></button>`).join('')}</div>` : '');
+  put($('queue-projects'), names.length > 1 ? `<select data-queue${queueOf ? ` class="of" style="--of:${colorOf(queueOf)}"` : ''} aria-label="The project of the queue">${
+    [['', 'All'], ...names.map((p) => [p, p])].map(([value, label]) => `<option value="${esc(value)}"${queueOf === value ? ' selected' : ''}>${esc(label)} · ${
+      queued.filter(({ p }) => !value || p === value).length}</option>`).join('')}</select>` : '');
   const left = names.filter((p) => !queueOf || p === queueOf).map((p) => states[p].left)
     .reduce((sum, l) => ({ count: sum.count + l.count, seconds: sum.seconds + l.seconds, cost: sum.cost + l.cost }), { count: 0, seconds: 0, cost: 0 });
   put($('queue-stats'), left.count ? `<span><b>${left.count}</b> tickets</span>
@@ -1067,10 +1067,6 @@ document.addEventListener('click', async (e) => {
   const project = projectOf(target);
   if (data.status) {
     setStatus(project, data.worker, data.status);
-  } else if (data.queue !== undefined) {
-    queueOf = data.queue;
-    keep('scriptorium-queue', queueOf);
-    draw(false);
   } else if (data.more) {
     const open = !opened.delete(`${project}|${data.more}`);
     if (open) opened.add(`${project}|${data.more}`);
@@ -1285,7 +1281,12 @@ document.addEventListener('contextmenu', (e) => { if (hold) e.preventDefault(); 
 document.addEventListener('change', async (e) => {
   const data = e.target.dataset;
   const project = projectOf(e.target);
-  if (data.assign) {
+  if (data.queue !== undefined) {
+    queueOf = e.target.value;
+    keep('scriptorium-queue', queueOf);
+    e.target.blur();
+    draw(false);
+  } else if (data.assign) {
     e.target.blur();
     const account = e.target.value;
     await act(project, { action: 'assign', worker: data.assign, account }, { keys: [`worker:${data.assign}`], apply: (s) => { workerOf(s, data.assign).account = account; } });

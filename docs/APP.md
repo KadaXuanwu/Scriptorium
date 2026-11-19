@@ -207,7 +207,7 @@ head. Each change saves at once in the project's `.queue/settings.json` ([QUEUE.
 from the next run. A run in progress or on hold keeps its model, its effort and its advisor. A block holds:
 
 - **The head:** the project's mark and its colour (`color`). The colour field picks one; Default colour goes back to
-  the colour from the project's name. The mark, a worker's project choice and the Queue's chips show this colour.
+  the colour from the project's name. The mark, a worker's project choice and the Queue's select, set to the project, show this colour.
 - **A row for each complexity,** with its name and description:
   - **Model and effort** are two lists: the models and the efforts of [models.json](../models.json)
     (`complexities.<name>.model`; [QUEUE.md](QUEUE.md), Models, The owner's pick). A pick that is not the base's shows
@@ -253,8 +253,8 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
 
 - **Workers:** the workers of every project stand side by side, in the order of their numbers.
 - **Questions, Queue and History:** one list of every project. In the Queue a project's own order stays, and between
-  the projects the priority decides. The Queue has a chip for each project and one for all, each with its count of
-  queued tickets: a chip shows that project's lists and totals, and the choice stays on the device.
+  the projects the priority decides. The Queue has a select with All and each project, each with its count of
+  queued tickets: a project shows that project's lists and totals, and the choice stays on the device.
 - **The mark:** while the PC has two projects or more, each worker, question, ticket and history row carries its
   project's name, in its project's colour (Details). A worker's mark is its project choice (Workers, The project
   choice).

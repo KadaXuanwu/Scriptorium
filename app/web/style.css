@@ -18,6 +18,9 @@
   --on-accent: #ffffff;
   --shadow: 0 1px 2px rgba(20, 22, 26, 0.06), 0 6px 20px rgba(20, 22, 26, 0.05);
   --radius: 16px;
+  /* The browser's own parts (a select's list, a scrollbar, a slider) take the page's theme. */
+  color-scheme: light dark;
+  scrollbar-color: var(--line) transparent;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -38,7 +41,8 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
   }
 }
-* { box-sizing: border-box; }
+/* Every scroller has the same thin bar in the line colour (:root): the panes, the dialogs, a long text field. */
+* { box-sizing: border-box; scrollbar-width: thin; }
 /* One fixed viewport: the page never scrolls, so nothing shifts when a scrollbar comes or goes. The panes scroll. */
 html, body { height: 100%; margin: 0; overflow: hidden; }
 body {
@@ -115,8 +119,6 @@ main { min-width: 0; min-height: 0; display: flex; flex-direction: column; paddi
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
   padding: 2px 28px 28px;
 }
 .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
@@ -190,6 +192,19 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); background: transparent; }
 button:disabled { opacity: 0.4; cursor: default; }
 button.round { width: 36px; padding: 0; border-radius: 50%; flex: none; }
+/* A select's list is a card with the page's ink, also under a select with a colour of its own (a project's mark). Where
+   the browser lets the page draw the list (appearance: base-select), it has the page's corners, padding and hover. */
+option { background: var(--card); color: var(--ink); font-weight: 600; }
+@supports (appearance: base-select) {
+  select, ::picker(select) { appearance: base-select; }
+  select { display: inline-flex; align-items: center; gap: 6px; }
+  select::picker-icon { color: var(--muted); }
+  ::picker(select) { margin-block: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); }
+  option { padding: 6px 12px; border-radius: 8px; font-size: 14px; }
+  option:hover, option:focus-visible { background: var(--raised); outline: none; }
+  option:checked { color: var(--accent); }
+  option::checkmark { display: none; }
+}
 textarea, input:not([type="range"]):not([type="checkbox"]) {
   display: block;
   width: 100%;
@@ -644,14 +659,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 /* A worker's mark is its project choice: a select with the mark's look, and never wider than its card. */
 .who select.badge { min-height: 0; max-width: 100%; border: 0; }
 .who select.badge:disabled { cursor: default; }
-/* Under a finger it is as high as a chip of the Queue. */
+/* Under a finger it is 30px high. */
 @media (pointer: coarse) { .who select.badge { min-height: 30px; } }
-/* The projects of the Queue (app.js, render): all of them or one, in the switch that a worker's status has. */
+/* The project of the Queue (app.js, render): all of them or one, in a select. One project gives it the project's mark. */
 #queue-projects:empty { display: none; }
-#queue-projects .seg button { flex: none; gap: 6px; }
-#queue-projects small { font-weight: 400; }
-/* A project's chip starts with a dot in the project's colour. */
-#queue-projects button[style]::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--of); }
+#queue-projects select.of { border-color: transparent; background: color-mix(in srgb, var(--of) 20%, transparent); color: color-mix(in srgb, var(--of) 65%, var(--ink)); }
 #offline, #notice {
   margin: 12px 28px 0;
   padding: 10px 14px;
