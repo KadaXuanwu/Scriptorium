@@ -255,12 +255,12 @@ function Test-ProjectProcess([string] $commandLine, [string] $script, [string] $
 }
 
 # Whether a process's command line names a worker's copy ($copy, `<main>-w<N>`) or a path in it: a worker's editor
-# stays open after its loop ends (Uninstall-Worker). Either slash kind, any case. The path ends at a slash, a quote,
-# white space or the end, so App-w1 never matches App-w10 or App-w1-old.
+# stays open after its loop ends (Uninstall-Worker). Either slash kind, any case. The path ends at a slash, a quote
+# of either kind, white space or the end, so App-w1 never matches App-w10 or App-w1-old.
 function Test-CopyProcess([string] $commandLine, [string] $copy) {
     if (-not $commandLine -or -not $copy) {
         return $false
     }
     $path = (@($copy.TrimEnd('\', '/') -split '[\\/]') | ForEach-Object { [regex]::Escape($_) }) -join '[\\/]'
-    return $commandLine -match ($path + '([\\/"\s]|$)')
+    return $commandLine -match ($path + '([\\/"''\s]|$)')
 }

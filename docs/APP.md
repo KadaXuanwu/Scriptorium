@@ -135,7 +135,8 @@ is greyed while the worker has a run or a ticket, or its setup runs.
   control entry here from its status (`Get-CarriedStatus`), so the new script never finds a paused worker active; it
   writes the state file `setup`; it ends the old task, loop and copy processes (`Uninstall-Worker`); it deletes the old
   state and force files and every entry of the worker in the old `control.json`; then it starts the setup job of Add a
-  worker, which makes its copy `<main>-w<N>` of the new project at its first move there.
+  worker, which makes its copy `<main>-w<N>` of the new project at its first move there. If the worker cannot leave
+  its old project, the server takes the state file here away again and says why.
 - **No entry stays in the old `control.json`.** There a `disable` mark of a worker with no state file is due
   (`Get-DueDisables`). The old project's server would then write `enabled: false` in the PC's settings and disable the
   worker in its new project.
@@ -244,7 +245,7 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
 - **How:** the page stays at its address and loads each other project's state, steps and pictures from that project's
   own server, and it sends each action to the server of the item's project. A page on the PC uses the project's
   address on the PC; a page on a Tailscale device uses its Tailscale address (Setup).
-- **An item belongs to its project.** Two projects can have a ticket 12, a question of the same key or a worker 1. The
+- **An item belongs to its project.** Two projects can have a ticket 12 or a question of the same key. The
   page draws, looks up and changes an item in its own project's snapshot only (`within`, `act`,
   [app.js](../app/web/app.js)), so nothing of one project reaches another.
 - **The list** of projects is in every snapshot (`name`, `projects`): the server takes it from the logon tasks of the

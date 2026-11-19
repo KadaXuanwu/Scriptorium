@@ -578,7 +578,8 @@ function Invoke-Action($request) {
             }
             $oldControl = Read-Json (Join-Path $oldQueue 'control.json')
             $copy = if ($state.clone) { [string]$state.clone } else { "$($old.main)-w$worker" }
-            $fresh = (Get-Now) - [long]$state.at -le $StaleSeconds
+            # As Remove counts a script alive: after the PC wakes, a state is old though its run goes on.
+            $fresh = (Get-Now) - [math]::Max([long]$state.at, [long]$script:awake) -le $StaleSeconds
             $marked = [bool]($oldControl -and $oldControl.disable -and $oldControl.disable.$worker)
             $refusal = Get-MoveRefusal $state $fresh (Test-Path (Join-Path $copy '.queue\paused.json')) $marked
             if ($refusal) {
@@ -596,12 +597,20 @@ function Invoke-Action($request) {
             Save-Control (Set-WorkerStatus $control $worker $status '' $false).control
             Remove-Item (Join-Path $mainQueue "force-$worker.json") -ErrorAction SilentlyContinue
             Write-Setup $worker 'setup' ''
-            Uninstall-Worker $old.main $old.name $worker
-            Remove-Item (Join-Path $oldQueue "worker-$worker.json")
-            Remove-Item (Join-Path $oldQueue "force-$worker.json") -ErrorAction SilentlyContinue
-            # No entry of it stays in the old control. There a disable mark of a worker with no state file is due
-            # (Get-DueDisables), and the old project's server would write `enabled: false` for the worker here.
-            Save-Control (Set-WorkerStatus $oldControl $worker 'active' '' $false).control $oldQueue
+            try {
+                Uninstall-Worker $old.main $old.name $worker
+                Remove-Item (Join-Path $oldQueue "worker-$worker.json")
+                Remove-Item (Join-Path $oldQueue "force-$worker.json") -ErrorAction SilentlyContinue
+                # No entry of it stays in the old control. There a disable mark of a worker with no state file is
+                # due (Get-DueDisables), and the old project's server would write `enabled: false` for the worker
+                # here.
+                Save-Control (Set-WorkerStatus $oldControl $worker 'active' '' $false).control $oldQueue
+            } catch {
+                # The worker did not leave its old project: no card of it stays here, where no setup job runs. The
+                # owner moves it again.
+                Remove-Item (Join-Path $mainQueue "worker-$worker.json") -ErrorAction SilentlyContinue
+                throw
+            }
             $script:setups[$worker] = @{ at = Get-Now; job = Start-Job -ScriptBlock $installWorker `
                 -ArgumentList (Join-Path $PSScriptRoot '..\tasks.ps1'), $Main, $config.name, $slug, $worker }
             return "worker $worker comes from $from, $status"

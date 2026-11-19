@@ -36,6 +36,7 @@ Assert-Equal (Test-CopyProcess 'node.exe D:/Work/App-w1/x.js' 'D:\Work\App-w1') 
 Assert-Equal (Test-CopyProcess 'git -C d:\work\app-w1 status' 'D:\Work\App-w1') $true 'another case, then a space'
 Assert-Equal (Test-CopyProcess 'cmd /c cd /d "D:\Work\App-w1"' 'D:\Work\App-w1') $true 'the path before a quote'
 Assert-Equal (Test-CopyProcess 'git -C D:\Work\App-w1' 'D:\Work\App-w1') $true 'the path at the end'
+Assert-Equal (Test-CopyProcess "powershell -Command cd 'D:\Work\App-w1'" 'D:\Work\App-w1') $true 'the path before a single quote'
 Assert-Equal (Test-CopyProcess 'git -C D:\Work\App-w10 status' 'D:\Work\App-w1') $false 'another worker''s copy'
 Assert-Equal (Test-CopyProcess 'git -C D:\Work\App-w1-old status' 'D:\Work\App-w1') $false 'a longer folder name'
 Assert-Equal (Test-CopyProcess $line 'D:\Work\App-w1') $false 'a command line that names no copy of worker 1'

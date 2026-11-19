@@ -646,6 +646,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 /* A worker's mark is its project choice: a select with the mark's look, and never wider than its card. */
 .who select.badge { min-height: 0; max-width: 100%; border: 0; }
 .who select.badge:disabled { cursor: default; }
+/* Under a finger it is as high as a chip of the Queue. */
+@media (pointer: coarse) { .who select.badge { min-height: 30px; } }
 /* The projects of the Queue (app.js, render): all of them or one, in the switch that a worker's status has. */
 #queue-projects:empty { display: none; }
 #queue-projects .seg button { flex: none; gap: 6px; }
