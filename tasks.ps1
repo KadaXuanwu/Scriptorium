@@ -17,14 +17,16 @@ function Register-QueueTask([string] $name, [string] $arguments, [string] $main)
     Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -Settings $settings -Force -ErrorAction Stop | Out-Null
 }
 
-# The projects that Scriptorium runs on this PC, each with its name and its page's port: from the logon tasks of the
-# pages. The lookup takes half a second, so the page's server asks at its start and every few minutes.
+# The projects that Scriptorium runs on this PC, each with its name, its page's port and its main checkout (`main`):
+# from the logon tasks of the pages. The lookup takes half a second, so the page's server asks at its start and every
+# few minutes. `main` stays on the server: the page gets the views (state.ps1, Get-ProjectViews).
 function Get-PcProjects {
     $found = @()
     foreach ($task in @(Get-ScheduledTask -TaskName (Get-TaskName '*' 'app') -ErrorAction SilentlyContinue)) {
         try {
-            $project = Read-Project (Get-TaskProject "$($task.Actions[0].Arguments)")
-            $found += [pscustomobject]@{ name = [string]$project.name; port = [int]$project.port }
+            $main = Resolve-Project (Get-TaskProject "$($task.Actions[0].Arguments)")
+            $project = Read-Project $main
+            $found += [pscustomobject]@{ name = [string]$project.name; port = [int]$project.port; main = $main }
         } catch {
             # A task whose project is gone or has no scriptorium.json: not a project of the list.
         }
@@ -72,8 +74,9 @@ function Install-Worker([string] $main, [string] $name, [string] $slug, [string]
     Start-ScheduledTask -TaskName (Get-WorkerTaskName $name $id) -ErrorAction Stop
 }
 
-# A worker's task and loop end (the queue app's Remove). Stopping a task ends only its console host: the loop, and its
-# run and editors with it, end by its project and its `-Id`.
+# A worker's task and loop end (the queue app's Remove and a worker's move to another project). Stopping a task ends
+# only its console host: the loop, and its run with it, end by its project and its `-Id`. Then every process that still
+# runs from its copy ends: its editor is not in the loop's process tree and stays open after the loop (measured).
 function Uninstall-Worker([string] $main, [string] $name, [string] $id) {
     $task = Get-WorkerTaskName $name $id
     if (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) {
@@ -82,5 +85,8 @@ function Uninstall-Worker([string] $main, [string] $name, [string] $id) {
     }
     Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
         Where-Object { (Test-ProjectProcess $_.CommandLine 'worker.ps1' $main) -and $_.CommandLine -match "-Id $id\b" } |
+        ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
+    Get-CimInstance Win32_Process |
+        Where-Object { $_.ProcessId -ne $PID -and (Test-CopyProcess $_.CommandLine "$main-w$id") } |
         ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
 }

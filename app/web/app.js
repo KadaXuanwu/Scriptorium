@@ -228,9 +228,16 @@ function workerCard(worker) {
   // A worker in no entry runs on the command-line login; offered only while no entry is that login.
   if (!worker.account || accounts.every((a) => a.own)) options.unshift(`<option value=""${worker.account ? '' : ' selected'}>command line</option>`);
 
+  // Its project, while the PC has two or more: the mark is a choice that moves it to another project (`data.move`).
+  const fixed = worker.run || worker.ticket ? 'It has a ticket: disable it first, then move it'
+    : worker.activity === 'setup' ? 'Its setup still runs' : '';
+  const project = names.length > 1
+    ? `<select class="badge of" style="--hue:${hue(scope)}" data-move="${id}" aria-label="Project of worker ${id}"${fixed ? ` disabled title="${fixed}"` : ''}>${
+      names.map((p) => `<option${p === scope ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select>` : '';
+
   const card = `worker:${worker.id}`;
   return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}"${busyAttr(card)}>
-    <div class="worker-head"><span class="avatar">${id}</span><div class="who"><strong>Worker ${id}${mark()}</strong>
+    <div class="worker-head"><span class="avatar">${id}</span><div class="who"><strong>Worker ${id}${project}</strong>
       <span class="doing ${tone}">${icon(glyph)}${words}</span></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
@@ -1198,6 +1205,16 @@ document.addEventListener('change', async (e) => {
     e.target.blur();
     const account = e.target.value;
     await act(project, { action: 'assign', worker: data.assign, account }, { keys: [`worker:${data.assign}`], apply: (s) => { workerOf(s, data.assign).account = account; } });
+  } else if (data.move) {
+    // The card shows the worker's own project until the move is done: the next snapshots show it in the new one.
+    const target = e.target.value;
+    e.target.value = project;
+    e.target.blur();
+    const text = `It keeps its number, its account, its status and its complexities. Its copy of ${target} is made at its first move there. `
+      + `Its copy of ${project} stays on the PC, and the other workers of ${project} take its open PRs.`;
+    if (await ask(`Move worker ${data.move} to ${target}?`, text, 'Move')) {
+      await act(target, { action: 'move-worker', worker: data.move, from: project });
+    }
   } else if (data.priority) {
     e.target.blur();
     // GitHub holds the priority: the row stays busy until the next fetch shows it.

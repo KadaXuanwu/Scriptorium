@@ -29,6 +29,17 @@ $old = 'powershell.exe -File "D:\Work\App\Tools\Queue\worker.ps1" -Id 2 -Clone "
 Assert-Equal (Test-ProjectProcess $old 'worker.ps1' 'D:\Work\App') $false 'a queue from before -Project'
 Assert-Equal (Test-ProjectProcess $null 'worker.ps1' 'D:\Work\App') $false 'no command line'
 Assert-Equal (Get-TaskName 'App' 'worker 3') 'Scriptorium App worker 3' 'a task name'
+# What runs from a worker's copy: its path in a command line, with either slash, any case, as a whole path.
+$editor = '"C:\Unity\Editor\Unity.exe" -projectPath "D:\Work\App-w1\Unity" -batchmode'
+Assert-Equal (Test-CopyProcess $editor 'D:\Work\App-w1') $true 'an editor in the copy'
+Assert-Equal (Test-CopyProcess 'node.exe D:/Work/App-w1/x.js' 'D:\Work\App-w1') $true 'the path with forward slashes'
+Assert-Equal (Test-CopyProcess 'git -C d:\work\app-w1 status' 'D:\Work\App-w1') $true 'another case, then a space'
+Assert-Equal (Test-CopyProcess 'cmd /c cd /d "D:\Work\App-w1"' 'D:\Work\App-w1') $true 'the path before a quote'
+Assert-Equal (Test-CopyProcess 'git -C D:\Work\App-w1' 'D:\Work\App-w1') $true 'the path at the end'
+Assert-Equal (Test-CopyProcess 'git -C D:\Work\App-w10 status' 'D:\Work\App-w1') $false 'another worker''s copy'
+Assert-Equal (Test-CopyProcess 'git -C D:\Work\App-w1-old status' 'D:\Work\App-w1') $false 'a longer folder name'
+Assert-Equal (Test-CopyProcess $line 'D:\Work\App-w1') $false 'a command line that names no copy of worker 1'
+Assert-Equal (Test-CopyProcess $null 'D:\Work\App-w1') $false 'no command line'
 
 # The config: the defaults fill what the file leaves out; a bad name stops.
 $dir = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-project-test-$PID"
@@ -180,6 +191,10 @@ Assert-Equal "$(Get-TaskProject '-File C:\S\app\server.ps1 -Project D:\Work\App 
 $pc = @([pscustomobject]@{ name = 'Game'; port = 8770 }, [pscustomobject]@{ name = 'App'; port = 8771 }, [pscustomobject]@{ name = 'Tool'; port = 8772 })
 $views = Get-ProjectViews $pc $two
 Assert-Equal (($views | ForEach-Object { "$($_.name) $($_.local) $($_.url)" }) -join '; ') 'App http://127.0.0.1:8771 https://pc.tail.ts.net:8443; Game http://127.0.0.1:8770 https://pc.tail.ts.net; Tool http://127.0.0.1:8772 ' 'each project with its two addresses'
+# The main checkout of a project stays on the server: the page gets no path.
+$withMain = @([pscustomobject]@{ name = 'Game'; port = 8770; main = 'D:\Work\Game' })
+$json = Get-ProjectViews $withMain $null | ConvertTo-Json -Compress
+Assert-Equal ($json -match 'main|Work') $false 'no path in the views'
 $alone = @(Get-ProjectViews @($pc[0]) $null)
 Assert-Equal "$($alone.Count) $($alone[0].name) $($alone[0].url)" '1 Game ' 'one project, no Tailscale'
 Assert-Equal "$(Get-PageOrigin $views 'http://127.0.0.1:8771')|$(Get-PageOrigin $views 'https://pc.tail.ts.net')|$(Get-PageOrigin $views 'https://pc.tail.ts.net:8443')" 'http://127.0.0.1:8771|https://pc.tail.ts.net|https://pc.tail.ts.net:8443' 'the pages of the PC''s projects may ask'

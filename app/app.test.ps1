@@ -112,6 +112,28 @@ Assert-Equal (Get-RemoveRefusal ([pscustomobject]@{ state = 'running' }) $false 
 Assert-Equal (Get-RemoveRefusal ([pscustomobject]@{ state = 'paused'; ticket = 5; resetsAt = 9 }) $false $false) 'its run has not ended yet' 'a held run keeps it'
 Assert-Equal (Get-RemoveRefusal ([pscustomobject]@{ state = 'setup' }) $true $true) 'its setup still runs' 'not during its setup'
 Assert-Equal (Get-RemoveRefusal ([pscustomobject]@{ state = 'running' }) $false $false $false) '' 'a dead script''s run does not hold it'
+# A worker's move to another project: never during its setup or its run, never with a ticket that it holds.
+function Refusal([hashtable] $state, [bool] $fresh = $true, [bool] $held = $false, [bool] $marked = $false) {
+    return Get-MoveRefusal ([pscustomobject]$state) $fresh $held $marked
+}
+$holds = 'it holds a ticket: disable it first, then move it'
+Assert-Equal (Refusal @{ state = 'idle' }) '' 'a free worker moves'
+Assert-Equal (Refusal @{ state = 'disabled' }) '' 'a disabled worker moves'
+Assert-Equal (Refusal @{ state = 'setup' }) 'its setup still runs' 'not during its setup'
+$works = 'it works on a ticket: pause or disable it, and move it when its run has ended'
+Assert-Equal (Refusal @{ state = 'running' }) $works 'not in a run'
+Assert-Equal (Refusal @{ state = 'running' } $false) '' 'a dead script''s run does not hold it'
+Assert-Equal (Refusal @{ state = 'stopped' } $true $true) $holds 'a run held in its copy'
+Assert-Equal (Refusal @{ state = 'paused'; ticket = 5; resetsAt = 9 } $false) $holds 'a run that waits for its limit'
+Assert-Equal (Refusal @{ state = 'drained' } $true $false $true) $holds 'a disable after its ticket'
+# It arrives with its status: disabled from the PC's settings, paused from its old project's control, else active.
+$pcWorkers = '{"workers":{"1":{"enabled":false},"2":{"enabled":true}}}' | ConvertFrom-Json
+$oldControl = Json (Set-WorkerStatus $null '1' 'paused' 'now' $false).control
+$oldControl = Json (Set-WorkerStatus $oldControl '2' 'paused' 'finish' $true).control
+Assert-Equal (Get-CarriedStatus $pcWorkers $oldControl '1') 'disabled' 'a disabled worker arrives disabled'
+Assert-Equal (Get-CarriedStatus $pcWorkers $oldControl '2') 'paused' 'a paused worker arrives paused'
+Assert-Equal (Get-CarriedStatus $pcWorkers $oldControl '3') 'active' 'a worker with no entry arrives active'
+Assert-Equal (Get-CarriedStatus $null $null '3') 'active' 'no settings and no control'
 # A new worker's card: set up by the server, then its plugins make its environment ready, in their words. A failed
 # setup never reads as a silent script; a hook that threw shows its error.
 $setup = @(@{ id = '4'; state = [pscustomobject]@{ state = 'setup-failed'; at = 0; error = 'git clone failed' } })

@@ -239,10 +239,10 @@ between runs.
 - `workers.<id>.enabled: false` disables a worker, for example one whose borrowed account is gone. The page's worker
   status sets it ([APP.md](APP.md), Worker status). A disabled worker's run wraps up at its next checkpoint, and its
   paused run is dropped. Once its run has ended, the next worker to dispatch takes its PRs and the tickets they close;
-  its tickets without a PR go back to the queue. The same for a worker that the page removed: a `worker:<N>` label with
-  no `.queue/worker-<N>.json` counts as gone. Work since its last checkpoint push is lost. Enabled again, it takes jobs
-  from the next poll. Give a worker an account (the page's worker card) before you enable it; otherwise it runs on the
-  command-line login.
+  its tickets without a PR go back to the queue. The same for a worker that the page removed or moved to another
+  project: a `worker:<N>` label with no `.queue/worker-<N>.json` counts as gone. Work since its last checkpoint push is
+  lost. Enabled again, it takes jobs from the next poll. Give a worker an account (the page's worker card) before you
+  enable it; otherwise it runs on the command-line login.
 
 ## The usage limit
 

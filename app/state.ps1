@@ -133,6 +133,35 @@ function Get-RemoveRefusal($state, [bool] $enabled, [bool] $settingUp, [bool] $a
     return ''
 }
 
+# Why worker $id cannot move to another project now, '' when it can (the queue app's project choice). $state: what its
+# script wrote in its old project; $fresh: its script refreshed it within $StaleSeconds; $held: its copy holds a run
+# held for a limit or a pause (`.queue/paused.json`); $disableMarked: the old control disables it after its ticket.
+# A held run and its ticket stay with the old project: Disabled drops the run and gives the ticket back to the queue.
+function Get-MoveRefusal($state, [bool] $fresh, [bool] $held, [bool] $disableMarked) {
+    if ($state.state -eq 'setup') {
+        return 'its setup still runs'
+    }
+    if ($fresh -and $state.state -eq 'running') {
+        return 'it works on a ticket: pause or disable it, and move it when its run has ended'
+    }
+    if ($held -or ($state.ticket -and $state.resetsAt) -or $disableMarked) {
+        return 'it holds a ticket: disable it first, then move it'
+    }
+    return ''
+}
+
+# The status that worker $id keeps when it moves to another project: 'disabled' while the PC's settings disable it,
+# else 'paused' while its old project's control has a mode for it (Get-Mode), else 'active'.
+function Get-CarriedStatus($settings, $control, [string] $id) {
+    if ($settings -and $settings.workers -and $settings.workers.$id -and $settings.workers.$id.enabled -eq $false) {
+        return 'disabled'
+    }
+    if (Get-Mode $control $id) {
+        return 'paused'
+    }
+    return 'active'
+}
+
 # The control's entry for one worker: 'drain' (no new job, its run finishes), 'stop' (no new job, its run wraps up at
 # its next checkpoint) or $null.
 function Get-Mode($control, [string] $worker) {

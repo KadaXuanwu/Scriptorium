@@ -113,8 +113,32 @@ first, in the page's one dialog.
   `repo:` label names, registers its logon task, and starts it. A setup that fails, or takes more than an hour, disables
   the worker, shows the reason in Now and sends a push. git in the job never asks for a sign-in: it fails instead.
 - **Remove** takes only a disabled worker with no run in flight (`Get-RemoveRefusal`). The server ends its task and its
-  loop (`Uninstall-Worker`), then deletes its state and force files, its settings entry, its control entries and its
+  loop (`Uninstall-Worker`), and every process that still runs from its copy: its editor is not in the loop's process
+  tree (`Test-CopyProcess`). Then it deletes its state and force files, its settings entry, its control entries and its
   place in each account's uses. Its copy stays: it may hold work that no checkpoint pushed.
+
+**The project choice.** While the PC has two projects or more, the project mark after "Worker N" is a choice. A pick
+asks first, then moves the worker to that project with its number. Its account, its status (active, paused or
+disabled) and its complexity switches stay. The account, `enabled` and the switches are the PC's settings, and the
+move does not change them; a pause is in the old project's `control.json`, and the server carries it over. Its copy
+of the old project stays on the PC. It has no state file there, so the other workers of the old project take its open
+PRs, and its claimed tickets with no PR go back to the queue (`Get-NextJob`, [worker.ps1](../worker.ps1)). The choice
+is greyed while the worker has a run or a ticket, or its setup runs.
+
+- **Refused** (`Get-MoveRefusal`), each before the first change: a setup that still runs; a run in flight (pause or
+  disable it, then move it); a held run or a disable after its ticket (disable it first: Disabled drops the held run and
+  gives its ticket back to the queue). A worker whose GitHub bot (`ghConfigDir`, signed in) cannot push to the new
+  project's repo is refused too: invite the bot to the repo first. A bot folder that is not signed in is not checked:
+  the worker then writes as the owner.
+- **The server** of the new project does the whole move (`move-worker`). It finds the old project by its name among
+  the PC's logon tasks, so nothing from the request becomes a path. Then, in this order: it writes the worker's
+  control entry here from its status (`Get-CarriedStatus`), so the new script never finds a paused worker active; it
+  writes the state file `setup`; it ends the old task, loop and copy processes (`Uninstall-Worker`); it deletes the old
+  state and force files and every entry of the worker in the old `control.json`; then it starts the setup job of Add a
+  worker, which makes its copy `<main>-w<N>` of the new project at its first move there.
+- **No entry stays in the old `control.json`.** There a `disable` mark of a worker with no state file is due
+  (`Get-DueDisables`). The old project's server would then write `enabled: false` in the PC's settings and disable the
+  worker in its new project.
 
 ### Questions
 
@@ -214,7 +238,7 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
   the projects the priority decides. The Queue has a chip for each project and one for all, each with its count of
   queued tickets: a chip shows that project's lists and totals, and the choice stays on the device.
 - **The mark:** while the PC has two projects or more, each worker, question, ticket and history row carries its
-  project's name, in a colour of its own.
+  project's name, in a colour of its own. A worker's mark is its project choice (Workers, The project choice).
 - **Accounts** are the PC's: one list, with the workers of every project on it. **Info** is one text: the common part once, and the
   complexities and plugins for each project.
 - **How:** the page stays at its address and loads each other project's state, steps and pictures from that project's

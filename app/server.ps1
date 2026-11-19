@@ -247,8 +247,9 @@ function Save-Settings($settings) {
     Save-ProjectSettings $Main $settings
 }
 
-function Save-Control($control) {
-    $control | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $mainQueue 'control.json') -Encoding utf8
+# This project's control, or the control of the project in $queue (a worker's move).
+function Save-Control($control, [string] $queue = $mainQueue) {
+    $control | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $queue 'control.json') -Encoding utf8
 }
 
 # The worker's `enabled` in the settings (docs/QUEUE.md, Settings); written only when it changes.
@@ -298,6 +299,27 @@ $installWorker = {
     . $tasks
     Install-Worker $Main $name $slug $id
 }
+# Whether a worker's GitHub bot ($ghConfigDir) may push to this project's repo: also yes for no bot, or a folder that
+# is not signed in, as the worker then writes as the owner (worker.ps1, Set-GitHubIdentity). 'Continue': under 'Stop',
+# Windows PowerShell turns a program's error text into a stop. The server runs without GH_CONFIG_DIR again after.
+function Test-BotPush([string] $ghConfigDir) {
+    if (-not $ghConfigDir) {
+        return $true
+    }
+    $ErrorActionPreference = 'Continue'
+    $env:GH_CONFIG_DIR = $ghConfigDir
+    try {
+        & gh auth token 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            return $true
+        }
+        $push = "$(& gh api "repos/$slug" --jq .permissions.push 2>$null)".Trim()
+        return $LASTEXITCODE -eq 0 -and $push -eq 'true'
+    } finally {
+        Remove-Item Env:GH_CONFIG_DIR -ErrorAction SilentlyContinue
+    }
+}
+
 # Worker id -> its setup job and when it started. A setup longer than this is ended and fails.
 $script:setups = @{}
 $SetupSeconds = 3600
@@ -531,6 +553,58 @@ function Invoke-Action($request) {
             Save-Settings (Set-WorkerEntry $settings $worker $false)
             Save-Control (Set-WorkerStatus (Read-Json (Join-Path $mainQueue 'control.json')) $worker 'active' '' $false).control
             return "removed: worker $worker"
+        }
+        'move-worker' {
+            # A worker of another project of the PC comes to this one with its number (docs/APP.md, Workers): the page
+            # sends the move here, and this server does all of it. Every refusal comes before the first change. Its
+            # settings entry, its account and its `enabled` are the PC's and stay as they are.
+            if ($worker -notmatch '^\d+$') {
+                throw "no worker $worker"
+            }
+            $from = [string]$request.from
+            # The old project by its name, from the PC's logon tasks: nothing from the request becomes a path.
+            $old = Get-PcProjects | Where-Object { $_.name -ceq $from -and $_.name -ne $config.name } |
+                Select-Object -First 1
+            if (-not $old) {
+                throw "no project $from"
+            }
+            if ((Test-Path (Join-Path $mainQueue "worker-$worker.json")) -or $script:setups.ContainsKey($worker)) {
+                throw "worker $worker is in $($config.name) already"
+            }
+            $oldQueue = Join-Path $old.main '.queue'
+            $state = Read-Json (Join-Path $oldQueue "worker-$worker.json")
+            if (-not $state) {
+                throw "no worker $worker in $from"
+            }
+            $oldControl = Read-Json (Join-Path $oldQueue 'control.json')
+            $copy = if ($state.clone) { [string]$state.clone } else { "$($old.main)-w$worker" }
+            $fresh = (Get-Now) - [long]$state.at -le $StaleSeconds
+            $marked = [bool]($oldControl -and $oldControl.disable -and $oldControl.disable.$worker)
+            $refusal = Get-MoveRefusal $state $fresh (Test-Path (Join-Path $copy '.queue\paused.json')) $marked
+            if ($refusal) {
+                throw "worker ${worker}: $refusal"
+            }
+            $settings = Read-SettingsToEdit
+            $entry = if ($settings.workers) { $settings.workers.$worker }
+            if (-not (Test-BotPush $(if ($entry) { [string]$entry.ghConfigDir }))) {
+                throw "worker ${worker}: its GitHub bot cannot push to ${slug}: invite the bot to the repo first"
+            }
+            $status = Get-CarriedStatus $settings $oldControl $worker
+            # Its control entry here comes first: its script reads it before its first job, so a paused worker never
+            # arrives active.
+            $control = Read-Json (Join-Path $mainQueue 'control.json')
+            Save-Control (Set-WorkerStatus $control $worker $status '' $false).control
+            Remove-Item (Join-Path $mainQueue "force-$worker.json") -ErrorAction SilentlyContinue
+            Write-Setup $worker 'setup' ''
+            Uninstall-Worker $old.main $old.name $worker
+            Remove-Item (Join-Path $oldQueue "worker-$worker.json")
+            Remove-Item (Join-Path $oldQueue "force-$worker.json") -ErrorAction SilentlyContinue
+            # No entry of it stays in the old control. There a disable mark of a worker with no state file is due
+            # (Get-DueDisables), and the old project's server would write `enabled: false` for the worker here.
+            Save-Control (Set-WorkerStatus $oldControl $worker 'active' '' $false).control $oldQueue
+            $script:setups[$worker] = @{ at = Get-Now; job = Start-Job -ScriptBlock $installWorker `
+                -ArgumentList (Join-Path $PSScriptRoot '..\tasks.ps1'), $Main, $config.name, $slug, $worker }
+            return "worker $worker comes from $from, $status"
         }
         'keep' {
             # The share of a whole week that a human use's usage guard holds (docs/QUEUE.md, Settings, `keep`).

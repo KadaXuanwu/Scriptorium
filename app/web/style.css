@@ -643,6 +643,9 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
    projects or more. */
 .badge.of { background: color-mix(in srgb, hsl(var(--hue) 65% 50%) 20%, transparent); color: color-mix(in srgb, hsl(var(--hue) 65% 50%) 65%, var(--ink)); }
 .who .badge.of { margin-left: 8px; vertical-align: 2px; }
+/* A worker's mark is its project choice: a select with the mark's look, and never wider than its card. */
+.who select.badge { min-height: 0; max-width: 100%; border: 0; }
+.who select.badge:disabled { cursor: default; }
 /* The projects of the Queue (app.js, render): all of them or one, in the switch that a worker's status has. */
 #queue-projects:empty { display: none; }
 #queue-projects .seg button { flex: none; gap: 6px; }
