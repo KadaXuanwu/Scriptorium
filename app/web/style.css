@@ -719,5 +719,7 @@ body.offline .view button, body.offline .view select, body.offline .view textare
 @media (max-width: 520px) {
   .view > header .buttons, .view > header .stats { flex: 1 0 100%; margin-left: 0; order: 1; }
   .view > header .buttons button, .stats span { flex: 1; text-align: center; }
+  /* As high as the stats: the line under the title takes little room. */
+  .view > header .buttons button { min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
   .stats + .projects { margin-left: auto; }
 }
