@@ -117,6 +117,62 @@ function Set-ComplexityModel($settings, $models, $complexities, [string] $name, 
     return $settings
 }
 
+# The owner's advisor switch of a complexity and its effort without the advisor (docs/QUEUE.md, Settings,
+# `complexities.<name>.advisor`, `.advisorFallback`): $fallback is an effort of models.json's list, or '' for the
+# same effort. Each value equal to the files' (`baseAdvisor`, `baseFallback`) is not saved. $complexities: the list
+# with these settings (project.ps1, Get-Complexities).
+function Set-ComplexityAdvisor($settings, $models, $complexities, [string] $name, [bool] $on, [string] $fallback) {
+    $entry = $complexities | Where-Object { $_.name -ceq $name } | Select-Object -First 1
+    if (-not $entry) {
+        throw "no complexity $name"
+    }
+    if ($fallback -and @($models.efforts) -cnotcontains $fallback) {
+        throw "models.json lists no effort '$fallback'"
+    }
+    $picks = @{ advisor = $on; advisorFallback = $fallback }
+    $bases = @{ advisor = [bool]$entry.baseAdvisor; advisorFallback = [string]$entry.baseFallback }
+    foreach ($key in @('advisor', 'advisorFallback')) {
+        if ($picks[$key] -ne $bases[$key]) {
+            $own = Get-ComplexitySettings $settings $name
+            $own | Add-Member -NotePropertyName $key -NotePropertyValue $picks[$key] -Force
+        } elseif ($settings.complexities -and $settings.complexities.$name) {
+            $settings.complexities.$name.PSObject.Properties.Remove($key)
+        }
+    }
+    return $settings
+}
+
+# The owner's pick of the advisor's model for this project (docs/QUEUE.md, Settings, `advisor.model`): a model of
+# models.json's list. models.json's own `advisor.model` is not saved.
+function Set-AdvisorModel($settings, $models, [string] $model) {
+    if (@($models.models.PSObject.Properties | ForEach-Object { $_.Name }) -cnotcontains $model) {
+        throw "models.json lists no model '$model'"
+    }
+    if ($model -ne [string]$models.advisor.model) {
+        if (-not $settings.advisor) {
+            Set-JsonProperty $settings 'advisor' ([pscustomobject]@{})
+        }
+        Set-JsonProperty $settings.advisor 'model' $model
+    } elseif ($settings.advisor) {
+        $settings.advisor.PSObject.Properties.Remove('model')
+    }
+    return $settings
+}
+
+# The project's colour on the page (docs/QUEUE.md, Settings, `color`): `#rrggbb`, saved in lower case; '' removes it,
+# and the page gives the project a colour from its name again.
+function Set-ProjectColor($settings, [string] $value) {
+    if (-not $value) {
+        $settings.PSObject.Properties.Remove('color')
+        return $settings
+    }
+    if ($value -notmatch '^#[0-9a-fA-F]{6}\z') {
+        throw "'$value' is no colour: write #rrggbb"
+    }
+    Set-JsonProperty $settings 'color' $value.ToLowerInvariant()
+    return $settings
+}
+
 # Why worker $id cannot be removed now, '' when it can (the queue app's Remove). Only a disabled worker with no run in
 # flight: its ticket is free already. Never while its setup runs. $state: what its script wrote; $alive: its script
 # still refreshes it. A dead script's run waits for nothing: the server ends what is left of it.
@@ -699,11 +755,10 @@ function New-Snapshot($data) {
         $marked = [bool]($data.control -and $data.control.disable -and $data.control.disable.$id)
         $status = Get-WorkerStatus ([string]$s.state) (Get-Mode $data.control $id) $enabled $marked
         $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced }
-        # The worker's complexity switches (limits.ps1): each with the model and effort its runs use (the worker's own
-        # or the settings' `model`, else the complexity's first candidate) and the PR jobs it holds while it is off.
-        $ownModel = if ($data.settings -and $data.settings.workers -and $data.settings.workers.$id) { $data.settings.workers.$id.model } else { $null }
+        # The worker's complexity switches (limits.ps1): each with the model and effort its runs use (the settings'
+        # `model`, else the complexity's first candidate) and the PR jobs it holds while it is off.
         $view.takes = @($complexities | ForEach-Object {
-            $pick = if ($ownModel) { [string]$ownModel } elseif ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { [string]@($_.models)[0] }
+            $pick = if ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { [string]@($_.models)[0] }
             $run = Split-Pick $models $pick
             @{ name = $_.name; on = -not (Test-ComplexityOff $_.name $data.settings $id); model = $run.model; effort = $run.effort; jobs = 0 }
         })
@@ -905,27 +960,35 @@ function New-Snapshot($data) {
         $view.Remove('on')
     }
 
+    $color = [string]$(if ($data.settings) { $data.settings.color })
     $snapshot = @{
         now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; login = $data.login; github = [bool]$data.gh
         # This project's name and the PC's projects, for the page's project switch.
         name = [string]$data.name; projects = @($data.projects | Where-Object { $_ })
         questions = @(); stuck = @(); held = @(); queued = @(); parked = @(); merged = @(); runs = @()
         left = @{ count = 0; seconds = 0; cost = 0.0 }
-        # The advisor rule (models.json `advisor`, docs/QUEUE.md, Models), for the Info tab.
-        advisor = Get-AdvisorRule $models $complexities
-        # The models and efforts a worker's Config offers for a complexity: models.json's two lists.
+        # The advisor rule (docs/QUEUE.md, Models), with models.json's model as `base`, for the Details tab.
+        advisor = (Get-AdvisorRule $models $complexities $data.settings) + @{ base = [string]$models.advisor.model }
+        # The models and efforts that Details offers for a complexity: models.json's two lists.
         models = @($models.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($models.efforts)
+        # The project's colour on the page (`color`): only a valid one, as a hand edit of the file skips the action.
+        color = $(if ($color -match '^#[0-9a-fA-F]{6}\z') { $color.ToLowerInvariant() } else { '' })
+        # The settings' `model`, which goes over every pick of Details for every run; '' without one.
+        settingsModel = $(if ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { '' })
         # Every complexity with its description, models, the first one's model and effort, the same without the owner's
-        # pick (`base`), its advisor (none for a run on the advisor's own model) and its compact size.
+        # pick (`base`), its advisor (none for a run on the advisor's own model), the owner's advisor switch
+        # (`advisorOn`) and fallback effort, the two without the owner's settings (`baseAdvisor`, `baseFallback`) and
+        # its compact size.
         complexities = @($complexities | ForEach-Object {
             $run = Split-Pick $models ([string]@($_.models)[0])
-            $rule = Get-AdvisorRule $models @($_)
+            $rule = Get-AdvisorRule $models @($_) $data.settings
             @{ name = $_.name; description = $_.description; models = @($_.models); model = $run.model; effort = $run.effort
                 base = Split-Pick $models ([string]$_.base)
                 advisor = $(if ($rule.complexities.Count -and $rule.model -ne $run.model) { $rule.model } else { '' }); advisorFallback = $_.advisorFallback
+                advisorOn = [bool]$_.advisor; baseAdvisor = [bool]$_.baseAdvisor; baseFallback = [string]$_.baseFallback
                 compactAt = $_.compactAt }
         })
-        # The project's plugins (name, title, version, description) for the Info tab: none for a plain git repo.
+        # The project's plugins (name, title, version, description) for the Details tab: none for a plain git repo.
         plugins = @($data.plugins | Where-Object { $_ } | ForEach-Object {
             @{ name = $_.Name; title = $_.Title; version = $_.Version; description = $_.Description }
         })

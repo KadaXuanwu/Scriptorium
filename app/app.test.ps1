@@ -162,13 +162,35 @@ $take = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = @{ model
 Assert-Equal "$($take.model) $($take.effort)" 'some-model low' 'a model override with its effort'
 $take = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = @{ model = 'some-model' }; workers = $idle }).workers[0].takes[0]
 Assert-Equal "$($take.model) $($take.effort)" 'some-model xhigh' 'a model not in the list runs at xhigh'
-# The plugins and the complexities, for the Info tab: none for a plain git repo; models.json's four without a config.
+# A worker has no model of its own: its entry in the settings changes nothing.
+$own = '{"workers":{"1":{"model":"claude-haiku-5-5@low"}}}' | ConvertFrom-Json
+$take = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $own; workers = $idle }).workers[0].takes[0]
+Assert-Equal "$($take.model) $($take.effort)" 'claude-opus-5-5 medium' 'a worker''s own model is no model'
+# Details: the project's colour (a valid one only), the settings' `model`, the advisor's model with its default, and
+# each complexity's advisor switch as the owner set it, apart from the advisor that its run gets.
+$owner = '{"color":"#A0B1C2","model":"claude-sonnet-5-5@high","advisor":{"model":"claude-opus-5-5"},
+    "complexities":{"design":{"advisor":true},"low":{"advisor":true,"advisorFallback":"max"}}}' | ConvertFrom-Json
+$details = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = $owner
+    complexities = Get-Complexities (Read-Models) $null $owner }
+Assert-Equal "$($details.color) $($details.settingsModel) $($details.advisor.model) $($details.advisor.base)" '#a0b1c2 claude-sonnet-5-5@high claude-opus-5-5 claude-fable-5-2' 'the colour, the settings'' model and the advisor''s model'
+$low = $details.complexities | Where-Object { $_.name -eq 'low' }
+Assert-Equal "$($low.advisorOn) $($low.advisorFallback) $($low.baseAdvisor) '$($low.baseFallback)' '$($low.advisor)'" "True max False '' ''" 'on, and no advisor for a run on the advisor''s own model'
+$design = $details.complexities | Where-Object { $_.name -eq 'design' }
+Assert-Equal "$($design.advisorOn) $($design.baseAdvisor) $($design.advisor)" 'True False claude-opus-5-5' 'a complexity that the owner gave the advisor'
+Assert-Equal (@($details.advisor.complexities) -join ',') 'low,medium,high,design' 'the switches of the owner in the rule'
+foreach ($bad in 'red', '#abc', "#a0b1c2`nx", '') {
+    $color = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = @{ color = $bad } }).color
+    Assert-Equal "'$color'" "''" "no colour on the page: '$bad'"
+}
+$plain = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }
+Assert-Equal "'$($plain.color)' '$($plain.settingsModel)' $($plain.advisor.model)" "'' '' claude-fable-5-2" 'no settings'
+# The plugins and the complexities, for the Details tab: none for a plain git repo; models.json's four without a config.
 $info = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @()
     plugins = @(@{ Name = 'unity'; Title = 'Scriptorium for Unity'; Version = '1.0.0'; Description = 'One editor each.'; Hooks = @{} }) }
 Assert-Equal (($info.plugins | ForEach-Object { "$($_.name) $($_.title) $($_.version) $($_.description)" }) -join '|') 'unity Scriptorium for Unity 1.0.0 One editor each.' 'the plugins'
 Assert-Equal @((New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).plugins).Count 0 'no plugin'
 Assert-Equal (($info.complexities | ForEach-Object { "$($_.name)=$($_.effort)/$($_.advisor -ne '')" }) -join ' ') 'low=medium/False medium=high/True high=xhigh/True design=high/False' 'each complexity with its effort and advisor'
-# The advisor rule from models.json, for the Info tab.
+# The advisor rule from models.json, for the Details tab.
 $advisor = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).advisor
 Assert-Equal "$($advisor.model) $(@($advisor.complexities) -join ',')" 'claude-fable-5-2 medium,high' 'the advisor rule'
 $temp = $snapshot.accounts | Where-Object { $_.name -eq 'temp' }

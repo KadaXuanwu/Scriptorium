@@ -139,8 +139,8 @@ reached the Fable limit (The Fable limit). Runs use the plan logins, never an AP
 there for the front desk, which weighs a model's cost with it. A pick-up limit is the same for every model: a Fable
 ticket costs about 2.5 times an Opus one of its size, so it reaches the stop line sooner.
 
-**The owner's pick:** a worker's Config on the page picks the model and effort of a complexity for this PC
-([APP.md](APP.md), Workers; Settings, `complexities.<name>.model`). The pick is then the complexity's one candidate,
+**The owner's pick:** the page's Details tab picks the model and effort of a complexity for the project
+([APP.md](APP.md), Details; Settings, `complexities.<name>.model`). The pick is then the complexity's one candidate,
 from the next run. The page offers the models of `models` and the efforts of `efforts`, and the server saves nothing
 else: Claude Code refuses a model it does not know, but it takes an effort it does not know without a word. A model
 that `scriptorium.json` names for the complexity stays a valid pick. Two things do not follow the pick: a held run
@@ -148,9 +148,12 @@ resumes on the model it started on, and a run without its advisor takes the comp
 (Without the advisor).
 
 **The advisor:** a run of a complexity with `advisor` gets `advisor.model` (Fable 5.2) as its advisor
-(`Get-AdvisorRule` in [project.ps1](../project.ps1), `Get-Advisor` in [limits.ps1](../limits.ps1)). The run calls it
+(`Get-AdvisorRule` in [project.ps1](../project.ps1), `Get-Advisor` in [limits.ps1](../limits.ps1)). Details sets the
+switch and the fallback effort of each complexity and the advisor's model for the project, over the files (Settings,
+`complexities.<name>.advisor`, `.advisorFallback`, `advisor.model`). The run calls it
 when it decides to, inside its own turn; the advisor reads the whole session, uncached. A run on the advisor's own model
-gets none, nor does a run while its account has no Fable (The Fable limit). The worker script sets it for each run:
+gets none, nor does a run with the Fable advisor while its account has no Fable (The Fable limit). The worker script
+sets it for each run:
 `advisorModel` in the run's settings file, else `CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1`, so a login's own settings do not
 count. A session keeps its advisor through a hold, a resume and a compaction.
 
@@ -207,22 +210,30 @@ between runs.
   A worker in no entry runs on the command-line login.
 - `accounts.<name>.stopAt`: the account's stop lines, for example `{ "five_hour": 0.9, "seven_day": 0.8 }`: the share of
   each window where its workers stop. Left out: 0.98 and 1. `seven_day_overage_included`: the Fable week's, from which
-  no new session gets the advisor (The Fable limit; left out: 0.98). The page's meters set it.
+  no new session gets the Fable advisor (The Fable limit; left out: 0.98). The page's meters set it.
 - `accounts.<name>.pickUp`: the account's pick-up limits, for example `{ "five_hour": { "L": 0.6 } }`. Left out: S 0.9,
   M 0.75, L 0.5. `seven_day_overage_included.design`: the Fable week's design line, from which no new `design` ticket
   starts (The Fable limit; left out: 0.9). The page's meters set it.
 - `keep` (the PC's): the share of a whole week that each human use's usage guard holds on its account, for example
   `{ "frontdesk": 0.1, "personal": 0.15 }` (the defaults). The guard keeps the part of it for the time left; 0 keeps
   nothing. The page's guard sliders set it.
-- `complexities.<name>.compactAt`: the compact size of a complexity's runs on this PC, for example
+- `complexities.<name>.compactAt`: the compact size of a complexity's runs in the project, for example
   `{ "design": { "compactAt": 250000 } }`, over `scriptorium.json`'s ([CONFIG.md](CONFIG.md), The compact size). It is
-  the same for every worker. A worker's Config sets it.
-- `complexities.<name>.model`: the owner's pick of a complexity's model and effort on this PC, as `model@effort`, for
-  example `{ "medium": { "model": "claude-sonnet-5-5@high" } }`, over the complexity's candidates (Models, The owner's
-  pick). It is the same for every worker. A worker's Config sets it, and takes it away when the pick is the base's own.
-- `model`: overrides the complexities' models for every run, or one worker's in `workers.<id>`: a full id, at its
-  effort in `models.json` (xhigh if it is not listed). It goes over the page's pick too, and the worker's Config then
-  names it on the switches of that worker. Left out: the complexity picks.
+  the same for every worker. Details sets it.
+- `complexities.<name>.model`: the owner's pick of a complexity's model and effort in the project, as `model@effort`,
+  for example `{ "medium": { "model": "claude-sonnet-5-5@high" } }`, over the complexity's candidates (Models, The
+  owner's pick). It is the same for every worker. Details sets it, and takes it away when the pick is the base's own.
+- `complexities.<name>.advisor`: the owner's advisor switch of a complexity, `true` or `false`, over the files'
+  `advisor` (Models, The advisor). Details sets it, and takes it away when it equals the files' value.
+- `complexities.<name>.advisorFallback`: the effort of a run of the complexity without its advisor, an effort of
+  `models.json`'s `efforts`, or `""` for the same effort (Without the advisor). Over the files' value. Details sets
+  it, and takes it away when it equals the files' value.
+- `advisor.model`: the advisor's model in the project, a model of `models.json`, over `models.json`'s `advisor.model`.
+  Details sets it, and takes it away for `models.json`'s own.
+- `color`: the project's colour on the page, `#rrggbb` ([APP.md](APP.md), Details). Left out: a colour from the
+  project's name. Details sets it.
+- `model`: overrides the complexities' models for every run: a full id, at its effort in `models.json` (xhigh if it is
+  not listed). It goes over the page's pick too, and Details then says so. Left out: the complexity picks.
 - `ghConfigDir`: a `gh` login folder (`GH_CONFIG_DIR`) signed in as a GitHub bot account for the worker. Its comments,
   PRs, pushes and commits are the bot's, so GitHub notifies the owner of them. Sign a folder in once:
   `$env:GH_CONFIG_DIR = '<folder>'; gh auth login`, in a browser signed in as the bot. Left out, or not signed in: the
@@ -230,8 +241,7 @@ between runs.
 - `merger.ghConfigDir`: the same for the merger, which then merges as that bot.
 - `plugins.<name>`: settings of a plugin for this PC, over its entry in `scriptorium.json` ([PLUGINS.md](PLUGINS.md)).
 - `ntfy.topic`, `ntfy.server`: the page's pushes ([APP.md](APP.md), Notifications).
-- `workers.<id>` (the PC's): `model` or `ghConfigDir` for that worker only, `enabled`, `assignedOnly` and
-  `complexity`.
+- `workers.<id>` (the PC's): `ghConfigDir` for that worker only, `enabled`, `assignedOnly` and `complexity`.
 - `workers.<id>.complexity`: the worker's complexity switches, for example `{ "design": false }`: it takes no ticket of
   a complexity set to false (Dispatching). Left out: every complexity is on. The worker's Config sets it.
 - `workers.<id>.assignedOnly: true` keeps a worker to the tickets labelled `worker:<id>` and their PRs: no worker gives
@@ -275,9 +285,9 @@ Fable, not the account, so it is not one of the budget's windows.
     no dispatcher gives a worker on it a `design` ticket, and the Queue tab gives the reason. A PR's job of a `design`
     ticket still runs on Fable. The line is below the stop line, so the Fable runs in flight end under it and the
     advisor goes on all week.
-  - **The stop line** (`stopAt.seven_day_overage_included`, 98 %): no new session on the account gets the advisor, and
-    a PR's job of a `design` ticket starts on `afterFable`. A session keeps the advisor it started with. The design line
-    is never above the stop line. A refusal for the Fable limit writes a reading of 100 %.
+  - **The stop line** (`stopAt.seven_day_overage_included`, 98 %): no new session on the account gets the Fable
+    advisor, and a PR's job of a `design` ticket starts on `afterFable`. A session keeps the advisor it started with.
+    The design line is never above the stop line. A refusal for the Fable limit writes a reading of 100 %.
 - **A ticket that no run began** goes back to the queue, for a worker whose account has Fable.
 - **A run cut off by it:** the script resumes the same session at once on `afterFable` (Models), with an instruction in
   the job's message. The run decides whether the decisions that the ticket is on Fable for are made. If they are, it

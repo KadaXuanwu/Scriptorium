@@ -70,20 +70,12 @@ error is in Now), or Script silent (its state file is older than 15 minutes: the
 works). When its account is out, the line names the cause and the next test: Account signed out, Subscription refused
 or Runs do not start.
 
-**Config,** beside Steps, opens the worker's config: a dialog with a row for each complexity. Each change saves at
-once. On a phone a complexity has two lines: its switch and compact size, then its model and effort.
-
-- **The switch** is this worker's (`workers.<id>.complexity`). Press it to switch the complexity off or on again. Off:
-  this worker takes no new ticket of that complexity and leaves the answers and rebases of its PRs of it. A ticket
-  already started goes on. While a complexity is off, the Config button counts the ones the worker takes. A worker
-  that the settings give a model of its own (`model`, [QUEUE.md](QUEUE.md), Settings) names it on the switch.
-- **Model and effort** are two lists: the models and the efforts of [models.json](../models.json). The pick is the
-  same for every worker, is saved for this PC (`complexities.<name>.model`) and applies from the next run
-  ([QUEUE.md](QUEUE.md), Models, The owner's pick). A pick that is not the base's shows the base's under it as
-  Default. Pick the default pair again, and the PC follows `models.json` and `scriptorium.json` again.
-- **Compacts near** is the compact size of the complexity in thousands of tokens ([CONFIG.md](CONFIG.md), The compact
-  size). It is the same for every worker, is saved for this PC (`complexities.<name>.compactAt`) and applies from the
-  next run. The Info tab shows it for each complexity.
+**Config,** beside Steps, opens the worker's config: a dialog with a switch for each complexity. The switch is this
+worker's (`workers.<id>.complexity`) and saves at once. Press it to switch the complexity off or on again. Off: this
+worker takes no new ticket of that complexity and leaves the answers and rebases of its PRs of it, and the switch
+counts those PR jobs. A ticket already started goes on. While a complexity is off, the Config button counts the ones
+the worker takes. The model, the effort, the compact size and the advisor are the same for all workers of a project:
+Details sets them.
 
 Each card has two slots:
 
@@ -178,7 +170,7 @@ The repo may be private, so the server fetches each one once with the owner's `g
 Per account: a status (Ready, At its stop line, Signed out, Subscription refused, Runs do not start, Not used), its
 email and plan, the human uses on it (front desk, you), and a meter for each window. Under the week's meter, the
 **Fable week**, where the account has a reading of it ([QUEUE.md](QUEUE.md), The Fable limit), with two handles: the
-**D** handle is the design line, the other the stop line of the advisor.
+**D** handle is the design line, the other the stop line of the Fable advisor ("Fable advisor stops at").
 
 **The meter** shows where the workers stop. The fill is the share used. The handle is the **stop line**: drag it to set
 the share where this account's workers stop (`stopAt`). The hatched part right of it is what they leave.
@@ -205,15 +197,40 @@ folder stays.
 
 Recent merges in every repo; recent runs with model, duration and cost.
 
-### Info
+### Details
 
-What the queue does and what to expect, for someone who does not know it, in plain sections: In short, What needs you,
-How a ticket goes through, Who builds what, Complexities (a table with the model, effort, advisor and compact size of each complexity, the
-project's own among them), Plugins (each active plugin's title, version and description, or "None: a plain git repo"),
-Limits, In the background, GitHub and The tabs. Each value the owner sets links to the tab that sets it. Every setting
-and reading comes from the snapshot; none is typed into the text, and no environment is named in it. **A change to a
-queue rule changes this text in the same pull request.** The tab is drawn last, and a fault in it shows one line, not a
-broken page.
+The settings that are the same for all workers of a project, then the info text. An older address `#info` opens this
+tab. No push opens it.
+
+**The settings:** one block for each project, in the order of the projects. With one project on the PC the block has no
+head. Each change saves at once in the project's `.queue/settings.json` ([QUEUE.md](QUEUE.md), Settings) and counts
+from the next run. A run in progress or on hold keeps its model, its effort and its advisor. A block holds:
+
+- **The head:** the project's mark and its colour (`color`). The colour field picks one; Default colour goes back to
+  the colour from the project's name. The mark, a worker's project choice and the Queue's chips show this colour.
+- **A row for each complexity,** with its name and description:
+  - **Model and effort** are two lists: the models and the efforts of [models.json](../models.json)
+    (`complexities.<name>.model`; [QUEUE.md](QUEUE.md), Models, The owner's pick). A pick that is not the base's shows
+    the base's under it as Default. Pick the default pair again, and the project follows `models.json` and
+    `scriptorium.json` again.
+  - **Compacts near** is the compact size of the complexity in thousands of tokens (`complexities.<name>.compactAt`;
+    [CONFIG.md](CONFIG.md), The compact size).
+  - **Advisor** is a switch (`complexities.<name>.advisor`), and the list beside it is the effort of a run that has
+    no advisor left (`complexities.<name>.advisorFallback`): an effort, or the same effort. A value that differs from
+    the files shows theirs under it as Default. A complexity that runs on the advisor's own model has no advisor: the
+    row says so.
+- **The advisor's model** (`advisor.model`): a list of the models of `models.json`, with the default under it when the
+  pick differs.
+- **A line when the settings set `model`:** that model goes over every pick of the block, for every run.
+
+On a phone a complexity has three lines: its name and compact size, its model and effort, then its advisor.
+
+**The info:** what the queue does and what to expect, for someone who does not know it, in plain sections: In short,
+What needs you, How a ticket goes through, Who builds what, Complexities, Plugins (each active plugin's title, version
+and description, or "None: a plain git repo"), Limits, In the background, GitHub and The tabs. Each value the owner sets
+links to the tab that sets it. Every setting and reading comes from the snapshot; none is typed into the text, and no
+environment is named in it. **A change to a queue rule changes this text in the same pull request.** The settings and
+the text are drawn last, each on its own, and a fault in one shows one line, not a broken page.
 
 **Estimates.** A typical run is the median of the finished whole-ticket runs of that size on that model, else of that
 size on any model (`Get-Typical`): its wall time, and its cost in dollars at the API's price.
@@ -239,9 +256,10 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
   the projects the priority decides. The Queue has a chip for each project and one for all, each with its count of
   queued tickets: a chip shows that project's lists and totals, and the choice stays on the device.
 - **The mark:** while the PC has two projects or more, each worker, question, ticket and history row carries its
-  project's name, in a colour of its own. A worker's mark is its project choice (Workers, The project choice).
-- **Accounts** are the PC's: one list, with the workers of every project on it. **Info** is one text: the common part once, and the
-  complexities and plugins for each project.
+  project's name, in its project's colour (Details). A worker's mark is its project choice (Workers, The project
+  choice).
+- **Accounts** are the PC's: one list, with the workers of every project on it. **Details** has the settings of each
+  project in a block of its own, and one info text: the common part once, and the plugins for each project.
 - **How:** the page stays at its address and loads each other project's state, steps and pictures from that project's
   own server, and it sends each action to the server of the item's project. A page on the PC uses the project's
   address on the PC; a page on a Tailscale device uses its Tailscale address (Setup).

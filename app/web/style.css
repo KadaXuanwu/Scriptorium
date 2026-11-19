@@ -204,20 +204,6 @@ textarea { resize: vertical; min-height: 60px; }
 /* A number field has no arrows: the owner types the number. */
 input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
 input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-/* Tables: the complexities on the Info tab. A wide one scrolls sideways in its own box (.scroll), so the page never
-   does. */
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: 8px 12px 8px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
-:is(th, td):last-child { padding-right: 0; }
-tbody tr:last-child > * { border-bottom: 0; }
-thead th { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
-tbody th { font-weight: 700; text-transform: capitalize; white-space: nowrap; }
-td small { display: block; font-size: 12px; color: var(--muted); }
-.scroll { overflow-x: auto; margin: 0 0 8px; }
-.scroll table { min-width: 620px; }
-/* Only the second column, the one in sentences, breaks its lines. */
-.scroll td { white-space: nowrap; }
-.scroll td:nth-child(2) { white-space: normal; }
 textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 @media (pointer: coarse) {
   button, select { min-height: 42px; }
@@ -364,9 +350,9 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
 details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 
 /* Queue and history */
-/* Workers: Config stands beside Steps and opens the worker's config, a row for each complexity: the worker's switch
-   for it, then its model, effort and compact size. A switch that is on is the page's plain button with a blue check;
-   off is grey and dashed. */
+/* Workers: Config stands beside Steps and opens the worker's config, a switch for each complexity. A switch that is
+   on is the page's plain button with a blue check; off is grey and dashed. Details has the same switch look for an
+   advisor. */
 .config-open { margin-left: auto; white-space: nowrap; }
 .config-open small { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 /* A phone: Config and Steps lose their icons, so the account's name still fits beside them. */
@@ -374,21 +360,29 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
   .worker-tools > button > .i { display: none; }
 }
 #config { width: min(620px, calc(100vw - 32px)); }
-/* The head and each row stand on one grid. The base's model, where the pick is another, goes under the lists. */
+.takes { display: flex; flex-wrap: wrap; gap: 8px; }
+.takes-note { margin: 12px 0 0; font-size: 12px; color: var(--muted); }
+/* Details: one block for each project, its head with its mark and colour, then a row for each complexity. The head
+   and each row stand on one grid. The defaults, where a pick is another, go under the lists; the advisor's switch
+   and its effort without it go on the next line. */
+.settings { max-width: 760px; margin-bottom: 28px; }
+.settings-head { display: flex; align-items: center; gap: 8px; }
+.settings-head h2 { margin: 0; }
+.settings-head input[type="color"] { display: inline-block; width: 44px; height: 32px; padding: 2px; }
+.settings-note { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 .config-head, .config-row { display: grid; grid-template-columns: 9em minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.config-row:last-child { border-bottom: 0; }
 .config-head { font-size: 12px; font-weight: 600; color: var(--muted); }
-.config-head small { font-weight: 400; }
 .config-head > :last-child, .config-row > small { grid-column: 2 / -1; }
 .config-row > small { font-size: 11px; color: var(--muted); }
 .config-row select { min-width: 0; }
-.config-row .take small { white-space: normal; }
-/* A phone: two lines for a complexity, its switch and compact size, then its model and effort. */
+.config-name b { display: block; text-transform: capitalize; }
+.config-name small { display: block; font-size: 11px; color: var(--muted); }
+/* A phone: a complexity's name and compact size, then its model and effort, then its advisor. */
 @media (max-width: 760px) {
   .config-head, .config-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .config-head > :last-child { grid-column: auto; text-align: right; }
   .config-row > small { grid-column: 1 / -1; }
-  .config-row .take { order: -2; }
+  .config-row > .config-name:first-child { order: -2; }
   .config-row .compact { order: -1; justify-self: end; }
 }
 .compact { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
@@ -639,9 +633,9 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
   text-align: center;
   font-weight: 600;
 }
-/* A project's mark on an item (app.js, mark): its name, in a colour of its own (--hue), while the PC has two
+/* A project's mark on an item (app.js, mark): its name, in its colour (--of, app.js, colorOf), while the PC has two
    projects or more. */
-.badge.of { background: color-mix(in srgb, hsl(var(--hue) 65% 50%) 20%, transparent); color: color-mix(in srgb, hsl(var(--hue) 65% 50%) 65%, var(--ink)); }
+.badge.of { background: color-mix(in srgb, var(--of) 20%, transparent); color: color-mix(in srgb, var(--of) 65%, var(--ink)); }
 .who .badge.of { margin-left: 8px; vertical-align: 2px; }
 /* A worker's mark is its project choice: a select with the mark's look, and never wider than its card. */
 .who select.badge { min-height: 0; max-width: 100%; border: 0; }
@@ -652,6 +646,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 #queue-projects:empty { display: none; }
 #queue-projects .seg button { flex: none; gap: 6px; }
 #queue-projects small { font-weight: 400; }
+/* A project's chip starts with a dot in the project's colour. */
+#queue-projects button[style]::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--of); }
 #offline, #notice {
   margin: 12px 28px 0;
   padding: 10px 14px;

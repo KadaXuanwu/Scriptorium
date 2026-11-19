@@ -8,7 +8,8 @@ Thank you for the help. Read this before you open a pull request.
 2. The base stays free of environments. It knows git, GitHub and Claude Code, nothing else: no engine, no build tool,
    no test runner. What an environment needs goes into a plugin ([docs/PLUGINS.md](docs/PLUGINS.md)).
 3. Every change to a queue rule has a test (`*.test.ps1`) and the change to its doc in the same pull request:
-   [docs/QUEUE.md](docs/QUEUE.md), [docs/APP.md](docs/APP.md), [PLAYBOOK.md](PLAYBOOK.md) or the page's Info tab.
+   [docs/QUEUE.md](docs/QUEUE.md), [docs/APP.md](docs/APP.md), [PLAYBOOK.md](PLAYBOOK.md) or the info text on the
+   page's Details tab.
 4. Windows PowerShell 5.1 syntax only: no `&&`, `||`, `?:` or `??`. Keep a new `.ps1` file in ASCII.
 5. No new dependency. The page stays plain HTML, CSS and JS, with no build step.
 6. A change to the plugin contract (a hook or a context field that goes away or changes its meaning) needs an issue

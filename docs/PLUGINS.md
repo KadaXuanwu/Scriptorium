@@ -55,7 +55,7 @@ The plugins of a project run in the order the file gives them.
 - `api`: the version of this contract the plugin was written for. The base refuses a plugin with another number and
   names both numbers.
 - `requires`: commands that must be on the PATH. `setup.ps1` names each one that is missing.
-- The page shows `title`, `version` and `description` on its Info tab.
+- The page shows `title`, `version` and `description` on its Details tab.
 
 ## The hooks
 

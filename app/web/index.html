@@ -45,7 +45,7 @@
     <a href="#questions" data-tab="questions"><svg class="i"><use href="#i-questions"/></svg><span>Questions</span><span class="count" id="count-questions"></span></a>
     <a href="#queue" data-tab="queue"><svg class="i"><use href="#i-queue"/></svg><span>Queue</span><span class="count" id="count-queue"></span></a>
     <a href="#history" data-tab="history"><svg class="i"><use href="#i-history"/></svg><span>History</span></a>
-    <a href="#info" data-tab="info"><svg class="i"><use href="#i-info"/></svg><span>Info</span></a>
+    <a href="#details" data-tab="details"><svg class="i"><use href="#i-info"/></svg><span>Details</span></a>
     <span id="stamp"></span>
   </nav>
   <main>
@@ -90,9 +90,10 @@
       </div>
     </section>
 
-    <section class="view" id="info" hidden>
-      <header><h1>Info</h1></header>
-      <div class="pane"><div id="info-body" class="info"></div></div>
+    <!-- The settings that are the same for all workers of a project (app.js, settingsBlock), then the info text. -->
+    <section class="view" id="details" hidden>
+      <header><h1>Details</h1></header>
+      <div class="pane"><div id="settings-body"></div><div id="info-body" class="info"></div></div>
     </section>
   </main>
 </div>
@@ -100,7 +101,7 @@
   <div class="dialog-head"><h2 id="steps-title">Steps</h2><button data-close>Close</button></div>
   <ol id="steps-list" class="steps"></ol>
 </dialog>
-<!-- A worker's config (app.js, drawConfig): what it takes, and where the runs of each complexity compact. -->
+<!-- A worker's config (app.js, drawConfig): the complexities it takes. -->
 <dialog id="config">
   <div class="dialog-head"><h2 id="config-title"></h2><button data-close>Close</button></div>
   <div id="config-body"></div>

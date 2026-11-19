@@ -252,7 +252,7 @@ function Get-Accounts {
 }
 
 # A worker's settings, its own entry over the shared one; its login is the account the register gives it, else the
-# Windows user's command-line login.
+# Windows user's command-line login. `model` is the shared one only: every worker of a project runs on the same models.
 function Get-RunSettings([int] $worker) {
     $settings = @{ model = $null; configDir = $null; sizes = $null; ghConfigDir = $null; assignedOnly = $null }
     $json = Read-Settings
@@ -263,7 +263,10 @@ function Get-RunSettings([int] $worker) {
     if ($json.workers) {
         $own = $json.workers."$worker"
     }
-    foreach ($key in @('model', 'sizes', 'ghConfigDir', 'assignedOnly')) {
+    if ($json.model) {
+        $settings.model = $json.model
+    }
+    foreach ($key in @('sizes', 'ghConfigDir', 'assignedOnly')) {
         if ($own -and $own.$key) {
             $settings[$key] = $own.$key
         } elseif ($json.$key) {
@@ -1087,7 +1090,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     }
     # The run's advisor (limits.ps1, Get-Advisor): one for the whole session, like its model, so a resume and a
     # compaction see the same tools. A session held before the advisor existed has none recorded: it gets one now.
-    $advisorOf = Get-AdvisorRule (Read-Models) (Get-ProjectComplexities)
+    $advisorOf = Get-AdvisorRule (Read-Models) (Get-ProjectComplexities) (Read-Settings)
     $hasAdvisor = -not (Test-ModelRefused (Get-Account $configDir) ([string]$advisorOf.model) -Advisor)
     $advisor = Get-Advisor $advisorOf $job.Complexity $model $hasAdvisor
     if ($paused -and $null -ne $paused.Advisor) {

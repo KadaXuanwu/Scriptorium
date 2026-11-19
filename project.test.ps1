@@ -164,6 +164,52 @@ Assert-Equal $file.complexities.low.model 'claude-opus-4-8@max' 'the base''s own
 $file = Set-ComplexityModel $file $models (Get-Complexities $models $other $file) 'low' 'claude-opus-4-8' 'high'
 Assert-Equal ($file.complexities.low | ConvertTo-Json -Compress) '{}' 'and back to the base'
 
+# The owner's advisor switch and fallback effort (settings.json, `complexities.<name>.advisor`, `.advisorFallback`) go
+# over the project's file, also as off and as '': review has the advisor and xhigh without it in scriptorium.json.
+$file = Set-ComplexityAdvisor ('{}' | ConvertFrom-Json) $models $list 'review' $false 'xhigh'
+Assert-Equal ($file.complexities | ConvertTo-Json -Compress) '{"review":{"advisor":false}}' 'off is saved, the fallback of the file is not'
+$off = Get-Complexities $models $own $file
+$rule = Get-AdvisorRule $models $off
+Assert-Equal "$(@($rule.complexities) -join ',')|$($rule.fallback.review)" 'medium,high|' 'a complexity switched off has no advisor'
+Assert-Equal (Get-FallbackEffort $rule 'review' 'claude-opus-5-5' 'high' $false) 'high' 'and no fallback effort'
+$file = Set-ComplexityAdvisor $file $models $off 'review' $true ''
+Assert-Equal ($file.complexities | ConvertTo-Json -Compress) '{"review":{"advisorFallback":""}}' 'on as in the file; no other effort is saved'
+$rule = Get-AdvisorRule $models (Get-Complexities $models $own $file)
+Assert-Equal "$(@($rule.complexities) -join ',')|$($rule.fallback.review)" 'medium,high,review|' 'the advisor with the fallback '''''
+Assert-Equal (Get-FallbackEffort $rule 'review' 'claude-opus-5-5' 'high' $false) 'high' 'the same effort without the advisor'
+$file = Set-ComplexityAdvisor $file $models (Get-Complexities $models $own $file) 'review' $true 'xhigh'
+$file = Set-ComplexityAdvisor $file $models (Get-Complexities $models $own $file) 'low' $true 'max'
+Assert-Equal ($file.complexities | ConvertTo-Json -Compress) '{"review":{},"low":{"advisor":true,"advisorFallback":"max"}}' 'the values of the files leave no key'
+$picked = @(Get-Complexities $models $own $file) | Where-Object { $_.name -eq 'low' }
+Assert-Equal "$($picked.advisor) $($picked.advisorFallback) $($picked.baseAdvisor) '$($picked.baseFallback)'" "True max False ''" 'the pick and the values of the files'
+foreach ($bad in @('none', $true, 'high'), @('low', $true, 'extra high'), @('low', $true, 'High')) {
+    $threw = $false
+    try { Set-ComplexityAdvisor $file $models $list $bad[0] $bad[1] $bad[2] | Out-Null } catch { $threw = $true }
+    Assert-Equal $threw $true "no advisor pick: $($bad -join ' / ')"
+}
+# The advisor's model: the owner's pick for the project goes over models.json's; models.json's own is not saved.
+$file = Set-AdvisorModel $file $models 'claude-opus-5-5'
+Assert-Equal (Get-AdvisorRule $models $list $file).model 'claude-opus-5-5' 'the advisor''s model of the settings'
+Assert-Equal (Get-AdvisorRule $models $list $null).model 'claude-fable-5-2' 'models.json''s without settings'
+$file = Set-AdvisorModel $file $models 'claude-fable-5-2'
+Assert-Equal ($file.advisor | ConvertTo-Json -Compress) '{}' 'models.json''s advisor model is not saved'
+foreach ($bad in 'claude-opus-4-8', 'opus', '') {
+    $threw = $false
+    try { Set-AdvisorModel $file $models $bad | Out-Null } catch { $threw = $true }
+    Assert-Equal $threw $true "no advisor model: '$bad'"
+}
+# The project's colour: #rrggbb in lower case; '' takes it away.
+$file = Set-ProjectColor $file '#A0b1C2'
+Assert-Equal $file.color '#a0b1c2' 'a colour in lower case'
+foreach ($bad in 'red', '#abc', '#a0b1c2ff', 'a0b1c2', "#a0b1c2`n", '#g0b1c2') {
+    $threw = $false
+    try { Set-ProjectColor $file $bad | Out-Null } catch { $threw = $true }
+    Assert-Equal $threw $true "no colour: '$bad'"
+}
+Assert-Equal $file.color '#a0b1c2' 'a refused colour changes nothing'
+$file = Set-ProjectColor $file ''
+Assert-Equal $file.PSObject.Properties['color'] $null 'no colour'
+
 # The page's address on Tailscale is read from Serve's own mapping (the shape of `tailscale serve status --json`), and
 # setup gives a later project an address that no other one has.
 $site = '"pc.tail.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8770"}}}'

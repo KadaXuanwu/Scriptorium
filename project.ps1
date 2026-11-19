@@ -35,12 +35,14 @@ function Read-Models {
 
 # The ticket complexities (docs/CONFIG.md, Complexities), the one list every script and the page read: models.json's,
 # with scriptorium.json's `complexities` over them, in this order: low, medium, high, the project's own, design. Each
-# @{ name; description; models; base; advisor; advisorFallback; compactAt }. A complexity of the project's own needs a
-# description; with no models it runs on medium's. The model the owner picked on the page ($settings: the PC's
-# settings.json, `complexities.<name>.model`) is its one candidate, and `base` is the first candidate without that
-# pick. Its compact size (docs/CONFIG.md, The compact size) is the one the owner set on the page
-# (`complexities.<name>.compactAt`), else its own in scriptorium.json, else the project's, else models.json's. Throws
-# for a missing description, a name that is no label or a compact size out of range.
+# @{ name; description; models; base; advisor; advisorFallback; baseAdvisor; baseFallback; compactAt }. A complexity of
+# the project's own needs a description; with no models it runs on medium's. The model the owner picked on the page
+# ($settings: the project's settings.json, `complexities.<name>.model`) is its one candidate, and `base` is the first
+# candidate without that pick. The owner's advisor switch and fallback effort (`complexities.<name>.advisor`,
+# `.advisorFallback`) go over the files' too, and `baseAdvisor` and `baseFallback` keep the files' values. Its compact
+# size (docs/CONFIG.md, The compact size) is the one the owner set on the page (`complexities.<name>.compactAt`), else
+# its own in scriptorium.json, else the project's, else models.json's. Throws for a missing description, a name that
+# is no label or a compact size out of range.
 function Get-Complexities($models, $config, $settings) {
     $compactAt = ConvertTo-CompactAt $(if ($config -and $null -ne $config.compactAt) { $config.compactAt } else { $models.compactAt }) 'compactAt'
     $paged = if ($settings -and $settings.complexities) { $settings.complexities } else { [pscustomobject]@{} }
@@ -74,8 +76,17 @@ function Get-Complexities($models, $config, $settings) {
                 $entry.compactAt = ConvertTo-CompactAt $source.compactAt "complexity '$name'"
             }
         }
+        $entry.baseAdvisor = $entry.advisor
+        $entry.baseFallback = $entry.advisorFallback
         if ($paged.$name -and $null -ne $paged.$name.compactAt) {
             $entry.compactAt = ConvertTo-CompactAt $paged.$name.compactAt "settings.json, complexity '$name'"
+        }
+        # Not a truth test: the owner's off and '' (no other effort) must go over a true and an effort of the files.
+        if ($paged.$name -and $null -ne $paged.$name.advisor) {
+            $entry.advisor = [bool]$paged.$name.advisor
+        }
+        if ($paged.$name -and $null -ne $paged.$name.advisorFallback) {
+            $entry.advisorFallback = [string]$paged.$name.advisorFallback
         }
         if (-not $entry.description) {
             throw "complexity '$name' in scriptorium.json needs a description"
@@ -141,15 +152,20 @@ function Get-TicketComplexity([string[]] $labels, $complexities) {
     return 'medium'
 }
 
-# The advisor rule for limits.ps1 (Get-Advisor, Get-FallbackEffort): models.json's advisor model, the complexities
-# whose runs get it, and the effort each gets instead where the account has no advisor left.
-function Get-AdvisorRule($models, $complexities) {
+# The advisor rule for limits.ps1 (Get-Advisor, Get-FallbackEffort): the advisor's model (the owner's pick in the
+# project's settings, `advisor.model`, else models.json's), the complexities whose runs get it, and the effort each
+# gets instead where the account has no advisor left.
+function Get-AdvisorRule($models, $complexities, $settings) {
     $fallback = @{}
     foreach ($entry in @($complexities | Where-Object { $_.advisor -and $_.advisorFallback })) {
         $fallback[$entry.name] = $entry.advisorFallback
     }
+    $model = [string]$models.advisor.model
+    if ($settings -and $settings.advisor -and $settings.advisor.model) {
+        $model = [string]$settings.advisor.model
+    }
     return @{
-        model = [string]$models.advisor.model
+        model = $model
         complexities = @($complexities | Where-Object { $_.advisor } | ForEach-Object { $_.name })
         fallback = $fallback
     }

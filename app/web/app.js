@@ -69,7 +69,21 @@ const all = (field) => names.flatMap((p) => (states[p]?.[field] || []).map((item
 const drawEach = (list, template) => list.map(({ p, item }) => within(p, () => tagged(p, template(item)))).join('');
 // A project's mark on an item, while the PC has two projects or more: its name, in a colour of its own.
 const hue = (name) => [...name].reduce((sum, c) => (sum * 31 + c.charCodeAt(0)) % 360, 7);
-const mark = () => (names.length > 1 ? `<span class="badge of" style="--hue:${hue(scope)}">${esc(scope)}</span>` : '');
+// The colour of hue() (65 % saturation, 50 % lightness) as #rrggbb: a colour field takes no other form.
+function hueHex(name) {
+  const h = hue(name);
+  const a = 0.65 * 0.5;
+  const part = (n) => {
+    const k = (n + h / 30) % 12;
+    return Math.round(255 * (0.5 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0');
+  };
+  return `#${part(0)}${part(8)}${part(4)}`;
+}
+// A project's colour: the one Details set (`color`), else the one from its name. Checked again here before it goes
+// into a style attribute: a hand edit of the settings file skips the server's check.
+const ownColor = (s) => (/^#[0-9a-f]{6}$/i.test(s?.color || '') ? s.color : '');
+const colorOf = (project) => ownColor(states[project]) || hueHex(project);
+const mark = () => (names.length > 1 ? `<span class="badge of" style="--of:${colorOf(scope)}">${esc(scope)}</span>` : '');
 
 function duration(seconds) {
   if (seconds == null) return '';
@@ -232,7 +246,7 @@ function workerCard(worker) {
   const fixed = worker.run || worker.ticket ? 'It has a ticket: disable it first, then move it'
     : worker.activity === 'setup' ? 'Its setup still runs' : '';
   const project = names.length > 1
-    ? `<select class="badge of" style="--hue:${hue(scope)}" data-move="${id}" aria-label="Project of worker ${id}"${fixed ? ` disabled title="${fixed}"` : ''}>${
+    ? `<select class="badge of" style="--of:${colorOf(scope)}" data-move="${id}" aria-label="Project of worker ${id}"${fixed ? ` disabled title="${fixed}"` : ''}>${
       names.map((p) => `<option${p === scope ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select>` : '';
 
   const card = `worker:${worker.id}`;
@@ -247,17 +261,10 @@ function workerCard(worker) {
     <div class="slot next"><span class="slot-label">Next</span><div class="slot-body">${nextBody}</div>${force}</div></article>`;
 }
 
-// A worker's config, the dialog its Config button opens: a row for each complexity. The switch (docs/QUEUE.md,
-// Settings, `workers.<id>.complexity`) is this worker's: off, it takes no new ticket of the complexity and leaves the
-// answers and rebases of its PRs of it (`jobs`) until it is on again. The model and effort
-// (`complexities.<name>.model`) and the compact size (`complexities.<name>.compactAt`) are the same for every worker.
-// The two lists are models.json's, with the value in use always among them: a list without it would show its first
-// entry. The models have the base's own too (`base`, which a project may name outside the list), so the way back is
-// always there. A pick that is not the base's shows the base's under it; the switch names the model of a worker that
-// the settings give its own.
+// A worker's config, the dialog its Config button opens: a switch for each complexity (docs/QUEUE.md, Settings,
+// `workers.<id>.complexity`). Off, the worker takes no new ticket of the complexity and leaves the answers and rebases
+// of its PRs of it (`jobs`) until it is on again. What is the same for every worker of the project is on Details.
 let configOf = null;
-const pickList = (list, value, label) => [...new Set([...list, value])].filter(Boolean)
-  .map((v) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label(v))}</option>`).join('');
 function drawConfig() {
   const worker = configOf && states[configOf.project] && workerOf(states[configOf.project], configOf.id);
   if (!worker) { $('config').close(); return; }
@@ -266,21 +273,68 @@ function drawConfig() {
 function drawConfigOf(worker) {
   const id = esc(worker.id);
   $('config-title').textContent = `Worker ${worker.id}${names.length > 1 ? ` on ${scope}` : ''}: config`;
-  put($('config-body'), `<div class="config-head"><span>Worker ${id} takes</span><span>Model, effort, compacts near <small>all workers</small></span></div>
-    ${(worker.takes || []).map((t) => {
+  put($('config-body'), `<div class="takes">${(worker.takes || []).map((t) => {
     const name = esc(t.name);
-    const c = complexityOf(state, t.name);
-    const notes = [(t.model !== c.model || t.effort !== c.effort) && `settings.json: ${esc(modelName(t.model))} · ${esc(t.effort)}`,
-      !t.on && t.jobs && `holds ${t.jobs} PR job${t.jobs === 1 ? '' : 's'}`].filter(Boolean);
-    const base = c.base && (c.base.model !== c.model || c.base.effort !== c.effort)
-      ? `<small>Default: ${esc(modelName(c.base.model))} · ${esc(c.base.effort)}</small>` : '';
-    return `<div class="config-row"><button class="take${t.on ? ' on' : ''}" data-take="${name}" data-worker="${id}" aria-pressed="${t.on}">
-        ${icon(t.on ? 'check' : 'lock')}<span><b>${name}</b>${notes.length ? `<small>${notes.join(' · ')}</small>` : ''}</span></button>
-      <select data-run-model="${name}" aria-label="Model of a ${name} run">${pickList([...(state.models || []), c.base?.model], c.model, modelName)}</select>
-      <select data-run-effort="${name}" aria-label="Effort of a ${name} run">${pickList(state.efforts || [], c.effort, (v) => v)}</select>
-      <label class="compact"><input type="number" inputmode="numeric" min="67" max="967" step="1" value="${Math.round(c.compactAt / 1000)}"
-        data-compact="${name}" aria-label="Thousands of tokens at which a ${name} run compacts its context">k tokens</label>${base}</div>`;
-  }).join('')}`);
+    const jobs = !t.on && t.jobs ? `<small>holds ${t.jobs} PR job${t.jobs === 1 ? '' : 's'}</small>` : '';
+    return `<button class="take${t.on ? ' on' : ''}" data-take="${name}" data-worker="${id}" aria-pressed="${t.on}">
+      ${icon(t.on ? 'check' : 'lock')}<span><b>${name}</b>${jobs}</span></button>`;
+  }).join('')}</div>
+    <p class="takes-note">Details sets the model, the effort, the compact size and the advisor of each complexity, for all workers.</p>`);
+}
+
+// ---- Details: the settings
+
+// The settings that are the same for all workers of a project (docs/APP.md, Details), one block for each project,
+// drawn in its scope. A row for each complexity: its model and effort (`complexities.<name>.model`), its compact size
+// (`.compactAt`), its advisor switch (`.advisor`) and its effort without the advisor (`.advisorFallback`). The lists
+// are models.json's, with the value in use always among them: a list without it would show its first entry. The
+// models have the base's own too (`base`, which a project may name outside the list), so the way back is always
+// there. A pick that is not the base's shows the base's under it. Each field has a fallback for an older snapshot.
+const pickList = (list, value, label) => [...new Set([...list, value])].filter(Boolean)
+  .map((v) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label(v))}</option>`).join('');
+const fallbackName = (effort) => (effort ? `${effort} without it` : 'same effort without it');
+
+function complexityRow(c) {
+  const name = esc(c.name);
+  const key = `complexity:${c.name}`;
+  const advisorModel = state.advisor?.model;
+  const on = c.advisorOn ?? Boolean(c.advisor);
+  const fallback = c.advisorFallback || '';
+  const notes = [c.base && (c.base.model !== c.model || c.base.effort !== c.effort)
+    && `Default: ${esc(modelName(c.base.model))} · ${esc(c.base.effort)}`,
+  c.baseAdvisor != null && (c.baseAdvisor !== on || (c.baseFallback || '') !== fallback)
+    && `Default: ${c.baseAdvisor ? `advisor, ${esc(fallbackName(c.baseFallback))}` : 'no advisor'}`].filter(Boolean);
+  const advisor = c.model === advisorModel
+    ? '<span class="config-name"><b>Advisor</b></span><small>none: runs on the advisor\'s model</small>'
+    : `<button class="take${on ? ' on' : ''}" data-advisor="${name}" aria-pressed="${on}">${icon(on ? 'check' : 'lock')}<span><b>Advisor</b></span></button>
+      <select data-fallback="${name}" aria-label="Effort of a ${name} run without the advisor"${on ? '' : ' disabled'}>${
+  ['', ...(state.efforts || [])].map((e) => `<option value="${esc(e)}"${e === fallback ? ' selected' : ''}>${esc(fallbackName(e))}</option>`).join('')}</select>`;
+  return `<div class="config-row${busyClass(key)}"${busyAttr(key)}>
+    <span class="config-name"><b>${name}</b><small>${esc(c.description)}</small></span>
+    <select data-run-model="${name}" aria-label="Model of a ${name} run">${pickList([...(state.models || []), c.base?.model], c.model, modelName)}</select>
+    <select data-run-effort="${name}" aria-label="Effort of a ${name} run">${pickList(state.efforts || [], c.effort, (v) => v)}</select>
+    <label class="compact"><input type="number" inputmode="numeric" min="67" max="967" step="1" value="${Math.round(c.compactAt / 1000)}"
+      data-compact="${name}" aria-label="Thousands of tokens at which a ${name} run compacts its context">k tokens</label>
+    ${notes.length ? `<small>${notes.join(' · ')}</small>` : ''}${advisor}</div>`;
+}
+
+function settingsBlock() {
+  const advisor = state.advisor || {};
+  const base = advisor.base || advisor.model;
+  // The colour shows only on the marks, and a PC with one project shows none.
+  const head = names.length > 1 ? `<div class="settings-head${busyClass('color')}"${busyAttr('color')}><h2>${mark()}</h2>
+    <input type="color" value="${colorOf(scope)}" data-color="${esc(scope)}" aria-label="Colour of ${esc(scope)}">
+    ${ownColor(state) ? '<button data-color-reset>Default colour</button>' : ''}</div>` : '';
+  const [model, effort] = (state.settingsModel || '').split('@');
+  const override = model ? `<p class="settings-note">settings.json sets ${esc(modelName(model))}${effort ? ` · ${esc(effort)}` : ''}
+    for every run: the models and efforts above are not in use.</p>` : '';
+  return `<section class="settings">${head}
+    <div class="config-head"><span>Complexity</span><span>Model, effort, compacts near</span></div>
+    ${(state.complexities || []).map(complexityRow).join('')}
+    <div class="config-row${busyClass('advisor-model')}"${busyAttr('advisor-model')}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
+      <select data-advisor-model aria-label="Model of the advisor">${pickList(state.models || [], advisor.model, modelName)}</select>
+      ${base && base !== advisor.model ? `<small>Default: ${esc(modelName(base))}</small>` : ''}</div>
+    ${override}<p class="settings-note">A change counts from the next run. A run in progress or on hold keeps its model, its effort and its advisor.</p></section>`;
 }
 
 // ---- Questions
@@ -400,7 +454,7 @@ function windowMeter(account, key, label, w, inner = '') {
       ${picks}
       <input type="range" min="0" max="100" value="${stop}" data-stop="${esc(account.name)}" data-window="${key}" aria-label="${label}: the stop line">
     </div>
-    <div class="window-foot">${news}<span class="stop">${fable ? 'Advisor stops' : 'Workers stop'} at <b>${percent(w.ceiling)}</b></span></div>${inner}${rows ? `<div class="guards">${rows}${hint}</div>` : ''}</div>`;
+    <div class="window-foot">${news}<span class="stop">${fable ? 'Fable advisor stops' : 'Workers stop'} at <b>${percent(w.ceiling)}</b></span></div>${inner}${rows ? `<div class="guards">${rows}${hint}</div>` : ''}</div>`;
 }
 
 function accountCard(a) {
@@ -440,12 +494,12 @@ function loginBox(login) {
     <div class="buttons"><button class="primary" data-login-code>Send code</button><button data-login-cancel>Cancel</button></div></div>`;
 }
 
-// ---- Info
+// ---- Details: the info
 
 // What the queue does and what to expect, for someone who does not know it: plain sections, no
 // cards. Each value the owner sets is a link to the tab that sets it. Every setting and reading comes from the
 // snapshot, never typed into the text, and a change to a queue rule changes this text in the same pass (docs/APP.md,
-// Info). Drawn last, from a snapshot that may be older than this code (stored on the device): each field has a fallback,
+// Details). Drawn last, from a snapshot that may be older than this code (stored on the device): each field has a fallback,
 // and a fault shows a line, not a broken page.
 const setting = (text, tab) => `<a class="val" href="#${tab}">${text}</a>`;
 const items = (lines) => `<ul>${lines.filter(Boolean).map((line) => `<li>${line}</li>`).join('')}</ul>`;
@@ -461,8 +515,8 @@ function infoLimits(a) {
   const guards = (week.guards || []).map((g) => `${esc((guardNames[g.use] || g.use).toLowerCase())} ${at(g.share)}`);
   const design = fable?.pickUp?.design ?? 1;
   const fableNow = !fable || fable.used == null ? ''
-    : fable.used >= fable.ceiling ? ' Now past both lines: no design ticket starts, and new runs get no advisor.'
-      : fable.used >= design ? ' Now past the design line: no design ticket starts, and new runs still get the advisor.' : '';
+    : fable.used >= fable.ceiling ? ' Now past both lines: no design ticket starts, and new runs get no Fable advisor.'
+      : fable.used >= design ? ' Now past the design line: no design ticket starts, and new runs still get the Fable advisor.' : '';
   const lines = [
     five.pickUp && `<b>5 hours:</b> ${now(five)}No new L ticket from ${at(five.pickUp.L)}, no new M from ${at(five.pickUp.M)},
       no new S from ${at(five.pickUp.S)}. Workers stop at ${at(five.ceiling)}.`,
@@ -471,7 +525,7 @@ function infoLimits(a) {
         whole week, less as the reset comes closer. Now that is ${percent(week.kept)}, so the workers stop at ${percent(week.ceiling)}.`
       : `Workers stop at ${at(week.stopAt)}.`}`,
     fable ? `<b>Fable week:</b> ${now(fable)}Only a Fable run updates this reading. No new design ticket from
-        ${at(design)}. No advisor for new runs from ${at(fable.ceiling)}.${fableNow}`
+        ${at(design)}. No Fable advisor for new runs from ${at(fable.ceiling)}.${fableNow}`
       : '<b>Fable week:</b> no reading yet. The first Fable run gives one.',
   ];
   const who = (a.uses || []).map(useName).join(', ');
@@ -486,8 +540,8 @@ function info(s) {
   const advisor = s.advisor;
   const working = (s.accounts || []).filter((a) => (a.uses || []).some((u) => u.startsWith('worker:')));
   const plugins = s.plugins || [];
-  // What can differ between the PC's projects, for each of them: its complexities and its plugins.
-  const per = s.per || [{ name: '', complexities: s.complexities, plugins }];
+  // What can differ between the PC's projects, for each of them: its plugins.
+  const per = s.per || [{ name: '', plugins }];
   return [
     section('In short', `<p>Workers are Claude sessions on this PC that build tickets (GitHub issues) on their own, one at
       a time. Each works in its own copy of the project${plugins.length ? `, with its environment (${environment(s)})` : ''},
@@ -524,22 +578,18 @@ function info(s) {
     }))}
       <p>Active takes tickets. Paused takes none and keeps its ticket. Disabled takes none, and other workers take its
         ticket. Force (the arrow on Next) gives a free worker its next ticket now, past the limits.</p>
-      <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes.</p>`),
+      <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes.${per.length > 1
+        ? ` The project on a worker's ${setting('card', 'workers')} moves the worker to another project.` : ''}</p>`),
     section('Complexities', `<p>The complexity of a ticket chooses the model. The size (S, M, L) only says how much usage
       it takes. A ticket with no complexity label is medium.</p>
-      ${per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}
-      <div class="scroll"><table><thead><tr><th>Complexity</th><th>For</th><th>Model</th><th>Effort</th><th>Advisor</th><th>Compacts near</th></tr></thead>
-        <tbody>${(p.complexities || []).map((c) => `<tr><th scope="row">${esc(c.name)}</th><td>${esc(c.description || c.name)}</td>
-          <td>${setting(esc(modelName(c.model)), 'workers')}</td><td>${setting(esc(c.effort), 'workers')}</td>
-          <td>${c.advisor ? `${esc(modelName(c.advisor))}${c.advisorFallback ? `<small>${esc(c.advisorFallback)} effort without it</small>` : ''}` : 'None'}</td>
-          <td>${setting(`${Math.round(c.compactAt / 1000)}k&nbsp;tokens`, 'workers')}</td></tr>`).join('')}</tbody></table></div>`).join('')}
       <p>Compacts near: when the context of a run reaches this size, Claude Code replaces the older part with a summary.
         A larger size keeps more of the work in view and uses more for each turn.</p>
-      <p>A worker's ${setting('Config', 'workers')} sets the model, the effort and the compact size of a complexity for
-        all workers${per.length > 1 ? ' of its project' : ''}, from the next run. A run that waits for its account goes on with the model it started on.</p>
+      <p>${setting('Details', 'details')} (above) sets the model, the effort, the compact size and the advisor of a
+        complexity for all workers${per.length > 1 ? ' of its project' : ''}, from the next run. A run in progress or on
+        hold keeps its model, its effort and its advisor.</p>
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
         not see the advice. A run keeps its advisor to its end; past the Fable advisor line (Limits), new runs start
-        without one.</p>` : ''}`),
+        without the Fable advisor.</p>` : ''}`),
     section('Plugins', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${(p.plugins || []).length
       ? items(p.plugins.map((x) => `<b>${esc(x.title || x.name)}</b> ${esc(x.version)}: ${esc(x.description)}`))
       : '<p>None: a plain git repo.</p>'}`).join('')),
@@ -571,11 +621,12 @@ function info(s) {
         GitHub as a comment, and the page changes the labels for you. GitHub builds and tests nothing: the run's own tests
         are the check.</p>`),
     section('The tabs', items([
-      `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account and Config. The last tile adds a worker; the cross on a card removes a disabled worker, and its copy of the project stays on the PC.`,
+      `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account${per.length > 1 ? ', project' : ''} and Config. The last tile adds a worker; the cross on a card removes a disabled worker, and its copy of the project stays on the PC.`,
       `${setting('Accounts', 'accounts')}: usage and the limits above; drag a handle to move one. The last tile adds an account and signs it in; the cross on a card removes an account that nothing uses.`,
       `${setting('Questions', 'questions')}: decisions for you, blocking first.`,
       `${setting('Queue', 'queue')}: Up next with why each ticket waits, Stuck, On hold and Parked.`,
       `${setting('History', 'history')}: merged PRs, and each run with its model, time and cost.`,
+      `${setting('Details', 'details')}: the settings that are the same for all workers of a project${per.length > 1 ? ', and its colour' : ''}, then this text.`,
     ])),
   ].join('');
 }
@@ -638,7 +689,7 @@ function render() {
   const rank = ({ item }) => (['P0', 'P1', 'P2'].indexOf(item.priority) + 4) % 4;
   const queued = all('queued');
   put($('queue-projects'), names.length > 1 ? `<div class="seg" role="group" aria-label="The projects of the queue">${[['', 'All'], ...names.map((p) => [p, p])]
-    .map(([value, label]) => `<button data-queue="${esc(value)}" class="${queueOf === value ? 'on' : ''}" aria-pressed="${queueOf === value}">${esc(label)}
+    .map(([value, label]) => `<button data-queue="${esc(value)}" class="${queueOf === value ? 'on' : ''}" aria-pressed="${queueOf === value}"${value ? ` style="--of:${colorOf(value)}"` : ''}>${esc(label)}
       <small>${queued.filter(({ p }) => !value || p === value).length}</small></button>`).join('')}</div>` : '');
   const left = names.filter((p) => !queueOf || p === queueOf).map((p) => states[p].left)
     .reduce((sum, l) => ({ count: sum.count + l.count, seconds: sum.seconds + l.seconds, cost: sum.cost + l.cost }), { count: 0, seconds: 0, cost: 0 });
@@ -667,13 +718,22 @@ function render() {
 
   $('stamp').textContent = `Updated ${new Date(s.now * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
+  // Details: the settings of each project in its own scope, then the info. Two containers, so a count in the text
+  // that changes never redraws a field of the settings.
+  let settings;
+  try {
+    settings = names.map((p) => within(p, () => tagged(p, settingsBlock()))).join('');
+  } catch (e) {
+    settings = quiet('The settings could not be drawn from this state. Pull down or reload to fetch a new one.');
+  }
+  put($('settings-body'), settings);
   // The info is one text for the PC: this address's project gives the common part, every project its own part.
   let text;
   try {
     text = within(home, () => info({
       ...s, questions: questions.map(({ item }) => item), stuck: stuck.map(({ item }) => item),
       workers: workers.map(({ p, item }) => ({ ...item, project: names.length > 1 ? p : '' })),
-      per: names.map((p) => ({ name: p, complexities: states[p].complexities, plugins: states[p].plugins })),
+      per: names.map((p) => ({ name: p, plugins: states[p].plugins })),
     }));
   } catch (e) {
     text = quiet('The info could not be drawn from this state. Pull down or reload to fetch a new one.');
@@ -682,7 +742,7 @@ function render() {
 }
 
 // Tabs: each hash shows its view. Older links and notifications name a section that a view now holds.
-const viewOf = { home: 'workers', needs: 'questions', qa: 'questions', usage: 'accounts', done: 'history' };
+const viewOf = { home: 'workers', needs: 'questions', qa: 'questions', usage: 'accounts', done: 'history', info: 'details' };
 function route() {
   const hash = location.hash.slice(1);
   const name = viewOf[hash] || hash;
@@ -980,6 +1040,25 @@ const answer = (project, key, text) => act(project, { action: 'answer', key, tex
   done: (s) => !s.questions.some((q) => q.key === key),
 });
 
+// The advisor of a complexity (Details): its switch and its effort without it, saved as one pick, as the model and
+// effort are.
+function setAdvisor(project, row, name, on) {
+  const fallback = row.querySelector('[data-fallback]').value;
+  const same = (c) => c.advisorOn === on && (c.advisorFallback || '') === fallback;
+  return act(project, { action: 'advisor', complexity: name, on, fallback }, {
+    keys: [`complexity:${name}`],
+    apply: (s) => { Object.assign(complexityOf(s, name), { advisorOn: on, advisorFallback: fallback }); },
+    done: (s) => same(complexityOf(s, name)),
+  });
+}
+
+// The project's colour (Details): #rrggbb, or '' for the one from its name.
+const setColor = (project, value) => act(project, { action: 'color', value }, {
+  keys: ['color'],
+  apply: (s) => { s.color = value; },
+  done: (s) => (s.color || '') === value,
+});
+
 document.addEventListener('click', async (e) => {
   const target = e.target.closest('button');
   if (!target) return;
@@ -1002,6 +1081,10 @@ document.addEventListener('click', async (e) => {
       keys: [`worker:${data.worker}`],
       apply: (s) => { workerOf(s, data.worker).takes.find((t) => t.name === data.take).on = on; },
     });
+  } else if (data.advisor) {
+    await setAdvisor(project, target.closest('.config-row'), data.advisor, target.getAttribute('aria-pressed') !== 'true');
+  } else if (data.colorReset !== undefined) {
+    await setColor(project, '');
   } else if (data.how) {
     $('how').close();
     await statusTo(project, data.worker, data.to, data.how);
@@ -1245,7 +1328,7 @@ document.addEventListener('change', async (e) => {
       apply: (s) => { accountOf(s, data.account)[data.window].pickUp[data.pick] = value; },
     });
   } else if (data.compact) {
-    // The compact size of a complexity (drawConfig): typed in thousands of tokens, saved in tokens.
+    // The compact size of a complexity (Details): typed in thousands of tokens, saved in tokens.
     e.target.blur();
     const name = data.compact;
     const value = Math.round(Number(e.target.value));
@@ -1255,29 +1338,39 @@ document.addEventListener('change', async (e) => {
       return;
     }
     await act(project, { action: 'compact-at', complexity: name, value: value * 1000 }, {
-      keys: [`compact:${name}`],
+      keys: [`complexity:${name}`],
       apply: (s) => { complexityOf(s, name).compactAt = value * 1000; },
       done: (s) => complexityOf(s, name).compactAt === value * 1000,
     });
   } else if (data.runModel || data.runEffort) {
-    // The model and effort of a complexity (drawConfig): the two lists of its row, saved as one pick.
+    // The model and effort of a complexity (Details): the two lists of its row, saved as one pick.
     e.target.blur();
     const name = data.runModel || data.runEffort;
     const row = e.target.closest('.config-row');
     const pick = { model: row.querySelector('[data-run-model]').value, effort: row.querySelector('[data-run-effort]').value };
     const same = (a) => a.model === pick.model && a.effort === pick.effort;
     await act(project, { action: 'model', complexity: name, ...pick }, {
-      keys: [`model:${name}`],
-      apply: (s) => {
-        const c = complexityOf(s, name);
-        // A worker that ran on the complexity's model runs on the pick; one with its own in the settings keeps it.
-        for (const t of s.workers.map((w) => (w.takes || []).find((x) => x.name === name))) {
-          if (t && t.model === c.model && t.effort === c.effort) Object.assign(t, pick);
-        }
-        Object.assign(c, pick);
-      },
+      keys: [`complexity:${name}`],
+      apply: (s) => { Object.assign(complexityOf(s, name), pick); },
       done: (s) => same(complexityOf(s, name)),
     });
+  } else if (data.fallback) {
+    e.target.blur();
+    const c = complexityOf(states[project], data.fallback);
+    await setAdvisor(project, e.target.closest('.config-row'), data.fallback, c.advisorOn ?? Boolean(c.advisor));
+  } else if (data.advisorModel !== undefined) {
+    // The advisor's model of the project (Details).
+    e.target.blur();
+    const model = e.target.value;
+    await act(project, { action: 'advisor-model', model }, {
+      keys: ['advisor-model'],
+      apply: (s) => { s.advisor = { ...s.advisor, model }; },
+      done: (s) => s.advisor?.model === model,
+    });
+  } else if (data.color) {
+    e.target.blur();
+    const value = e.target.value.toLowerCase();
+    if (/^#[0-9a-f]{6}$/.test(value)) await setColor(project, value);
   } else if (data.guard) {
     e.target.blur();
     const value = e.target.value / 100;

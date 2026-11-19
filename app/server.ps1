@@ -17,7 +17,7 @@ $ErrorActionPreference = 'Stop'
 
 $Main = Resolve-Project $Project
 $config = Read-Project $Main
-# The project's plugins, for the Info tab; the page runs on without them when one does not load.
+# The project's plugins, for the Details tab; the page runs on without them when one does not load.
 $plugins = @()
 try {
     $plugins = Import-Plugins (Split-Path $PSScriptRoot -Parent) $config
@@ -649,6 +649,26 @@ function Invoke-Action($request) {
             $list = Read-Models
             Save-Settings (Set-ComplexityModel $settings $list (Get-Complexities $list $config $settings) ([string]$request.complexity) ([string]$request.model) ([string]$request.effort))
             return "model: $($request.complexity) $($request.model)@$($request.effort)"
+        }
+        'advisor' {
+            # Whether a complexity's runs get the advisor, and their effort without it (state.ps1,
+            # Set-ComplexityAdvisor).
+            $settings = Read-SettingsToEdit
+            $list = Read-Models
+            $complexities = Get-Complexities $list $config $settings
+            $name = [string]$request.complexity
+            Save-Settings (Set-ComplexityAdvisor $settings $list $complexities $name ([bool]$request.on) ([string]$request.fallback))
+            return "advisor: $($request.complexity) $(if ($request.on) { 'on' } else { 'off' }) $($request.fallback)"
+        }
+        'advisor-model' {
+            # The advisor's model for this project (state.ps1, Set-AdvisorModel).
+            Save-Settings (Set-AdvisorModel (Read-SettingsToEdit) (Read-Models) ([string]$request.model))
+            return "advisor model: $($request.model)"
+        }
+        'color' {
+            # The project's colour on the page (state.ps1, Set-ProjectColor).
+            Save-Settings (Set-ProjectColor (Read-SettingsToEdit) ([string]$request.value))
+            return "color: $($request.value)"
         }
         'login' {
             # An account new to the register gets its own config folder, ~/.claude-<name>.
