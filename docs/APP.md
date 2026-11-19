@@ -55,7 +55,7 @@ the working workers after it: "(1) Scriptorium · 2 working".
 | ------ | ----- |
 | Active | Takes tickets when it can. A worker at its usage limit, at its account's stop line or whose account is out stays active |
 | Paused | Takes none, and keeps its ticket. A run that ended at its checkpoint for the pause keeps its session too, compacted ([QUEUE.md](QUEUE.md), The owner's pause) |
-| Disabled | Takes none, and its ticket is free: other workers take its PRs, and its ticket without a PR goes back to the queue |
+| Disabled | Takes none, and its ticket is free: other workers take its PRs, and its ticket without a PR goes back to the queue. Once its run has ended, its editors close |
 
 Pause and Disable ask how the run in flight ends: **Now** (its process ends; work since the last checkpoint push is
 lost), **Next checkpoint** (it saves its work, then stops; after a pause its session is kept and resumes) or **After the

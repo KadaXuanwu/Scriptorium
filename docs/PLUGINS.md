@@ -70,6 +70,7 @@ function Get-Something { ... }
     Start = { param($ctx) ... }
     GetRun = { param($ctx) ... }
     EndRun = { param($ctx) ... }
+    Close = { param($ctx) ... }
 }
 ```
 
@@ -84,6 +85,7 @@ nothing and changes nothing.
 | `Start` | in the worker script, before each look for a job, and before a run in a checkout of another repo | the worker copy, or that checkout | nothing |
 | `GetRun` | before a run starts or resumes | the job's checkout | what the run gets (below) |
 | `EndRun` | after a run, however it ended | the job's checkout | nothing |
+| `Close` | in the worker script, once when the worker becomes disabled, after its run has ended | the worker copy, then each checkout of another repo it ran in | nothing |
 
 - **`Setup`** checks the PC and adds what the project itself must hold (an editor script, a config file). The files
   reach the worker copies only through git, so setup commits the returned files or tells the owner to. It must be safe
@@ -109,6 +111,8 @@ nothing and changes nothing.
   one or two sentences that the base adds to the run's first message. The base merges the answers of all plugins:
   servers and variables by name, tools as a union, prompts in order.
 - **`EndRun`** leaves the environment clean for the next run: it leaves play mode, stops a server.
+- **`Close`** closes what `Start` opened in `$ctx.Copy`, to free the PC: an editor, a server. Never the main
+  checkout's. An editor that the owner opens later in a disabled copy stays open.
 
 A job can be in another repo of the owner (a `repo:` label). `$ctx.Copy` is then that repo's checkout, which may not
 hold this environment at all. A hook checks what it finds in `$ctx.Copy` and does nothing when its environment is
@@ -133,6 +137,7 @@ A plugin reads no other variable of the base and calls no function of it.
 
 - `Setup`, `PrepareCopy`: the setup stops and shows the plugin's name and the error.
 - `Start`, `GetRun`: the worker starts no run, shows the error on its card and tries again at its next look.
+- `Close`: the worker writes the error to its log, and the other plugins still close.
 - `EndRun`: the worker writes the error to its log and goes on.
 
 ## The playbook

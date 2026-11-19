@@ -326,13 +326,21 @@ function Test-NowElsewhere($job) {
     return [bool]($now -and $now -ne [int]$job.Ticket)
 }
 
-# Disabled: its paused run is dropped (its ticket goes back to the queue, Get-NextJob).
+# Disabled: its paused run is dropped (its ticket goes back to the queue, Get-NextJob). As it becomes disabled, the
+# plugins close what Start opened in its copy and in the checkouts of other repos it ran in (docs/PLUGINS.md, Close).
+# Only then: an editor the owner opens later in a disabled copy stays open.
 function Disable-Worker {
     if (Test-Path $pausedFile) {
         Remove-Item $pausedFile
         Write-Log 'disabled: dropped the paused run; its ticket goes back to the queue'
     }
+    $was = try { (Get-Content (Join-Path $mainQueueDir "worker-$Id.json") -Raw | ConvertFrom-Json).state } catch { '' }
     Write-State 'disabled'
+    if ($was -ne 'disabled') {
+        $list = Join-Path $queueDir 'checkouts.txt'
+        $checkouts = @($Clone) + @(if (Test-Path $list) { Get-Content $list })
+        Close-Checkouts $plugins $checkouts $Project $Id $queueDir (Read-Settings) { param($text) Write-Log "$text" }
+    }
 }
 
 # Usage is per account: runs on the same login share it.
@@ -1085,6 +1093,11 @@ function Invoke-Worker($job, [string] $log, $paused) {
     # The environment of the job's checkout (the main loop's Start covered the clone), then what the run gets from the
     # plugins (docs/PLUGINS.md, GetRun). A hook that throws starts no run: the ticket stays this worker's.
     if ($dir -ne $Clone) {
+        # Kept for Disable-Worker, which closes what Start opens here.
+        $list = Join-Path $queueDir 'checkouts.txt'
+        if (-not ((Test-Path $list) -and @(Get-Content $list) -contains $dir)) {
+            Add-Content $list $dir -Encoding utf8
+        }
         Invoke-WorkerHooks 'Start' $dir | Out-Null
     }
     $given = Merge-RunAnswers (Invoke-WorkerHooks 'GetRun' $dir)

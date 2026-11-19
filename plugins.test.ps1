@@ -29,12 +29,14 @@ function Get-Word { 'one' }
     Start = { param($ctx) & $ctx.Report "start $(Get-Word) in $($ctx.Copy)" }
     GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'one' }; First = @{ command = 'a' } }; AllowedTools = @('mcp__First', 'Bash(dotnet:*)'); Prompt = "Word $(Get-Word)."; Env = @{ SHARED = 'one'; FIRST = 'a' } } }
     EndRun = { param($ctx) throw 'the server did not stop' }
+    Close = { param($ctx) if ($ctx.Copy -eq 'D:/o-w1') { throw 'no editor' }; & $ctx.Log "one $($ctx.Copy)" }
 }
 '@
     $two = New-Plugin $root 'two' @'
 function Get-Word { 'two' }
 @{
     GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'two' } }; AllowedTools = @('Bash(dotnet:*)', 'mcp__Shared'); Prompt = "Word $(Get-Word) at $($ctx.Settings.level)."; Env = @{ SHARED = 'two' } } }
+    Close = { param($ctx) & $ctx.Log "two $($ctx.Copy)" }
 }
 '@
     $config = "{ `"name`": `"App`", `"allowedTools`": [`"Bash(npm:*)`"], `"plugins`": { `"one`": { `"source`": `"$($one.Replace('\', '/'))`" }, `"two`": { `"source`": `"$($two.Replace('\', '/'))`", `"level`": 1 } } }" | ConvertFrom-Json
@@ -65,6 +67,11 @@ function Get-Word { 'two' }
     $message = ''
     try { Invoke-Hooks $plugins 'EndRun' 'D:/p' 'D:/p-w1' 1 'D:/q' $null | Out-Null } catch { $message = "$_" }
     Assert-Equal $message 'plugin one, EndRun: the server did not stop' 'a hook that throws'
+
+    # Close: every plugin in every checkout; a hook that throws is logged, and the next plugin still closes.
+    $said.Clear()
+    Close-Checkouts $plugins @('D:/p-w1', 'D:/o-w1') 'D:/p' 1 'D:/q' $null $report
+    Assert-Equal ($said -join '|') 'one D:/p-w1|two D:/p-w1|plugin one, Close: no editor|two D:/o-w1' 'the close of a disabled worker'
 
     # A plugin for another contract version is refused with both numbers.
     $old = New-Plugin $root 'old' '@{}' 2

@@ -248,7 +248,8 @@ between runs.
 - `workers.<id>.assignedOnly: true` keeps a worker to the tickets labelled `worker:<id>` and their PRs: no worker gives
   it a new ticket, and it takes none. The front desk labels the ticket.
 - `workers.<id>.enabled: false` disables a worker, for example one whose borrowed account is gone. The page's worker
-  status sets it ([APP.md](APP.md), Worker status). A disabled worker's run wraps up at its next checkpoint, and its
+  status sets it ([APP.md](APP.md), Worker status). Once its run has ended, the plugins close what they opened for it,
+  an editor for example ([PLUGINS.md](PLUGINS.md), Close). A disabled worker's run wraps up at its next checkpoint, and its
   paused run is dropped. Once its run has ended, the next worker to dispatch takes its PRs and the tickets they close;
   its tickets without a PR go back to the queue. The same for a worker that the page removed or moved to another
   project: a `worker:<N>` label with no `.queue/worker-<N>.json` counts as gone. Work since its last checkpoint push is

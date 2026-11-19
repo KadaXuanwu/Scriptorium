@@ -99,6 +99,20 @@ function Invoke-Hooks($plugins, [string] $hook, [string] $project, [string] $cop
     return , $answers
 }
 
+# A disabled worker (docs/PLUGINS.md, Close): each plugin closes what Start opened, in each checkout. A hook that throws
+# goes to $log, and the others still close.
+function Close-Checkouts($plugins, [string[]] $checkouts, [string] $project, $worker, $queueDir, $machine, [scriptblock] $log) {
+    foreach ($checkout in $checkouts) {
+        foreach ($plugin in @($plugins | Where-Object { $_ })) {
+            try {
+                Invoke-Hooks @($plugin) 'Close' $project $checkout $worker $queueDir $machine $log $log | Out-Null
+            } catch {
+                & $log "$_"
+            }
+        }
+    }
+}
+
 # GetRun's answers merged (docs/PLUGINS.md, The hooks): MCP servers and environment variables by name (a later plugin's
 # wins), tools as a union, prompts in order. @{ McpServers; AllowedTools; Prompt; Env }.
 function Merge-RunAnswers($answers) {
