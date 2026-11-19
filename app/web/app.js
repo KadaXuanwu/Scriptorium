@@ -574,8 +574,9 @@ function info(s) {
       <li>A ticket with a priority (P0, P1, P2) waits in the ${setting('Queue', 'queue')}. One with no priority is Parked:
         no worker takes it.</li>
       <li>Queue order: the priority, then the bigger ticket (L, M, S), then the older one.</li>
-      <li><b>Now</b> on a queued ticket gives it to one worker at once: a free worker, else the worker whose account has
-        the most room. That worker ends its run at the next checkpoint, and the ended ticket goes back to the queue.</li>
+      <li><b>Now</b> on a queued ticket gives it to one worker at once. The first choice is a worker whose ticket in
+        work changes the same files, then a free worker, then the worker whose account has the most room. A worker in a
+        run ends it at the next checkpoint, and that ticket goes back to the queue.</li>
       <li>A free worker takes the answers and rebases of its own PRs first, then its own ticket, then the first queued ticket
         that its account has room for (Limits).</li>
       <li>Two tickets that change the same files (the same area) never run at the same time. A ticket "Blocked by" others

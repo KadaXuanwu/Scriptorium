@@ -378,6 +378,15 @@ $not = @(@{ id = '1'; status = 'paused'; activity = 'free' }, @{ id = '2'; statu
     @{ id = '5'; status = 'active'; activity = 'running'; pending = @{ to = 'paused' } }, @{ id = '6'; status = 'active'; activity = 'free' })
 $off = '{"workers":{"6":{"complexity":{"medium":false}}}}' | ConvertFrom-Json
 Assert-Equal (Now (Select-NowWorker $urgent $flight $not $off)) 'no worker can take it: each is paused, held, forced or has its complexity off' 'no worker that looks for a job on its own'
+# A ticket that runs on Fable gets no Now on an account at the design line of its Fable week.
+$design = Issue 24 @('P1', 'complexity:design')
+$onFable = @{ id = '7'; status = 'active'; activity = 'free'; account = 'f'; takes = @(@{ name = 'design'; model = 'claude-fable-5-2' }, @{ name = 'medium'; model = 'claude-opus-5-5' }) }
+$week = Account 'f' 0.1
+$week[$FableWindow] = @{ used = 0.92; stopAt = 0.98; pickUp = @{ design = 0.9 } }
+Assert-Equal (Now (Select-NowWorker $design @($design) @($onFable) $null @($week))) 'no account has Fable left for a design ticket' 'the Fable week at its design line'
+Assert-Equal (Now (Select-NowWorker (Issue 25 @('P1')) @() @($onFable) $null @($week))) "7 stops 0 busy ''" 'a ticket on another model still gets its Now there'
+$week[$FableWindow].used = 0.5
+Assert-Equal (Now (Select-NowWorker $design @($design) @($onFable) $null @($week))) "7 stops 0 busy ''" 'Fable left: the Now goes on'
 # The queue and the cards with a Now: the ticket is its worker's next, no other worker's, and has no Now button.
 $taking = Working '3' 23 'a' 200
 $taking.forced = $true

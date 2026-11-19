@@ -476,7 +476,8 @@ function Test-PrOff($pr, $issues, $settings, [string] $worker) {
 
 # Now (docs/QUEUE.md, Now): the worker that does a queued ticket at once, for the page's Now button. Only a worker that
 # looks for its next job on its own: active with no change of status to come, free or in a run, with no force on it and
-# with the ticket's complexity on. Its account must take the ticket's size now (Get-Fit, as for a worker's next ticket).
+# with the ticket's complexity on. Its account must take the ticket's size now (Get-Fit, as for a worker's next ticket),
+# and for a ticket that runs on Fable it must be under the design line of its Fable week.
 # Of those: first a worker whose ticket in work holds an area of this one (the two would change the same files), then a
 # free one, then the most 5-hour room, then the most weekly room, then the run that started last (it loses the least
 # work). Returns @{ worker; stops; title; busy }: `stops` and `title` are the ticket of the run that ends at its next
@@ -484,6 +485,9 @@ function Test-PrOff($pr, $issues, $settings, [string] $worker) {
 # such worker: @{ why }.
 function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $accounts = @()) {
     $complexity = Get-Label $ticket 'complexity:'
+    if (-not $complexity) {
+        $complexity = 'medium'
+    }
     $size = Get-Size $ticket
     $areas = @(Get-Names $ticket | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
     $able = @($workerViews | Where-Object {
@@ -493,8 +497,19 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
     if ($able.Count -eq 0) {
         return @{ why = 'no worker can take it: each is paused, held, forced or has its complexity off' }
     }
+    $noFable = 0
     $ranked = @(foreach ($view in $able) {
         $account = $accounts | Where-Object { $_.name -eq $view.account } | Select-Object -First 1
+        # Not an account at the design line of its Fable week, for a ticket that runs on Fable (docs/QUEUE.md, The Fable
+        # limit): a run would end for a ticket that cannot start.
+        # shortcut: a model that the plan refused (the PC's access.json) is not read here; the worker script puts such a
+        # ticket back in the queue. Read it here when a Now is lost to it in use.
+        $model = [string]($view.takes | Where-Object { $_.name -eq $complexity } | Select-Object -First 1).model
+        $fable = if ($account) { $account[$FableWindow] } else { $null }
+        if ($model -like '*fable*' -and $fable -and [double]$fable.used -ge [math]::Min([double]$fable.pickUp.design, [double]$fable.stopAt)) {
+            $noFable++
+            continue
+        }
         if ($account -and -not (Get-Fit $size $account)) {
             continue
         }
@@ -516,7 +531,7 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
         }
     })
     if ($ranked.Count -eq 0) {
-        return @{ why = "no account has room for a size $size ticket now" }
+        return @{ why = $(if ($noFable -eq $able.Count) { "no account has Fable left for a $complexity ticket" } else { "no account has room for a size $size ticket now" }) }
     }
     $best = @($ranked | Sort-Object @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
         @{ Expression = { $_.five }; Descending = $true }, @{ Expression = { $_.week }; Descending = $true },

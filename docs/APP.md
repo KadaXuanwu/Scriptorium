@@ -165,7 +165,8 @@ The repo may be private, so the server fetches each one once with the owner's `g
   why it waits, its priority and **Now**.
 - **Now** (on a ticket of Up next that is not blocked): one worker does the ticket at once ([QUEUE.md](QUEUE.md), Now).
   - The server picks the worker (`Select-NowWorker`). It must be active with no change of status to come, free or in a
-    run, with no force on it and with the ticket's complexity on. Its account must take the ticket's size now.
+    run, with no force on it and with the ticket's complexity on. Its account must take the ticket's size now. For a
+    ticket that runs on Fable, the account must be under the design line of its Fable week.
   - Of those, the first is a worker whose ticket in work holds an area of this one. Then a free worker, then the
     account with the most 5-hour room, then the most weekly room, then the run that started last.
   - The page asks first. It names the worker, the run that ends, and the areas that another ticket still holds.

@@ -357,6 +357,8 @@ writes the ticket to that worker's force file with `now` (`.queue/force-<N>.json
   - The run is in the history as a part.
 - **The Now run** is a forced run: it does not stop at the workers' ceiling. The server checks the account's room only
   when the owner clicks.
+- **The model:** the server reads the Fable week of the account, not the models that its plan refused (`access.json`).
+  The plan can therefore refuse the start of a Now run. The ticket then goes back to the queue (Models).
 - **The Now ends** without a run in these cases, and the worker deletes the file:
   - The ticket left the queue: closed, claimed by another worker, blocked, or its complexity is off for the worker.
     The worker takes only the ticket that the file names, never another one (`Select-Now` in [areas.ps1](../areas.ps1)).
