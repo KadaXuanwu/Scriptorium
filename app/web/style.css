@@ -107,11 +107,13 @@ nav a.active { background: color-mix(in srgb, var(--accent) 14%, transparent); c
 main { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
 .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .view[hidden] { display: none; }
-.view > header { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; padding: 20px 28px 14px; }
+.view > header { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; padding: 14px 28px 8px; }
 /* The title's line is as high as a button (36px) on every tab, with or without buttons beside it: the title and the
    list under it then stand at the same height on every tab, and nothing moves at a change of tab. */
 .view > header h1 { min-height: 36px; display: flex; align-items: center; }
-.view > header .buttons, .stats { margin-left: auto; }
+.view > header .buttons, .stats, .projects { margin-left: auto; }
+/* The Queue's stats stand before its project select, which is at the right end on every tab. */
+.stats + .projects { margin-left: 0; }
 .sub { color: var(--muted); }
 .pane {
   flex: 1;
@@ -687,7 +689,7 @@ body.offline .view button, body.offline .view select, body.offline .view textare
   .brand strong, #stamp { display: none; }
   nav a { position: relative; flex-direction: column; gap: 3px; padding: 10px 2px; font-size: 11px; }
   nav a .count:not(:empty) { position: absolute; top: 2px; left: calc(50% + 6px); margin: 0; min-width: 18px; padding: 0 5px; font-size: 11px; line-height: 18px; }
-  .view > header { padding: 16px 20px 12px; }
+  .view > header { padding: 12px 20px 8px; }
   .pane { padding: 2px 20px 24px; }
   #offline, #notice { margin: 12px 20px 0; }
 }
@@ -705,16 +707,17 @@ body.offline .view button, body.offline .view select, body.offline .view textare
   .brand { display: none; }
   nav a { flex: 1; }
   h1 { font-size: 20px; }
-  .view > header { padding: 14px 10px 10px; }
+  .view > header { padding: 8px 10px 6px; }
   .pane { padding: 2px 10px 20px; scrollbar-gutter: auto; }
   .split, .split.wide { display: block; overflow-y: auto; overscroll-behavior: contain; }
   .split > .pane, .split > .pane + .pane { overflow: visible; padding: 2px 10px 4px; }
   #offline, #notice { margin: 12px 10px 0; }
   #toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
 }
-/* A phone: the header's buttons do not fit beside the title, so they take a line of their own, each as wide as the
-   other. */
+/* A phone: the header's buttons and the Queue's stats do not fit beside the title, so they take a line of their own
+   under it, each part as wide as the others. The project select stays at the right end of the title's line. */
 @media (max-width: 520px) {
-  .view > header .buttons { flex: 1 0 100%; margin-left: 0; }
-  .view > header .buttons button { flex: 1; }
+  .view > header .buttons, .view > header .stats { flex: 1 0 100%; margin-left: 0; order: 1; }
+  .view > header .buttons button, .stats span { flex: 1; text-align: center; }
+  .stats + .projects { margin-left: auto; }
 }

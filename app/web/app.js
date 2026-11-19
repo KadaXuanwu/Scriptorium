@@ -643,7 +643,8 @@ function count(id, n, hot) {
 
 const quiet = (text) => `<div class="quiet">${text}</div>`;
 
-// The Queue and History show every project ('') or the one their select names: one choice for both, kept on the device.
+// Questions, Queue and History show every project ('') or the one their select names: one choice for all three, kept on
+// the device.
 const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ } };
 const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
 let shownOf = kept('scriptorium-queue') || '';
@@ -673,25 +674,30 @@ function render() {
   put($('worker-list'), (drawEach(workers, workerCard) || quiet('No worker has reported yet.')) + addTile('worker', 'Add a worker'));
   if ($('config').open) drawConfig();
 
-  // An answer being typed survives a redraw of its list.
-  const typed = {};
-  const typedKey = (t) => `${projectOf(t)}|${t.dataset.key}`;
-  document.querySelectorAll('#questions textarea').forEach((t) => { typed[typedKey(t)] = t.value; });
-  const loading = quiet('Loading from GitHub...');
-  $('blocking-title').textContent = `Blocking · ${blocking.length}`;
-  $('open-title').textContent = `Not blocking · ${open.length}`;
-  put($('blocking-list'), drawEach(blocking, questionCard) || (loaded ? quiet('No question blocks any work.') : loading));
-  put($('open-list'), drawEach(open, questionCard) || (loaded ? quiet('No open question.') : loading));
-  document.querySelectorAll('#questions textarea').forEach((t) => { if (typed[typedKey(t)]) t.value = typed[typedKey(t)]; });
-
-  // The Queue: every project in one list, or one project (its select). A project's own order stays; between the
-  // projects the priority decides.
+  // Questions, Queue and History: every project, or the one of their select.
   if (!names.includes(shownOf)) shownOf = '';
   const shown = ({ p }) => !shownOf || p === shownOf;
   // The select of a tab: All and each project, each with the count of its items in `list`.
   const projectPick = (label, list) => (names.length > 1 ? `<select data-shown${shownOf ? ` class="of" style="--of:${colorOf(shownOf)}"` : ''} aria-label="${label}">${
     [['', 'All'], ...names.map((p) => [p, p])].map(([value, text]) => `<option value="${esc(value)}"${shownOf === value ? ' selected' : ''}>${esc(text)} · ${
       list.filter(({ p }) => !value || p === value).length}</option>`).join('')}</select>` : '');
+  put($('questions-projects'), projectPick('The project of the questions', questions));
+  const blockingShown = blocking.filter(shown);
+  const openShown = open.filter(shown);
+
+  // An answer being typed survives a redraw of its list.
+  const typed = {};
+  const typedKey = (t) => `${projectOf(t)}|${t.dataset.key}`;
+  document.querySelectorAll('#questions textarea').forEach((t) => { typed[typedKey(t)] = t.value; });
+  const loading = quiet('Loading from GitHub...');
+  $('blocking-title').textContent = `Blocking · ${blockingShown.length}`;
+  $('open-title').textContent = `Not blocking · ${openShown.length}`;
+  put($('blocking-list'), drawEach(blockingShown, questionCard) || (loaded ? quiet('No question blocks any work.') : loading));
+  put($('open-list'), drawEach(openShown, questionCard) || (loaded ? quiet('No open question.') : loading));
+  document.querySelectorAll('#questions textarea').forEach((t) => { if (typed[typedKey(t)]) t.value = typed[typedKey(t)]; });
+
+  // The Queue: every project in one list, or one project (its select). A project's own order stays; between the
+  // projects the priority decides.
   const rank = ({ item }) => (['P0', 'P1', 'P2'].indexOf(item.priority) + 4) % 4;
   const queued = all('queued');
   put($('queue-projects'), projectPick('The project of the queue', queued));
