@@ -92,7 +92,7 @@ function Get-FableLines($stopAt, $pickUp) {
     return @{ stop = $stop; design = [math]::Min((Get-PickUp $pickUp $FableWindow).design, $stop) }
 }
 
-# The advisor of a run (docs/QUEUE.md, Models): models.json's `advisor.model` for a run of one of
+# The advisor of a run (docs/QUEUE.md, Models): the rule's model (project.ps1, Get-AdvisorRule) for a run of one of
 # `advisor.complexities` on another model, while the account has the advisor's model ($hasAdvisor: not refused, not at
 # the Fable limit); '' for none. Each advisor call reads the whole session again, uncached.
 function Get-Advisor($advisor, [string] $complexity, [string] $model, [bool] $hasAdvisor) {
@@ -106,7 +106,7 @@ function Get-Advisor($advisor, [string] $complexity, [string] $model, [bool] $ha
 }
 
 # The effort of a run whose complexity has an advisor that the account cannot give now (docs/QUEUE.md, Models):
-# models.json's `advisor.fallback` effort for that complexity, where a higher effort makes up for the
+# the complexity's `advisorFallback` effort, where a higher effort makes up for the
 # advisor, else $effort unchanged. $advisor: project.ps1's Get-AdvisorRule.
 function Get-FallbackEffort($advisor, [string] $complexity, [string] $model, [string] $effort, [bool] $hasAdvisor) {
     if (-not $complexity) {

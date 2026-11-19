@@ -307,7 +307,7 @@ function complexityRow(c) {
     && `Default: ${c.baseAdvisor ? `advisor, ${esc(fallbackName(c.baseFallback))}` : 'no advisor'}`].filter(Boolean);
   const advisor = c.model === advisorModel
     ? '<span class="config-name"><b>Advisor</b></span><small>none: runs on the advisor\'s model</small>'
-    : `<button class="take${on ? ' on' : ''}" data-advisor="${name}" aria-pressed="${on}">${icon(on ? 'check' : 'lock')}<span><b>Advisor</b></span></button>
+    : `<button class="take${on ? ' on' : ''}" data-advisor="${name}" aria-pressed="${on}" aria-label="Advisor of a ${name} run">${icon(on ? 'check' : 'lock')}<span><b>Advisor</b></span></button>
       <select data-fallback="${name}" aria-label="Effort of a ${name} run without the advisor"${on ? '' : ' disabled'}>${
   ['', ...(state.efforts || [])].map((e) => `<option value="${esc(e)}"${e === fallback ? ' selected' : ''}>${esc(fallbackName(e))}</option>`).join('')}</select>`;
   return `<div class="config-row${busyClass(key)}"${busyAttr(key)}>
