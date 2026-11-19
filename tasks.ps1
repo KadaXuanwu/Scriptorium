@@ -1,5 +1,6 @@
-# The queue's logon tasks and the setup of one worker (docs/QUEUE.md): shared by setup.ps1 and the queue app's Add a
-# worker and Remove (app/server.ps1). Dot-sourced; nothing runs on load.
+# The queue's logon tasks, the setup of one worker and the delete of its copy (docs/QUEUE.md; docs/APP.md, Add and
+# remove): shared by setup.ps1 and the queue app's Add a worker, Remove and move (app/server.ps1). Dot-sourced; nothing
+# runs on load.
 
 . (Join-Path $PSScriptRoot 'project.ps1')
 . (Join-Path $PSScriptRoot 'plugins.ps1')
@@ -89,4 +90,85 @@ function Uninstall-Worker([string] $main, [string] $name, [string] $id) {
     Get-CimInstance Win32_Process |
         Where-Object { $_.ProcessId -ne $PID -and (Test-CopyProcess $_.CommandLine "$main-w$id") } |
         ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
+}
+
+# What a worker's copy holds that GitHub does not have, a phrase each for the owner (the queue app's dialogs that can
+# delete the copy): the files changed and not committed, the stashes, the commits on no branch, and each branch with
+# commits that were not pushed. A branch whose GitHub branch is gone (its PR is merged or closed) does not count:
+# after a squash merge no remote branch holds its commits, and every used copy has many such branches.
+# shortcut: commits made after the last push of a branch that is gone on GitHub are not seen; compare with the PR's
+# head if a worker ever commits after its PR is closed.
+function Get-CopyWork([string] $copy) {
+    $files = @(& git -C $copy --no-optional-locks status --porcelain)
+    if ($LASTEXITCODE -ne 0) {
+        return @('it is no git checkout, so nothing in it was checked')
+    }
+    $work = @()
+    if ($files) {
+        $more = $files.Count - 3
+        $work += "changed files: $((@($files | Select-Object -First 3 | ForEach-Object { $_.Substring(3) }) -join ', '))$(if ($more -gt 0) { " and $more more" })"
+    }
+    $stashes = @(& git -C $copy stash list).Count
+    if ($stashes) {
+        $work += "stashes: $stashes"
+    }
+    $loose = [int]"$(& git -C $copy rev-list --count HEAD --not --branches --remotes)"
+    if ($loose) {
+        $work += "commits on no branch: $loose"
+    }
+    foreach ($line in @(& git -C $copy for-each-ref '--format=%(refname:short)%09%(upstream:short)%09%(upstream:track)' refs/heads)) {
+        $name, $upstream, $track = $line.Split("`t")
+        # Ahead of its GitHub branch: only the commits whose change that branch does not have. After another worker
+        # rebased the branch, the old commits here are ahead of it and hold nothing new.
+        $ahead = if ($track -match 'ahead') {
+            [int]"$(& git -C $copy rev-list --count --cherry-pick --left-only "${name}...${upstream}")"
+        } elseif (-not $upstream) {
+            [int]"$(& git -C $copy rev-list --count $name --not --remotes)"
+        } else { 0 }
+        if ($ahead) {
+            $work += "commits not pushed on ${name}: $ahead"
+        }
+    }
+    return $work
+}
+
+# The first half of deleting a worker's copy of the project $main (the queue app's Remove and move, when the owner
+# ticks it): the copy gets a name that no worker uses. The rename is done at once, so a new worker of this number never
+# finds a copy that is half deleted, and Windows refuses it while a program still uses a file in the copy. The path
+# comes only from the main checkout and the worker's number. Returns the folder for Remove-Tree; '' when the worker has
+# no copy, or a program still uses it after $tries tries a second apart: the copy then stays as it is.
+function Rename-CopyToDelete([string] $main, [string] $id, [int] $tries = 5) {
+    $copy = "$main-w$id"
+    if ($id -notmatch '^\d+$' -or -not (Test-Path -LiteralPath $copy -PathType Container)) {
+        return ''
+    }
+    $trash = "$copy.deleting-$(Get-Date -Format yyyyMMddHHmmss)"
+    for ($try = 1; $try -le $tries; $try++) {
+        try {
+            Rename-Item -LiteralPath $copy -NewName (Split-Path $trash -Leaf) -ErrorAction Stop
+            return $trash
+        } catch {
+            if ($try -lt $tries) {
+                Start-Sleep 1
+            }
+        }
+    }
+    return ''
+}
+
+# Whether $name is a folder that Rename-CopyToDelete made of a copy of the project $main: the only folders the server
+# deletes again after its end cut a delete.
+function Test-CopyToDelete([string] $main, [string] $name) {
+    return $name -match "^$([regex]::Escape((Split-Path $main -Leaf)))-w\d+\.deleting-\d{14}$"
+}
+
+# The second half: the folder and all in it go for good, not to the recycle bin. `rd` and not Remove-Item: it takes a
+# path longer than 260 characters with the `\\?\` prefix, it deletes read-only files (git's packs), and it deletes a
+# link in the tree and never what the link points at (Windows PowerShell's Remove-Item empties the target). Throws
+# when a part is still there.
+function Remove-Tree([string] $folder) {
+    & "$env:SystemRoot\System32\cmd.exe" /c "rd /s /q `"\\?\$folder`"" | Out-Null
+    if (Test-Path -LiteralPath $folder) {
+        throw "a part of $folder is still there"
+    }
 }

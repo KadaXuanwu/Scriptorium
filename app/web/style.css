@@ -604,6 +604,11 @@ button.x .i { width: 16px; height: 16px; }
 #ask-fields { margin: -6px 0 18px; }
 #ask label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
 #ask select { width: 100%; }
+/* A choice to tick: the box before its text, which wraps beside it. */
+#ask label.check { display: flex; align-items: flex-start; gap: 10px; font-weight: 400; cursor: pointer; }
+#ask label.check input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--bad); }
+/* A long file path in the text breaks where the dialog ends. */
+#ask label.check span { min-width: 0; overflow-wrap: anywhere; }
 
 dialog {
   width: min(720px, calc(100vw - 32px));

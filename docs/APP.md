@@ -23,7 +23,7 @@ and the page show the mark alone, with no background: `mark-on-light.png` in the
 | ---- | ---- | ------------ |
 | GitHub | The record of the work: tickets, questions and answers, PRs | no |
 | Queue files | The live state in `.queue/` (main checkout and copies), written by the scripts and the runs (Data) | no |
-| Server | Reads both, serves the page and one snapshot (`/api/state`), does the owner's actions (`/api/action`), shows a run's steps (`/api/log?worker=N`), sends pushes. It listens on localhost only. It reads GitHub once a minute in a background job and the local files every 10 s. An action's GitHub writes also run in a background job, so a slow GitHub delays only that action's answer, never the page | no |
+| Server | Reads both, serves the page and one snapshot (`/api/state`), does the owner's actions (`/api/action`), shows a run's steps (`/api/log?worker=N`) and what a worker's copy holds (`/api/copy?worker=N`), sends pushes. It listens on localhost only. It reads GitHub once a minute in a background job and the local files every 10 s. An action's GitHub writes also run in a background job, so a slow GitHub delays only that action's answer, never the page | no |
 | Tailscale | Tailscale Serve puts the server on the owner's devices with a certificate, at an address of its own for each project (Setup); nothing is open to the internet | no |
 | ntfy | Pushes to the phone; a tap opens the page on that project and tab | no |
 
@@ -108,15 +108,40 @@ first, in the page's one dialog.
 - **Remove** takes only a disabled worker with no run in flight (`Get-RemoveRefusal`). The server ends its task and its
   loop (`Uninstall-Worker`), and every process that still runs from its copy: its editor is not in the loop's process
   tree (`Test-CopyProcess`). Then it deletes its state and force files, its settings entry, its control entries and its
-  place in each account's uses. Its copy stays: it may hold work that no checkpoint pushed.
+  place in each account's uses. Its copy stays: it may hold work that no checkpoint pushed, and a new worker of that
+  number uses it again. The owner can delete it in the same dialog (Delete the copy).
+- **Delete the copy.** The Remove dialog and the dialog of the project choice each have a box, not ticked: "Delete
+  `<main>-w<N>` from the PC too". The delete is for good: nothing goes to the recycle bin.
+  - **What the copy holds.** The text beside the box names what the copy holds that GitHub does not have
+    (`/api/copy`; `Get-CopyWork` in [tasks.ps1](../tasks.ps1), checked by `tasks.test.ps1`): the files changed and not
+    committed, the stashes, the commits on no branch, and each branch with commits that were not pushed. A branch
+    whose GitHub branch is gone does not count: its PR is merged or closed. A commit whose change GitHub's branch has
+    does not count: another worker rebased the branch. The check does not see a commit made after the last push of a
+    branch that is gone on GitHub. The owner decides: the box works also when the copy holds work.
+  - **What goes.** Only the worker's copy of its project, with the files that git ignores: its `.queue` with the run
+    logs, and what a plugin added (a Unity `Library`). A link in the copy goes, never what it points at. The worker's
+    checkouts of other repos (`<Name>-w<N>`; [PLAYBOOK.md](../PLAYBOOK.md), Another repository) stay.
+  - **How.** The server deletes the copy last, when the worker is gone or has left the project (`Remove-Copy`). It
+    first renames the copy to `<main>-w<N>.deleting-<time>`: the name is free at once for a new worker, and Windows
+    refuses the rename while a program still uses a file in the copy. Then a background job deletes the folder; a copy
+    of a large project takes minutes. The server does not restart on new code while the job runs. A server that
+    starts deletes each folder of this name beside its main checkout: a restart or a shutdown cut that delete.
+  - **When it fails.** If a program still uses the copy after five tries, a second apart, the copy stays as it is.
+    The Remove or the move is done all the same, and the page says so in a dialog. If the job fails, the log has the
+    reason and the owner gets a push.
+  - **Limits.** The dialog shows no size: the count takes too long on a large copy. A copy whose worker is gone has no
+    card, so the page cannot delete it: delete that folder by hand. After a move, the server of the new project
+    deletes the old copy. If the server of the old project starts in that time, it deletes the same folder too, and
+    one of the two can send a push that the delete failed though the folder is gone.
 
 **The project choice.** While the PC has two projects or more, the project mark after "Worker N" is a choice. A pick
 asks first, then moves the worker to that project with its number. Its account, its status (active, paused or
 disabled) and its complexity switches stay. The account, `enabled` and the switches are the PC's settings, and the
 move does not change them; a pause is in the old project's `control.json`, and the server carries it over. Its copy
-of the old project stays on the PC. It has no state file there, so the other workers of the old project take its open
-PRs, and its claimed tickets with no PR go back to the queue (`Get-NextJob`, [worker.ps1](../worker.ps1)). The choice
-is greyed while the worker has a run or a ticket, or its setup runs.
+of the old project stays on the PC, unless the owner ticks the box in the dialog (Add and remove, Delete the copy). It
+has no state file there, so the other workers of the old project take its open PRs, and its claimed tickets with no PR
+go back to the queue (`Get-NextJob`, [worker.ps1](../worker.ps1)). The choice is greyed while the worker has a run or
+a ticket, or its setup runs.
 
 - **Refused** (`Get-MoveRefusal`), each before the first change: a setup that still runs; a run in flight (pause or
   disable it, then move it); a held run or a disable after its ticket (disable it first: Disabled drops the held run and
@@ -128,8 +153,9 @@ is greyed while the worker has a run or a ticket, or its setup runs.
   control entry here from its status (`Get-CarriedStatus`), so the new script never finds a paused worker active; it
   writes the state file `setup`; it ends the old task, loop and copy processes (`Uninstall-Worker`); it deletes the old
   state and force files and every entry of the worker in the old `control.json`; then it starts the setup job of Add a
-  worker, which makes its copy `<main>-w<N>` of the new project at its first move there. If the worker cannot leave
-  its old project, the server takes the state file here away again and says why.
+  worker, which makes its copy `<main>-w<N>` of the new project at its first move there. With the owner's tick, it
+  deletes the copy of the old project last. If the worker cannot leave its old project, the server takes the state
+  file here away again and says why.
 - **No entry stays in the old `control.json`.** There a `disable` mark of a worker with no state file is due
   (`Get-DueDisables`). The old project's server would then write `enabled: false` in the PC's settings and disable the
   worker in its new project.

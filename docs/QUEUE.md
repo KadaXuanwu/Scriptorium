@@ -24,7 +24,7 @@ Stopping a task ends only its console host, not the loop inside. A script ends a
 project (and that copy's run) when it starts, so a restart is `Start-ScheduledTask` after `Stop-ScheduledTask`. Each
 script restarts itself through its task when Scriptorium, a loaded plugin or the project's `scriptorium.json` changes
 ([restart.ps1](../restart.ps1)): a worker between jobs, so a run in progress finishes on the old code first; the merger
-between passes; the page's server not while a sign-in, a GitHub write or a worker's setup runs. A paused run
+between passes; the page's server not while a sign-in, a GitHub write, a worker's setup or a copy's delete runs. A paused run
 (`paused.json`) resumes as before. To stop the queue, disable the tasks and end the `powershell.exe` processes that run
 the scripts with `-Project "<main>"`.
 

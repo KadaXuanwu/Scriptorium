@@ -923,6 +923,8 @@ async function act(project, body, { keys = [], apply, after, done } = {}) {
     const result = await response.json();
     ok = result.ok;
     if (!ok) toast(`Failed: ${result.message}`);
+    // The action went through, but one part of it did not (a copy that stays): this stays up until the owner reads it.
+    else if (result.note) ask('One part is not done', result.note);
   } catch (e) {
     toast('Cannot reach Scriptorium');
   }
@@ -985,6 +987,26 @@ async function addAccount() {
   if (await act(home, { action: 'login', account, email: values.email.trim(), new: true })) $('login-box').scrollIntoView({ block: 'nearest' });
 }
 
+// Worker `id`'s copy of `project`, for the dialogs that can delete it: its folder's name and what it holds that GitHub
+// does not have. Null when the worker has no copy there or the server does not answer: the dialog then has no choice.
+async function copyOf(project, id) {
+  try {
+    const response = await fetch(api(project, `api/copy?worker=${encodeURIComponent(id)}`), { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+    const copy = await response.json();
+    return copy.name ? copy : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// The dialog's choice to delete that copy too, not ticked: the copy stays unless the owner ticks it. It names what
+// the copy holds, so the owner knows what goes.
+function deleteChoice(copy) {
+  if (!copy) return '';
+  const held = copy.work.length ? `It holds work that GitHub does not have: ${copy.work.join('; ')}.` : 'It holds no work that GitHub does not have.';
+  return `<label class="check"><input type="checkbox" name="deleteCopy"><span>Delete ${esc(copy.name)} from the PC too. This is permanent. ${esc(held)}</span></label>`;
+}
+
 // Only a disabled worker with no run goes (its ticket is free then); the dialog says what to do first.
 async function removeWorker(project, id) {
   const worker = workerOf(states[project], id);
@@ -998,9 +1020,11 @@ async function removeWorker(project, id) {
     await ask(title, 'It is disabled when its run ends. Then remove it.');
   } else if (!disabled) {
     if (await ask(title, 'Disable it first: its ticket then goes back to the queue. When it shows Disabled, remove it.', 'Disable')) setStatus(project, id, 'disabled');
-  } else if (await ask(title, `Its script stops and its card goes. Its copy of the repo stays on the PC: a new worker ${id} uses it again.`,
-    'Remove', { danger: true })) {
-    await act(project, { action: 'remove-worker', worker: id }, {
+  } else {
+    const values = await ask(title, `Its script stops and its card goes. Its copy of the repo stays on the PC: a new worker ${id} uses it again.`,
+      'Remove', { danger: true, fields: deleteChoice(await copyOf(project, id)) });
+    if (!values) return;
+    await act(project, { action: 'remove-worker', worker: id, deleteCopy: !!values.deleteCopy }, {
       keys: [`worker:${id}`],
       after: (s) => { s.workers = s.workers.filter((w) => w.id !== id); },
       done: (s) => !s.workers.some((w) => w.id === id),
@@ -1345,9 +1369,8 @@ document.addEventListener('change', async (e) => {
     e.target.blur();
     const text = `It keeps its number, its account, its status and its complexities. Its copy of ${target} is made at its first move there. `
       + `Its copy of ${project} stays on the PC, and the other workers of ${project} take its open PRs.`;
-    if (await ask(`Move worker ${data.move} to ${target}?`, text, 'Move')) {
-      await act(target, { action: 'move-worker', worker: data.move, from: project });
-    }
+    const values = await ask(`Move worker ${data.move} to ${target}?`, text, 'Move', { fields: deleteChoice(await copyOf(project, data.move)) });
+    if (values) await act(target, { action: 'move-worker', worker: data.move, from: project, deleteCopy: !!values.deleteCopy });
   } else if (data.priority) {
     e.target.blur();
     // GitHub holds the priority: the row stays busy until the next fetch shows it.

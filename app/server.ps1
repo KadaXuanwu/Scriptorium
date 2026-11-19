@@ -324,6 +324,36 @@ function Test-BotPush([string] $ghConfigDir) {
 $script:setups = @{}
 $SetupSeconds = 3600
 
+# The deletes of worker copies that run, each a background job and its folder: a copy of a large project takes minutes.
+$script:deletes = @()
+# What an action did not do though it went through (a copy that stays): the page shows it to the owner.
+$script:note = ''
+
+function Start-CopyDelete([string] $folder) {
+    $job = Start-Job -ArgumentList (Join-Path $PSScriptRoot '..\tasks.ps1'), $folder -ScriptBlock {
+        param([string] $tasks, [string] $folder)
+        . $tasks
+        Remove-Tree $folder
+    }
+    $script:deletes += @{ job = $job; folder = $folder }
+}
+
+# The owner's tick in the Remove and move dialogs (docs/APP.md, Add and remove): worker $id's copy of the project $main
+# goes for good. Call it after Uninstall-Worker, which ends what runs from the copy. A copy that a program still uses
+# stays as it is, and the page says so. Never the worker's checkouts of other repos. Returns the words for the log.
+function Remove-Copy([string] $main, [string] $id) {
+    $trash = Rename-CopyToDelete $main $id
+    if ($trash) {
+        Start-CopyDelete $trash
+        return '; its copy goes'
+    }
+    if (Test-Path -LiteralPath "$main-w$id") {
+        $script:note = "A program still uses a file in $(Split-Path "$main-w$id" -Leaf), so this copy stays on the PC. The rest is done."
+        return '; its copy stays, a program uses it'
+    }
+    return ''
+}
+
 $script:gh = $null
 $script:snapshot = $null
 $script:json = '{}'
@@ -553,8 +583,9 @@ function Invoke-Action($request) {
         'remove-worker' {
             # Only a disabled worker with no run in flight (Get-RemoveRefusal). Its task and loop end first, so nothing
             # writes its files again; then its files and entries go. Its clone stays: it may hold work no checkpoint
-            # pushed, and a new worker of this number uses it again. Its `worker:N` claims pass to the other workers as
-            # a disabled worker's do (worker.ps1, Get-NextJob).
+            # pushed, and a new worker of this number uses it again. Only the owner's tick (`deleteCopy`) deletes it,
+            # last, when the worker is gone. Its `worker:N` claims pass to the other workers as a disabled worker's do
+            # (worker.ps1, Get-NextJob).
             if ($worker -notmatch '^\d+$') {
                 throw "no worker $worker"
             }
@@ -578,7 +609,7 @@ function Invoke-Action($request) {
             Remove-Item (Join-Path $mainQueue "force-$worker.json") -ErrorAction SilentlyContinue
             Save-Settings (Set-WorkerEntry $settings $worker $false)
             Save-Control (Set-WorkerStatus (Read-Json (Join-Path $mainQueue 'control.json')) $worker 'active' '' $false).control
-            return "removed: worker $worker"
+            return "removed: worker $worker$(if ($request.deleteCopy -eq $true) { Remove-Copy $Main $worker })"
         }
         'move-worker' {
             # A worker of another project of the PC comes to this one with its number (docs/APP.md, Workers): the page
@@ -639,7 +670,8 @@ function Invoke-Action($request) {
             }
             $script:setups[$worker] = @{ at = Get-Now; job = Start-Job -ScriptBlock $installWorker `
                 -ArgumentList (Join-Path $PSScriptRoot '..\tasks.ps1'), $Main, $config.name, $slug, $worker }
-            return "worker $worker comes from $from, $status"
+            # The owner's tick: its copy of the old project goes, now that the worker has left it.
+            return "worker $worker comes from $from, $status$(if ($request.deleteCopy -eq $true) { Remove-Copy $old.main $worker })"
         }
         'keep' {
             # The share of a whole week that a human use's usage guard holds (docs/QUEUE.md, Settings, `keep`).
@@ -1002,6 +1034,15 @@ function Invoke-Request($context) {
         Send-Json $context 200 (@{ log = $log; steps = @(Get-Steps $log 40) } | ConvertTo-Json -Depth 4 -Compress)
         return
     }
+    if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/copy') {
+        # A worker's copy of this project, for the dialogs that can delete it (docs/APP.md, Add and remove): the
+        # folder's name, '' when the worker has none here, and what it holds that GitHub does not have.
+        $id = [string]$request.QueryString['worker']
+        $copy = "$Main-w$id"
+        $has = $id -match '^\d+$' -and (Test-Path -LiteralPath $copy -PathType Container)
+        Send-Json $context 200 (@{ name = $(if ($has) { Split-Path $copy -Leaf } else { '' }); work = @(if ($has) { Get-CopyWork $copy }) } | ConvertTo-Json -Compress)
+        return
+    }
     if ($request.HttpMethod -eq 'POST' -and $path -eq '/api/action') {
         # The custom header makes a browser ask first for another site's request, so no other page can act here.
         if ($request.Headers['X-Queue'] -ne '1') {
@@ -1014,6 +1055,7 @@ function Invoke-Request($context) {
             # Under the PC's lock from an action's read of the settings to its save: the page's server of another
             # project saves the PC's part too.
             $lock = Enter-PcLock 'Settings'
+            $script:note = ''
             try {
                 $message = Invoke-Action $body
             } finally {
@@ -1028,7 +1070,7 @@ function Invoke-Request($context) {
             Write-AppLog "action: $message"
             $script:nextGh = 0
             $script:nextLocal = 0
-            Send-Json $context 200 (@{ ok = $true; message = $message } | ConvertTo-Json -Compress)
+            Send-Json $context 200 (@{ ok = $true; message = $message; note = $script:note } | ConvertTo-Json -Compress)
         } catch {
             Write-AppLog "action failed: $_"
             Send-Json $context 400 (@{ ok = $false; message = "$_" } | ConvertTo-Json -Compress)
@@ -1049,6 +1091,11 @@ function Invoke-Request($context) {
     }
     Send-Json $context 404 '{"error":"not found"}'
 }
+
+# A copy's delete that the server's end cut (a restart, a shutdown) goes on: only the folders beside the main checkout
+# that have the name the rename gives.
+Get-ChildItem -LiteralPath (Split-Path $Main -Parent) -Directory | Where-Object { Test-CopyToDelete $Main $_.Name } |
+    ForEach-Object { Start-CopyDelete $_.FullName }
 
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://127.0.0.1:$Port/")
@@ -1086,6 +1133,20 @@ while ($true) {
                 Send-Json $write.context $(if ($failed) { 400 } else { 200 }) (@{ ok = -not $failed; message = $(if ($failed) { $reason } else { $write.message }) } | ConvertTo-Json -Compress)
             } catch {
                 # The page gave up waiting; the write still happened, and the next snapshot shows it.
+            }
+        }
+        # A copy's delete that ended. Its worker has no card any more, so a failure goes to the log and to a push.
+        foreach ($delete in @($script:deletes | Where-Object { $_.job.State -ne 'Running' })) {
+            $script:deletes = @($script:deletes | Where-Object { $_ -ne $delete })
+            $reason = if ($delete.job.State -ne 'Completed') { "$($delete.job.ChildJobs[0].JobStateInfo.Reason.Message)" }
+            Remove-Job $delete.job -Force
+            if ($delete.job.State -eq 'Completed') {
+                Write-AppLog "deleted $($delete.folder)"
+            } else {
+                Write-AppLog "delete of $($delete.folder) failed: $reason"
+                # No name of a project or a folder in the push: ntfy's server is public.
+                Send-Notification @{ title = 'A copy is not deleted'; priority = 3; tags = 'warning'; click = 'workers'
+                    message = 'The delete of a worker''s copy did not finish. Its folder has ".deleting" in its name: delete it by hand.' } (Read-ProjectSettings $Main)
             }
         }
         $now = Get-Now
@@ -1138,9 +1199,9 @@ while ($true) {
             }
             Update-Snapshot
             $script:nextLocal = $now + 10
-            # Not while a sign-in waits for the owner, a GitHub write or a worker's setup runs: the restart would
-            # end it.
-            if (-not ($script:login -and -not $script:login.process.HasExited) -and $script:writes.Count -eq 0 -and $script:setups.Count -eq 0 -and (Test-CodeChanged)) {
+            # Not while a sign-in waits for the owner, a GitHub write, a worker's setup or a copy's delete runs: the
+            # restart would end it.
+            if (-not ($script:login -and -not $script:login.process.HasExited) -and $script:writes.Count -eq 0 -and $script:setups.Count -eq 0 -and $script:deletes.Count -eq 0 -and (Test-CodeChanged)) {
                 Write-AppLog 'script changed: restarting on the new code'
                 $listener.Stop()
                 Restart-OnNewCode (Get-TaskName $config.name 'app')
