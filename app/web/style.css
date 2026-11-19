@@ -600,6 +600,8 @@ button.x { width: 28px; height: 28px; min-height: 28px; margin: -4px -8px -4px 0
 button.x:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 button.x .i { width: 16px; height: 16px; }
 @media (pointer: coarse) { button.x { width: 36px; height: 36px; min-height: 36px; margin: -8px -10px -8px 0; } }
+/* In a row the cross stands before the priority, not at a card's corner: no pull to the edge. */
+.row > button.x { margin: 0; }
 #ask-fields[hidden], #ask-yes[hidden] { display: none; }
 #ask-fields { margin: -6px 0 18px; }
 #ask label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }

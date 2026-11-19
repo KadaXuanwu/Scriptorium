@@ -380,7 +380,7 @@ function ticketRow(row) {
   const reason = row.reason ? `<span class="why${ready ? ' good' : ''}">${icon(ready ? 'next' : 'lock')}${esc(row.reason)}</span>` : '';
   const card = `ticket:${row.number}`;
   return `<div class="row${busyClass(card)}"${busyAttr(card)}><div class="what"><a href="${esc(row.url)}" target="_blank">${esc(row.title)}</a>
-    <div class="meta">${mark()}${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${nowButton(row)}${prioritySelect(row)}${dropButton(row)}</div>`;
+    <div class="meta">${mark()}${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${nowButton(row)}${dropButton(row)}${prioritySelect(row)}</div>`;
 }
 
 
