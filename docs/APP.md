@@ -87,7 +87,8 @@ Each card has two slots:
   worker. If the queue holds it back, it still shows the best one, with a lock and the reason. **Force** (the arrow)
   moves the next ticket into a free slot now, also a locked one: it writes that ticket's number to
   `.queue/force-<N>.json`, the worker takes it at its next poll (`Select-Forced`), and the run goes past the stop line
-  and the pick-up limits.
+  and the pick-up limits. A ticket that **Now** gave the worker (Queue) stands here first, tagged `now`, also while a
+  run still works. **Cancel** takes a Force or a Now back.
 
 **A ticket's tags** stand in one order on every tab: kind (your answers, a rebase, part), repo (only another repo than
 the project's), areas, size, then the model and effort of its run (Now) or, for a ticket not started, its complexity
@@ -161,7 +162,15 @@ The repo may be private, so the server fetches each one once with the owner's `g
 - **Stuck:** a run that ended with no PR and no question, or a PR its run could not finish. Each shows why, from the
   end of the run's log (`Get-StuckReason`), and **Retry**, which gives it back to its worker. Nothing retries alone.
 - **Up next:** the unclaimed tickets in dispatch order, each with its areas, size, complexity, typical time and cost,
-  why it waits, and its priority.
+  why it waits, its priority and **Now**.
+- **Now** (on a ticket of Up next that is not blocked): one worker does the ticket at once ([QUEUE.md](QUEUE.md), Now).
+  - The server picks the worker (`Select-NowWorker`). It must be active with no change of status to come, free or in a
+    run, with no force on it and with the ticket's complexity on. Its account must take the ticket's size now.
+  - Of those, the first is a worker whose ticket in work holds an area of this one. Then a free worker, then the
+    account with the most 5-hour room, then the most weekly room, then the run that started last.
+  - The page asks first. It names the worker, the run that ends, and the areas that another ticket still holds.
+  - With no such worker the button is off, and its tooltip says why.
+  - A pause or a disable of the worker ends a Now that still waits.
 - **On hold:** a ticket labelled `needs-owner` with no question on it.
 - **Parked:** no priority; a priority queues one.
 
@@ -307,6 +316,8 @@ random one); `ntfy.server` overrides `https://ntfy.sh`.
   `disable.<N>` marks a worker to disable after its ticket. Paused is a control entry; disabled is
   `workers.<N>.enabled: false` in the settings and a `stop` entry too. The worker script reads the two at different
   moments of its loop, so a status change never passes through a moment with neither.
+- **Force** (`.queue/force-<N>.json`, written by the server only): `{ticket}` for Force, `{ticket, now: true}` for
+  Now. The worker script deletes it when the forced run ends, or when a Now ends without a run.
 - **History** (`.queue/history.jsonl`): each run's `duration` in seconds of wall time (`wall: true` marks it).
 - **Progress** (`<copy>/.queue/progress.json`): the run's last checkpoint, `{ticket, done, next}`.
 

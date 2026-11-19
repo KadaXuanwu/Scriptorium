@@ -453,13 +453,6 @@ function Get-Priority($item) {
     return [string](Get-Names $item | Where-Object { $_ -match '^P[0-2]$' } | Sort-Object | Select-Object -First 1)
 }
 
-# The open tickets that block this one (its `Blocked by` lines).
-function Get-Blockers($issue, $open) {
-    return @(([string]$issue.body -split "`n") | Where-Object { $_ -match '^\s*blocked by' } |
-        ForEach-Object { [regex]::Matches($_, '#(\d+)') } | ForEach-Object { [int]$_.Groups[1].Value } |
-        Where-Object { $open -contains $_ })
-}
-
 # The areas and repos that tickets in flight hold: claimed by a worker and not waiting on the owner.
 function Get-BusyAreas($issues, [int] $except = 0) {
     return @($issues | Where-Object {
@@ -481,10 +474,69 @@ function Test-PrOff($pr, $issues, $settings, [string] $worker) {
     return Test-ComplexityOff (Get-QueueComplexity $pr $issues) $settings $worker
 }
 
+# Now (docs/QUEUE.md, Now): the worker that does a queued ticket at once, for the page's Now button. Only a worker that
+# looks for its next job on its own: active with no change of status to come, free or in a run, with no force on it and
+# with the ticket's complexity on. Its account must take the ticket's size now (Get-Fit, as for a worker's next ticket).
+# Of those: first a worker whose ticket in work holds an area of this one (the two would change the same files), then a
+# free one, then the most 5-hour room, then the most weekly room, then the run that started last (it loses the least
+# work). Returns @{ worker; stops; title; busy }: `stops` and `title` are the ticket of the run that ends at its next
+# checkpoint (0 for a free worker); `busy` are this ticket's areas that other tickets in flight still hold. With no
+# such worker: @{ why }.
+function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $accounts = @()) {
+    $complexity = Get-Label $ticket 'complexity:'
+    $size = Get-Size $ticket
+    $areas = @(Get-Names $ticket | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
+    $able = @($workerViews | Where-Object {
+        $_.status -eq 'active' -and -not $_.pending -and $_.activity -in @('free', 'running') -and -not $_.forced -and
+            -not (Test-ComplexityOff $complexity $settings ([string]$_.id))
+    })
+    if ($able.Count -eq 0) {
+        return @{ why = 'no worker can take it: each is paused, held, forced or has its complexity off' }
+    }
+    $ranked = @(foreach ($view in $able) {
+        $account = $accounts | Where-Object { $_.name -eq $view.account } | Select-Object -First 1
+        if ($account -and -not (Get-Fit $size $account)) {
+            continue
+        }
+        # Only a ticket's own run frees its areas when it ends: a PR's job keeps its ticket.
+        $works = $view.activity -eq 'running' -and (-not $view.kind -or $view.kind -eq 'ticket')
+        $held = if ($works) {
+            @(Get-Names ($issues | Where-Object { $_.number -eq [int]$view.ticket } | Select-Object -First 1) |
+                Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
+        } else {
+            @()
+        }
+        $room = @{}
+        foreach ($window in 'five_hour', 'seven_day') {
+            $room[$window] = if ($account -and $account[$window]) { [double]$account[$window].ceiling - [double]$account[$window].used } else { 1.0 }
+        }
+        @{
+            view = $view; works = $works; clash = [int](@(Get-Clashes $areas $held).Count -gt 0); free = [int]($view.activity -eq 'free')
+            five = $room.five_hour; week = $room.seven_day; started = [long]$view.startedAt
+        }
+    })
+    if ($ranked.Count -eq 0) {
+        return @{ why = "no account has room for a size $size ticket now" }
+    }
+    $best = @($ranked | Sort-Object @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
+        @{ Expression = { $_.five }; Descending = $true }, @{ Expression = { $_.week }; Descending = $true },
+        @{ Expression = { $_.started }; Descending = $true }, @{ Expression = { [int]$_.view.id } })[0]
+    $view = $best.view
+    $stops = if ($view.activity -eq 'running') { [int]$view.ticket } else { 0 }
+    $busy = @(Get-Clashes $areas (Get-BusyAreas $issues $(if ($best.works) { $stops } else { 0 })) | ForEach-Object { $_ -replace '^area:', '' })
+    return @{ worker = [string]$view.id; stops = $stops; title = $(if ($stops) { [string]$view.title } else { '' }); busy = $busy }
+}
+
 # Tickets not yet claimed, in the dispatcher's order (docs/QUEUE.md, Dispatching), each with why it waits; and the parked
-# ones (no priority). A ticket that waits on the owner is a question, a stuck run or on hold: not here.
-function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $null) {
+# ones (no priority). A ticket that waits on the owner is a question, a stuck run or on hold: not here. `taken`: the
+# worker whose force file names the ticket for Now. `now`: for each other ticket that can run, the worker that would do
+# it at once or why none can (Select-NowWorker).
+function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $null, $accounts = @()) {
     $open = @($issues | ForEach-Object { $_.number })
+    $nows = @{}
+    foreach ($view in $workerViews | Where-Object { $_.now }) {
+        $nows[[int]$view.now] = [string]$view.id
+    }
     $busy = Get-BusyAreas $issues
     $enabled = @($workerViews | Where-Object { $_.status -ne 'disabled' })
     $queued = @()
@@ -510,7 +562,10 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
         # The workers that have the ticket's complexity on (limits.ps1).
         $takers = @($enabled | Where-Object { -not (Test-ComplexityOff $row.complexity $settings ([string]$_.id)) })
         $areas = Get-Clashes @($names | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' }) $busy
-        if ($blockers.Count -gt 0) {
+        if ($nows[[int]$issue.number]) {
+            $row.taken = $nows[[int]$issue.number]
+            $row.reason = "worker $($row.taken) does it now"
+        } elseif ($blockers.Count -gt 0) {
             $row.reason = "blocked by #$($blockers -join ', #')"
         } elseif ($enabled.Count -gt 0 -and $takers.Count -eq 0) {
             $row.reason = "no worker takes $($row.complexity) tickets"
@@ -524,12 +579,16 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
         } else {
             $row.reason = 'next up'
         }
+        if (-not $row.taken -and $blockers.Count -eq 0) {
+            $row.now = Select-NowWorker $issue $issues $workerViews $settings $accounts
+        }
         $queued += $row
     }
     return @{ queued = $queued; parked = $parked }
 }
 
-# Each worker's next ticket, as the dispatcher would choose once its slot is free (worker.ps1, Get-NextJob): its own
+# Each worker's next ticket, as the dispatcher would choose once its slot is free (worker.ps1, Get-NextJob): the
+# ticket its force file names for Now (kind 'now'; no other worker gets that one), its own
 # PR to answer or rebase, its own ticket, then the first queued ticket whose area is free and whose size its account
 # takes now (the pick-up limits, Get-Fit; $accounts: the snapshot's accounts), one ticket per worker. With
 # no such ticket, the first unblocked one, marked not available with the reason: only Force takes it. A paused
@@ -547,7 +606,7 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             -not ($n | Where-Object { $_ -like 'worker:*' -or $_ -in @('follow-up', 'open-question', 'needs-owner') }) -and
             @(Get-Blockers $_ $open).Count -eq 0
     } | Sort-Object @{ Expression = { Get-Priority $_ } }, @{ Expression = { Get-SizeRank (Get-Size $_) } }, createdAt)
-    $given = @()
+    $given = @($workerViews | ForEach-Object { [int]$_.now } | Where-Object { $_ })
     # A free worker takes a ticket before a working one.
     foreach ($view in @($workerViews | Sort-Object @{ Expression = { [int][bool]$_.ticket } }, @{ Expression = { [int]$_.id } })) {
         if ($view.status -eq 'disabled') {
@@ -567,7 +626,13 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
         $pick = $null
         $shown = $false
         $kind = 'ticket'
-        $pr = $prs | Where-Object {
+        if ($view.now) {
+            $pick = $queue | Where-Object { $_.number -eq [int]$view.now } | Select-Object -First 1
+            if ($pick) {
+                $kind = 'now'
+            }
+        }
+        $pr = $(if ($pick) { @() } else { $prs }) | Where-Object {
             $n = Get-Names $_
             $n -contains $me -and $n -notcontains 'needs-owner' -and ($n -contains 'answered' -or $n -contains 'needs-rebase') -and
                 $_.headRefName -ne "t$current" -and -not (Test-PrOff $_ $issues $settings ([string]$view.id))
@@ -739,7 +804,8 @@ function Get-PushUrl($views, [string] $own, [string] $click) {
     return "$(if ($plain) { $plain } else { $own })/#$click"
 }
 
-# Everything the page shows. $data: now, slug, workers (id, state, progress, forced), control, usage,
+# Everything the page shows. $data: now, slug, workers (id, state, progress, forced, now: the ticket its force file
+# names for Now), control, usage,
 # settings, runs, gh (issues, prs, merged, titles, questions; $null until the first fetch), appUrl, logins, login,
 # name and projects (this project's name and the PC's projects, Get-ProjectViews), and
 # complexities (project.ps1, Get-Complexities; models.json's alone when left out).
@@ -754,7 +820,7 @@ function New-Snapshot($data) {
         $enabled = -not ($data.settings -and $data.settings.workers -and $data.settings.workers.$id -and $data.settings.workers.$id.enabled -eq $false)
         $marked = [bool]($data.control -and $data.control.disable -and $data.control.disable.$id)
         $status = Get-WorkerStatus ([string]$s.state) (Get-Mode $data.control $id) $enabled $marked
-        $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced }
+        $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced; now = [int]$worker.now }
         # The worker's complexity switches (limits.ps1): each with the model and effort its runs use (the settings'
         # `model`, else the complexity's first candidate) and the PR jobs it holds while it is off.
         $view.takes = @($complexities | ForEach-Object {
@@ -1022,7 +1088,7 @@ function New-Snapshot($data) {
         foreach ($view in $workers) {
             $view.next = $next[$view.id]
         }
-        $rows = Get-QueueRows $gh.issues $workers $dispatch $data.settings
+        $rows = Get-QueueRows $gh.issues $workers $dispatch $data.settings $accounts
         foreach ($view in $workers) {
             foreach ($take in $view.takes) {
                 $take.jobs = @($gh.prs | Where-Object {

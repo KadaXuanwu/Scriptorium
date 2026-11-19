@@ -338,6 +338,7 @@ function Update-Snapshot {
         $clone = Get-Clone $id $state
         $workers += @{
             id = $id; state = $state; forced = Test-Path (Join-Path $mainQueue "force-$id.json")
+            now = Read-Now (Join-Path $mainQueue "force-$id.json")
             progress = Read-Json (Join-Path $clone '.queue\progress.json')
         }
     }
@@ -463,6 +464,12 @@ function Invoke-Action($request) {
                 $result = Set-WorkerStatus (Read-Json (Join-Path $mainQueue 'control.json')) $id ([string]$request.to) ([string]$request.how) $inFlight
                 Save-Control $result.control
                 Set-Enabled $id $result.enabled
+                # A Now that waits for this worker ends with its pause or disable: else its ticket waits with the worker.
+                $force = Join-Path $mainQueue "force-$id.json"
+                $now = Read-Now $force
+                if ([string]$request.to -ne 'active' -and $now -and $now -ne [int]$state.ticket) {
+                    Remove-Item $force -ErrorAction SilentlyContinue
+                }
                 if ($result.kill) {
                     $ended += Stop-Run $id $state
                 }
@@ -483,6 +490,25 @@ function Invoke-Action($request) {
                 Remove-Item $file -ErrorAction SilentlyContinue
             }
             return "$($request.action): worker $worker"
+        }
+        'now' {
+            # Now (docs/QUEUE.md, Now): the queued ticket goes into the force file of the worker that the page showed
+            # for it (Select-NowWorker), with `now`. That worker takes it before every other job. Its run in progress
+            # ends at its next checkpoint, and that run's ticket goes back to the queue.
+            $number = [int]$request.number
+            $row = $script:snapshot.queued | Where-Object { [int]$_.number -eq $number } | Select-Object -First 1
+            if (-not $row -or -not $row.now) {
+                throw "ticket $number is not a queued ticket that can run now"
+            }
+            if (-not $row.now.worker) {
+                throw [string]$row.now.why
+            }
+            $file = Join-Path $mainQueue "force-$($row.now.worker).json"
+            if (Test-Path $file) {
+                throw "worker $($row.now.worker) has a forced ticket already"
+            }
+            Set-Content $file (@{ ticket = $number; now = $true } | ConvertTo-Json -Compress) -Encoding utf8
+            return "now: #$number on worker $($row.now.worker)"
         }
         'assign' {
             if (-not (Test-Path (Join-Path $mainQueue "worker-$worker.json"))) {

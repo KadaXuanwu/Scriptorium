@@ -319,6 +319,13 @@ function Test-Enabled([int] $worker) {
     return -not ($json -and $json.workers -and $json.workers."$worker" -and $json.workers."$worker".enabled -eq $false)
 }
 
+# Whether the owner's Now (docs/QUEUE.md, Now) names another ticket than this job's: the job's run then ends at its
+# next checkpoint and is not held.
+function Test-NowElsewhere($job) {
+    $now = Read-Now $forceFile
+    return [bool]($now -and $now -ne [int]$job.Ticket)
+}
+
 # Disabled: its paused run is dropped (its ticket goes back to the queue, Get-NextJob).
 function Disable-Worker {
     if (Test-Path $pausedFile) {
@@ -856,6 +863,21 @@ function Get-NextJob {
         $item.labels = $labels
     }
 
+    # Now (docs/QUEUE.md, Now): the ticket this worker's force file names with `now` goes before all its other jobs. A
+    # ticket that left the queue meanwhile ends the Now: the worker takes no other ticket in its place.
+    $now = Read-Now $forceFile
+    if ($now) {
+        $ticket = Select-Now $issues $now $me $prBranches
+        if ($ticket -and -not (Test-ComplexityOff (Get-Complexity $ticket) $settings "$Id")) {
+            & gh issue edit $ticket.number --add-label $me -R $repo | Out-Null
+            Write-Log "now: #$($ticket.number) onto worker $Id"
+            return @{ Kind = 'ticket'; Ticket = $ticket.number; Title = $ticket.title; Repo = Get-TicketRepo $ticket; Size = Get-Size $ticket
+                Complexity = Get-Complexity $ticket }
+        }
+        Remove-Item $forceFile -ErrorAction SilentlyContinue
+        Write-Log "now: #$now left the queue, so the Now ends"
+    }
+
     foreach ($kind in @('answered', 'needs-rebase')) {
         $pr = $prs | Where-Object {
             $n = Get-Names $_
@@ -889,15 +911,17 @@ function Get-NextJob {
         ($n | Where-Object { $_ -like 'worker:*' }) -and $n -notcontains 'needs-owner'
     } | ForEach-Object { Get-Names $_ } | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
 
+    # A ticket that another worker's force file names for Now waits for that worker.
+    $reserved = @(Get-ChildItem (Join-Path $mainQueueDir 'force-*.json') -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne "force-$Id.json" } | ForEach-Object { Read-Now $_.FullName } | Where-Object { $_ })
     $queued = @($issues | Where-Object {
         $n = Get-Names $_
-        ($n | Where-Object { $_ -match '^P[0-2]$' }) -and -not ($n | Where-Object { $_ -like 'worker:*' -or $_ -eq 'needs-owner' })
+        ($n | Where-Object { $_ -match '^P[0-2]$' }) -and -not ($n | Where-Object { $_ -like 'worker:*' -or $_ -eq 'needs-owner' }) -and
+            $reserved -notcontains $_.number
     })
     # A ticket waits while a ticket its `Blocked by` line names is open.
     $queue = @($queued | Where-Object {
-        $blockers = @(([string]$_.body -split "`n") | Where-Object { $_ -match '^\s*blocked by' } |
-            ForEach-Object { [regex]::Matches($_, '#(\d+)') } | ForEach-Object { [int]$_.Groups[1].Value })
-        -not ($blockers | Where-Object { $open -contains $_ })
+        @(Get-Blockers $_ $open).Count -eq 0
     } | Sort-Object @{ Expression = { Get-Priority (Get-Names $_) } }, @{ Expression = { Get-SizeRank (Get-Size $_) } }, createdAt)
     if ($queue.Count -eq 0) {
         return $null
@@ -1204,7 +1228,8 @@ function Invoke-Worker($job, [string] $log, $paused) {
                 # First, so a failure below never makes a live script look down in the queue app.
                 Write-State 'running' $script:running
                 Update-Usage $log $account
-                $stop = (Get-Control) -eq 'stop' -or -not (Test-Enabled $Id)
+                # Also for the owner's Now: this worker has another ticket to do at once.
+                $stop = (Get-Control) -eq 'stop' -or -not (Test-Enabled $Id) -or (Test-NowElsewhere $job)
                 if ($stop -and -not (Test-Path $stopFile)) {
                     Set-Content $stopFile ('The owner stopped this worker. At your next checkpoint: commit, push, post a ' +
                         'handoff comment on the ticket (done, next), then end. The ticket resumes later, here or on another worker.') -Encoding utf8
@@ -1297,8 +1322,10 @@ function Invoke-Worker($job, [string] $log, $paused) {
     }
     # Ended at a checkpoint for the workers' limit or for the owner's pause, its job not done: the main loop holds
     # it with its session (Get-Hold, Suspend-Job).
+    # Ended at the stop note of the owner's Now with its job not done: never held. The main loop frees its ticket.
+    $freed = [bool]$script:stopNoted -and (Test-NowElsewhere $job) -and -not (Test-Finished $job)
     $hold = $null
-    if (-not ($limited -or $refusal -or $modelRefused -or $fableOut)) {
+    if (-not ($freed -or $limited -or $refusal -or $modelRefused -or $fableOut)) {
         $clean = [bool]$resultLine -and -not $result.is_error
         $hold = Get-Hold ([bool]$script:limitNoted) ([bool]$script:stopNoted) (Test-Path $stopFile) $clean (Test-Enabled $Id)
         if ($hold -and (Test-Finished $job)) {
@@ -1308,7 +1335,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     $atLimit = $hold -eq 'limit'
     $stopped = $hold -eq 'pause' -and [bool]$session
     if (-not $modelRefused) {
-        $partial = $limited -or $fableOut -or [bool]$refusal -or $atLimit -or $stopped -or [bool]$paused -or $job.Kind -ne 'ticket'
+        $partial = $limited -or $fableOut -or [bool]$refusal -or $atLimit -or $stopped -or $freed -or [bool]$paused -or $job.Kind -ne 'ticket'
         Add-History $job $account $model $text $partial $runStartedAt $costBefore
     }
     # Not after a stop note the owner withdrew: that run resumes at once, with its cache still warm.
@@ -1318,6 +1345,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     return @{
         AtLimit = $atLimit
         Stopped = $stopped
+        Freed = $freed
         ModelRefused = $modelRefused
         FableOut = $fableOut
         Limited = $limited
@@ -1544,6 +1572,11 @@ while ($true) {
         }
         if (Test-Path $pausedFile) {
             $paused = Get-Content $pausedFile -Raw | ConvertFrom-Json
+            # A held run goes first. A Now that waits behind it would keep its ticket from every worker: it ends.
+            if (Read-Now $forceFile) {
+                Remove-Item $forceFile -ErrorAction SilentlyContinue
+                Write-Log "now: ended, the worker holds the run of #$($paused.Ticket)"
+            }
             # A run that ended at a checkpoint, or that its account refused, is held on its account. If the owner
             # moved the worker to another account meanwhile, the session cannot follow: the ticket starts fresh there,
             # from its handoff comment. The same for a run that waits for a limit reset on an account that is out
@@ -1639,7 +1672,10 @@ while ($true) {
                 Write-Log "$($end.Model) refused on $(Get-Account $runConfigDir); #$($job.Ticket) goes on $next"
                 continue
             }
-            Remove-Item $forceFile -ErrorAction SilentlyContinue
+            # A Now for another ticket than this job's stays: the worker takes that ticket next (Get-NextJob).
+            if (-not (Test-NowElsewhere $job)) {
+                Remove-Item $forceFile -ErrorAction SilentlyContinue
+            }
             # A run that did not start is never its ticket's failure. Whose it is decides who stops (Get-Out): the
             # account's stops every worker on it; this worker's own (a model its plan lacks, a wrong setting) stops
             # only this worker.
@@ -1711,6 +1747,14 @@ while ($true) {
                 # No run began this ticket. For an account that is out it goes back to the queue at the next look
                 # (Remove-Claims); for this worker's own record it stays this worker's.
                 Write-Log "#$($job.Ticket) did not start"
+            } elseif ($end.Freed) {
+                # The owner's Now ended the run: its ticket goes back to the queue and starts fresh from its handoff
+                # comment, here or on another worker. It has no PR (Test-Finished). A PR's job stays this worker's.
+                Remove-Item $stopFile, $pausedFile -ErrorAction SilentlyContinue
+                if ($job.Kind -eq 'ticket') {
+                    & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
+                }
+                Write-Log "freed #$($job.Ticket) for the owner's Now"
             } elseif ((Test-Path $stopFile) -or (Get-Control) -eq 'stop' -or -not (Test-Enabled $Id)) {
                 # Disabled from the queue app, or its run ended by a hard stop: not a failure. The ticket or PR starts
                 # fresh when the owner resumes, or goes to another worker when this one is disabled.

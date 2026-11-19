@@ -335,6 +335,60 @@ $queue = @((Issue 2 @('P1', 'area:api')), (Issue 4 @('P2', 'area:docs')), (Issue
 Assert-Equal (Select-Forced $queue 6 @('area:api')).number 6 'force takes the ticket the page showed'
 Assert-Equal (Select-Forced $queue 99 @('area:api')).number 4 'else the first whose area is free'
 Assert-Equal (Select-Forced $queue 0 @('area:api', 'area:docs')).number 2 'else the first'
+# Now: a force file with `now` names the one ticket its worker takes, and only while that ticket is in the queue.
+$file = Join-Path $env:TEMP "scriptorium-now-$PID.json"
+Set-Content $file '{"ticket":6,"now":true}' -Encoding utf8
+Assert-Equal (Read-Now $file) 6 'the ticket of a Now'
+Set-Content $file '{"ticket":6}' -Encoding utf8
+Assert-Equal (Read-Now $file) 0 'a plain force is no Now'
+Remove-Item $file
+Assert-Equal (Read-Now $file) 0 'no force file'
+$open = @((Issue 2 @('P1')), (Issue 3 @('P1', 'worker:2')), (Issue 4 @('P1', 'worker:1')), (Issue 5 @('P1') 'Blocked by #2'), (Issue 6 @()),
+    (Issue 7 @('P1', 'needs-owner')))
+Assert-Equal (Select-Now $open 2 'worker:1' @()).number 2 'Now takes a queued ticket'
+Assert-Equal (Select-Now $open 4 'worker:1' @()).number 4 'and one the worker claimed already (a start that its plan refused)'
+foreach ($gone in 3, 5, 6, 7, 9) {
+    Assert-Equal "$(Select-Now $open $gone 'worker:1' @())" '' "Now takes no ticket $gone`: another worker's, blocked, parked, waiting on the owner or closed"
+}
+Assert-Equal "$(Select-Now $open 2 'worker:1' @('t2'))" '' 'nor a ticket with a PR'
+# The worker for a Now: a free one before one in a run; of those in a run the account with the most room, then the run
+# that started last; before all, the worker whose ticket in work holds an area of this one.
+function Working([string] $id, [int] $ticket, [string] $account, [long] $started) {
+    return @{ id = $id; status = 'active'; activity = 'running'; ticket = $ticket; title = "Ticket $ticket"; account = $account; startedAt = $started }
+}
+function Account([string] $name, [double] $used) {
+    return @{ name = $name; five_hour = @{ used = $used; ceiling = 0.95; pickUp = @{ S = 0.9; M = 0.75; L = 0.5 } }; seven_day = @{ used = 0.1; ceiling = 0.9 } }
+}
+function Now($pick) {
+    return $(if ($pick.worker) { "$($pick.worker) stops $($pick.stops) busy '$($pick.busy -join ',')'" } else { $pick.why })
+}
+$urgent = Issue 20 @('P1', 'area:api')
+$flight = @($urgent, (Issue 21 @('P1', 'area:ui', 'worker:1')), (Issue 22 @('P1', 'area:api/auth', 'worker:2')), (Issue 23 @('P1', 'area:db', 'worker:3')))
+$accounts = @((Account 'a' 0.2), (Account 'b' 0.6))
+$idle = @{ id = '4'; status = 'active'; activity = 'free'; account = 'b' }
+Assert-Equal (Now (Select-NowWorker $urgent $flight @((Working '1' 21 'a' 100), (Working '3' 23 'a' 200), $idle) $null $accounts)) "4 stops 0 busy 'api'" 'a free worker first; another ticket in flight still holds the area'
+Assert-Equal (Now (Select-NowWorker $urgent $flight @((Working '1' 21 'a' 100), (Working '3' 23 'a' 200)) $null $accounts)) "3 stops 23 busy 'api'" 'one account: the run that started last'
+Assert-Equal (Now (Select-NowWorker $urgent $flight @((Working '1' 21 'b' 100), (Working '3' 23 'a' 50)) $null $accounts)) "3 stops 23 busy 'api'" 'the account with the most room'
+Assert-Equal (Now (Select-NowWorker $urgent $flight @((Working '2' 22 'b' 50), (Working '3' 23 'a' 200), $idle) $null $accounts)) "2 stops 22 busy ''" 'before all, the worker whose ticket holds the area: its end frees it'
+$answers = Working '2' 22 'b' 50
+$answers.kind = 'answered'
+Assert-Equal (Now (Select-NowWorker $urgent $flight @($answers, (Working '3' 23 'a' 200)) $null $accounts)) "3 stops 23 busy 'api'" 'a PR''s job keeps its ticket and its area'
+Assert-Equal (Now (Select-NowWorker $urgent $flight @((Working '1' 21 'b' 100)) $null @((Account 'b' 0.8)))) 'no account has room for a size M ticket now' 'no room for the size'
+$not = @(@{ id = '1'; status = 'paused'; activity = 'free' }, @{ id = '2'; status = 'active'; activity = 'held' }, @{ id = '3'; status = 'active'; activity = 'running'; forced = $true },
+    @{ id = '5'; status = 'active'; activity = 'running'; pending = @{ to = 'paused' } }, @{ id = '6'; status = 'active'; activity = 'free' })
+$off = '{"workers":{"6":{"complexity":{"medium":false}}}}' | ConvertFrom-Json
+Assert-Equal (Now (Select-NowWorker $urgent $flight $not $off)) 'no worker can take it: each is paused, held, forced or has its complexity off' 'no worker that looks for a job on its own'
+# The queue and the cards with a Now: the ticket is its worker's next, no other worker's, and has no Now button.
+$taking = Working '3' 23 'a' 200
+$taking.forced = $true
+$taking.now = 20
+$rows = Get-QueueRows $flight @($taking, $idle) $null $null $accounts
+Assert-Equal "$($rows.queued[0].taken) $($rows.queued[0].reason) $([bool]$rows.queued[0].now)" '3 worker 3 does it now False' 'a ticket that a Now names waits for its worker'
+$rows = Get-QueueRows $flight @((Working '3' 23 'a' 200), $idle) $null $null $accounts
+Assert-Equal "$($rows.queued[0].now.worker) $([bool]$rows.queued[0].taken)" '4 False' 'a queued ticket names the worker of its Now'
+Assert-Equal "$([bool](Get-QueueRows @((Issue 30 @('P1') 'Blocked by #31'), (Issue 31 @('P1', 'worker:1'))) @($idle)).queued[0].now)" 'False' 'no Now for a blocked ticket'
+$next = Get-NextTickets $flight @() @($taking, $idle)
+Assert-Equal "$($next['3'].number) $($next['3'].kind) $($next['4'].number)" '20 now ' 'the Now is its worker''s next, and no other worker''s'
 # Its own work comes first: a PR to answer, then its claimed ticket without a PR. A ticket it works on now is not next.
 $own = @((Issue 7 @('P1', 'worker:1')), (Issue 8 @('P1', 'worker:1')), (Issue 9 @('P0')))
 $prs = @((Pr 70 7 @('worker:1', 'answered')))

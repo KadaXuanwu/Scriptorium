@@ -213,18 +213,20 @@ function workerCard(worker) {
        <div class="meta">${badges([...repo, ...(worker.areas || []), worker.size, runModel(worker), worker.heldOn && `held on ${worker.heldOn}`])}</div>${progressBar(worker)}`
     : `<span class="free">${esc(worker.out?.text || worker.error || 'Free')}</span>`;
 
-  // Force moves the next ticket into the free slot now, also one the queue would not give it.
+  // Force moves the next ticket into the free slot now, also one the queue would not give it. Now (the Queue tab)
+  // also waits for a run in progress: that run ends at its next checkpoint.
   const next = worker.next;
+  const waits = worker.forced && (!worker.run || (worker.now && worker.now !== worker.ticket));
   let force = '';
-  if (worker.forced && !worker.run) force = `<button data-unforce="${id}">Cancel</button>`;
+  if (waits) force = `<button data-unforce="${id}">Cancel</button>`;
   else if (next) {
     const can = worker.status === 'active' && !worker.run && !['down', 'signedout', 'setup', 'setup-failed', 'error'].includes(worker.activity);
     force = `<button class="round" data-force="${id}" title="${can ? 'Take it now' : 'Its slot is not free'}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`;
   }
-  const kind = next && { answered: 'your answers', 'needs-rebase': 'a rebase' }[next.kind];
+  const kind = next && { answered: 'your answers', 'needs-rebase': 'a rebase', now: 'now' }[next.kind];
   const nextBody = next
     ? `<a class="title${next.available ? '' : ' off'}" href="${esc(next.url)}" target="_blank">${esc(next.title)}</a>
-       <div class="meta">${badges([kind, ...(next.areas || []), next.size, next.complexity])}${worker.forced && !worker.run ? '<span class="why">takes it at its next poll</span>'
+       <div class="meta">${badges([kind, ...(next.areas || []), next.size, next.complexity])}${waits ? `<span class="why">takes it at its next ${worker.run ? 'checkpoint' : 'poll'}</span>`
     : next.available ? '' : `<span class="why">${icon('lock')}${esc(next.why)}</span>`}</div>`
     : `<span class="free">${worker.status === 'disabled' ? 'None' : 'Nothing queued'}</span>`;
 
@@ -365,13 +367,17 @@ function prioritySelect(row) {
   return `<select data-priority="${row.number}" aria-label="Priority">${options.join('')}</select>`;
 }
 
+// Now: the worker that does the ticket at once is the server's pick (row.now); without one, the button says why.
+const nowButton = (row) => (row.now
+  ? `<button data-now="${row.number}"${row.now.worker ? '' : ` disabled title="${esc(row.now.why)}"`}>Now</button>` : '');
+
 function ticketRow(row) {
   const estimate = row.seconds ? `<span class="estimate">≈ ${duration(row.seconds)}${row.cost ? ` · ${dollars(row.cost)}` : ''}</span>` : '';
   const ready = row.reason === 'next up';
   const reason = row.reason ? `<span class="why${ready ? ' good' : ''}">${icon(ready ? 'next' : 'lock')}${esc(row.reason)}</span>` : '';
   const card = `ticket:${row.number}`;
   return `<div class="row${busyClass(card)}"${busyAttr(card)}><div class="what"><a href="${esc(row.url)}" target="_blank">${esc(row.title)}</a>
-    <div class="meta">${mark()}${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${prioritySelect(row)}</div>`;
+    <div class="meta">${mark()}${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${nowButton(row)}${prioritySelect(row)}</div>`;
 }
 
 
@@ -568,6 +574,8 @@ function info(s) {
       <li>A ticket with a priority (P0, P1, P2) waits in the ${setting('Queue', 'queue')}. One with no priority is Parked:
         no worker takes it.</li>
       <li>Queue order: the priority, then the bigger ticket (L, M, S), then the older one.</li>
+      <li><b>Now</b> on a queued ticket gives it to one worker at once: a free worker, else the worker whose account has
+        the most room. That worker ends its run at the next checkpoint, and the ended ticket goes back to the queue.</li>
       <li>A free worker takes the answers and rebases of its own PRs first, then its own ticket, then the first queued ticket
         that its account has room for (Limits).</li>
       <li>Two tickets that change the same files (the same area) never run at the same time. A ticket "Blocked by" others
@@ -1114,6 +1122,21 @@ document.addEventListener('click', async (e) => {
     if (next && !next.available && !(await ask(`Take "${next.title}" now?`,
       `The queue holds it back: ${next.why}. The run goes past the stop line and uses the room kept under it.`, 'Take it'))) return;
     await act(project, { action: 'force', worker: data.force }, { keys: [`worker:${data.force}`], apply: (s) => { workerOf(s, data.force).forced = true; } });
+  } else if (data.now) {
+    const number = Number(data.now);
+    const row = rowOf(states[project], number);
+    const pick = row?.now;
+    if (!pick?.worker) return;
+    const how = pick.stops
+      ? `Worker ${pick.worker} ends its run of "${pick.title}" at its next checkpoint and takes this ticket. That ticket goes back to the queue and starts fresh from its handoff comment.`
+      : `Worker ${pick.worker} is free and takes it at its next poll, before its other jobs.`;
+    const busy = pick.busy?.length ? ` ${inWords(pick.busy)} ${pick.busy.length > 1 ? 'are' : 'is'} busy with another ticket: the two can change the same files.` : '';
+    if (!(await ask(`Do "${row.title}" now?`, `${how} Its run does not stop at the account's stop line.${busy}`, 'Do it now'))) return;
+    await act(project, { action: 'now', number }, {
+      keys: [`ticket:${number}`],
+      apply: (s) => { const r = rowOf(s, number); if (r) Object.assign(r, { taken: pick.worker, now: null, reason: `worker ${pick.worker} does it now` }); },
+      done: (s) => !rowOf(s, number) || !!rowOf(s, number).taken,
+    });
   } else if (data.unforce) {
     await act(project, { action: 'unforce', worker: data.unforce }, { keys: [`worker:${data.unforce}`], apply: (s) => { workerOf(s, data.unforce).forced = false; } });
   } else if (data.answer) {

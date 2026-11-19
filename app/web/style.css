@@ -433,7 +433,7 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .list .quiet { padding: 14px 0; }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .row:last-child { border-bottom: 0; }
-.row .what { min-width: 0; overflow-wrap: anywhere; }
+.row .what { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .row .what > a { color: var(--ink); font-weight: 600; }
 .row .when { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .reason { margin-top: 6px; font-size: 13px; color: var(--muted); }

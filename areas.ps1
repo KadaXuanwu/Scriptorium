@@ -25,3 +25,37 @@ function Select-Forced($queue, [int] $wanted, $busy) {
     }
     return $pick
 }
+
+# The open tickets that block this one (its `Blocked by` lines).
+function Get-Blockers($issue, $open) {
+    return @(([string]$issue.body -split "`n") | Where-Object { $_ -match '^\s*blocked by' } |
+        ForEach-Object { [regex]::Matches($_, '#(\d+)') } | ForEach-Object { [int]$_.Groups[1].Value } |
+        Where-Object { $open -contains $_ })
+}
+
+# Now (docs/QUEUE.md, Now): the ticket that a worker's force file names with `now`, 0 without one. That worker takes
+# the ticket before every other job and ends its run for it; no other worker takes the ticket meanwhile.
+function Read-Now([string] $file) {
+    try {
+        $force = Get-Content $file -Raw -ErrorAction Stop | ConvertFrom-Json
+        if ($force.now) {
+            return [int]$force.ticket
+        }
+    } catch {
+    }
+    return 0
+}
+
+# The ticket a worker takes for Now, from the open tickets: $wanted while it is queued (a priority, not waiting on the
+# owner), no other worker than $me holds it, and it has no PR and no open blocker. $null when it left the queue: the
+# worker then drops its force file. It never takes another ticket in its place, as Select-Forced does.
+function Select-Now($issues, [int] $wanted, [string] $me, $prBranches) {
+    $ticket = $issues | Where-Object { $_.number -eq $wanted } | Select-Object -First 1
+    $names = @($ticket.labels | ForEach-Object { $_.name })
+    if (-not $ticket -or -not ($names | Where-Object { $_ -match '^P[0-2]$' }) -or
+        ($names | Where-Object { $_ -eq 'needs-owner' -or ($_ -like 'worker:*' -and $_ -ne $me) }) -or
+        $prBranches -contains "t$wanted" -or @(Get-Blockers $ticket @($issues | ForEach-Object { $_.number })).Count -gt 0) {
+        return $null
+    }
+    return $ticket
+}

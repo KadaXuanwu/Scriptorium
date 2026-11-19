@@ -52,7 +52,8 @@ with the log's path, so a failing ticket never loops.
 
 ## Dispatching
 
-An idle worker script, under the shared lock, takes the first of: its own PRs (`answered`, then `needs-rebase`), its own
+An idle worker script, under the shared lock, takes the first of: the ticket of the owner's Now (Now), its own PRs
+(`answered`, then `needs-rebase`), its own
 ticket without an open PR (answered, rejected, given to it, or a run cut short), then new tickets. New tickets go in
 queue order: the priority, then the bigger ticket, then the older one (`Get-SizeRank` in [limits.ps1](../limits.ps1)).
 A fresh window then goes to the big tickets, and the small ones fill what the pick-up limits leave. Each ticket goes to
@@ -337,9 +338,31 @@ service's text and the time of the last test.
 A run that ends at its checkpoint for a pause (`stop.md`) keeps its session the same way: the script compacts it at
 once, holds the ticket (`paused.json`, `Stopped`) without a comment, and resumes the same session when the owner sets
 the worker active and the account takes an S ticket. Nothing is kept after "Pause now" (the process ends), after a run
-that ended with an error, or for a disabled worker: that ticket starts fresh from its handoff comment. A run held at a
+that ended with an error, for a disabled worker, or for a run that a Now ended (Now): that ticket starts fresh from
+its handoff comment. A run held at a
 checkpoint (a pause or a stop line) also starts fresh if the owner moved the worker to another account meanwhile
 (`Get-Hold` in [limits.ps1](../limits.ps1)).
+
+## Now
+
+**Now** on the page's Queue tab gives one queued ticket to one worker at once ([APP.md](APP.md), Queue). The server
+writes the ticket to that worker's force file with `now` (`.queue/force-<N>.json`).
+
+- **The ticket** waits for that worker. No other worker takes it, and the page shows it as that worker's next.
+- **A free worker** takes it at its next poll, before its own PRs and tickets.
+- **A worker in a run** gets the stop note (`stop.md`). The run ends at its next checkpoint: it pushes its work and
+  posts a handoff comment. The script holds no session.
+  - A ticket's run loses its claim. The ticket goes back to the queue and starts fresh from the comment, on any worker.
+  - A PR's job stays the worker's. It starts again after the Now ticket.
+  - The run is in the history as a part.
+- **The Now run** is a forced run: it does not stop at the workers' ceiling. The server checks the account's room only
+  when the owner clicks.
+- **The Now ends** without a run in these cases, and the worker deletes the file:
+  - The ticket left the queue: closed, claimed by another worker, blocked, or its complexity is off for the worker.
+    The worker takes only the ticket that the file names, never another one (`Select-Now` in [areas.ps1](../areas.ps1)).
+  - The worker holds a paused run. That run goes first.
+  - The owner cancels the Now on the worker's card, or pauses or disables the worker. A cancel before the checkpoint
+    withdraws the stop note, and the run goes on.
 
 ## Plugins
 
