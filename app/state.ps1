@@ -594,7 +594,8 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
         } else {
             $row.reason = 'next up'
         }
-        if (-not $row.taken -and $blockers.Count -eq 0) {
+        # Also a blocked ticket: the owner accepts a merge conflict with its blocker (docs/QUEUE.md, Now).
+        if (-not $row.taken) {
             $row.now = Select-NowWorker $issue $issues $workerViews $settings $accounts
         }
         $queued += $row

@@ -347,8 +347,9 @@ $open = @((Issue 2 @('P1')), (Issue 3 @('P1', 'worker:2')), (Issue 4 @('P1', 'wo
     (Issue 7 @('P1', 'needs-owner')))
 Assert-Equal (Select-Now $open 2 'worker:1' @()).number 2 'Now takes a queued ticket'
 Assert-Equal (Select-Now $open 4 'worker:1' @()).number 4 'and one the worker claimed already (a start that its plan refused)'
-foreach ($gone in 3, 5, 6, 7, 9) {
-    Assert-Equal "$(Select-Now $open $gone 'worker:1' @())" '' "Now takes no ticket $gone`: another worker's, blocked, parked, waiting on the owner or closed"
+Assert-Equal (Select-Now $open 5 'worker:1' @()).number 5 'and a blocked one: the owner accepts a merge conflict'
+foreach ($gone in 3, 6, 7, 9) {
+    Assert-Equal "$(Select-Now $open $gone 'worker:1' @())" '' "Now takes no ticket $gone`: another worker's, parked, waiting on the owner or closed"
 }
 Assert-Equal "$(Select-Now $open 2 'worker:1' @('t2'))" '' 'nor a ticket with a PR'
 # The worker for a Now: a free one before one in a run; of those in a run the account with the most room, then the run
@@ -395,7 +396,8 @@ $rows = Get-QueueRows $flight @($taking, $idle) $null $null $accounts
 Assert-Equal "$($rows.queued[0].taken) $($rows.queued[0].reason) $([bool]$rows.queued[0].now)" '3 worker 3 does it now False' 'a ticket that a Now names waits for its worker'
 $rows = Get-QueueRows $flight @((Working '3' 23 'a' 200), $idle) $null $null $accounts
 Assert-Equal "$($rows.queued[0].now.worker) $([bool]$rows.queued[0].taken)" '4 False' 'a queued ticket names the worker of its Now'
-Assert-Equal "$([bool](Get-QueueRows @((Issue 30 @('P1') 'Blocked by #31'), (Issue 31 @('P1', 'worker:1'))) @($idle)).queued[0].now)" 'False' 'no Now for a blocked ticket'
+$blocked = (Get-QueueRows @((Issue 30 @('P1') 'Blocked by #31'), (Issue 31 @('P1', 'worker:1'))) @($idle)).queued[0]
+Assert-Equal "$($blocked.reason) $($blocked.now.worker)" 'blocked by #31 4' 'a blocked ticket waits, and its Now names a worker'
 $next = Get-NextTickets $flight @() @($taking, $idle)
 Assert-Equal "$($next['3'].number) $($next['3'].kind) $($next['4'].number)" '20 now ' 'the Now is its worker''s next, and no other worker''s'
 # Its own work comes first: a PR to answer, then its claimed ticket without a PR. A ticket it works on now is not next.

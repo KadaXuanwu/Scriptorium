@@ -189,7 +189,7 @@ The repo may be private, so the server fetches each one once with the owner's `g
   end of the run's log (`Get-StuckReason`), and **Retry**, which gives it back to its worker. Nothing retries alone.
 - **Up next:** the unclaimed tickets in dispatch order, each with its areas, size, complexity, typical time and cost,
   why it waits, its priority and **Now**.
-- **Now** (on a ticket of Up next that is not blocked): one worker does the ticket at once ([QUEUE.md](QUEUE.md), Now).
+- **Now** (on a ticket of Up next, also a blocked one): one worker does the ticket at once ([QUEUE.md](QUEUE.md), Now).
   - The server picks the worker (`Select-NowWorker`). It must be active with no change of status to come, free or in a
     run, with no force on it and with the ticket's complexity on. Its account must take the ticket's size now. For a
     ticket that runs on Fable, the account must be under the design line of its Fable week.

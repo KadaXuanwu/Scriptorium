@@ -880,7 +880,7 @@ function Get-NextJob {
             & gh issue edit $ticket.number --add-label $me -R $repo | Out-Null
             Write-Log "now: #$($ticket.number) onto worker $Id"
             return @{ Kind = 'ticket'; Ticket = $ticket.number; Title = $ticket.title; Repo = Get-TicketRepo $ticket; Size = Get-Size $ticket
-                Complexity = Get-Complexity $ticket }
+                Complexity = Get-Complexity $ticket; Blockers = @(Get-Blockers $ticket $open) }
         }
         Remove-Item $forceFile -ErrorAction SilentlyContinue
         Write-Log "now: #$now left the queue, so the Now ends"
@@ -905,8 +905,9 @@ function Get-NextJob {
         $n -contains $me -and $n -notcontains 'needs-owner' -and $prBranches -notcontains "t$($_.number)"
     } | Sort-Object createdAt | Select-Object -First 1
     if ($resume) {
+        # Blockers: only a ticket that a Now claimed has open ones.
         return @{ Kind = 'ticket'; Ticket = $resume.number; Title = $resume.title; Repo = Get-TicketRepo $resume; Size = Get-Size $resume
-            Complexity = Get-Complexity $resume }
+            Complexity = Get-Complexity $resume; Blockers = @(Get-Blockers $resume $open) }
     }
     if ((Get-RunSettings $Id).assignedOnly) {
         return $null
@@ -1180,6 +1181,12 @@ function Invoke-Worker($job, [string] $log, $paused) {
     } elseif (($paused -and $paused.FableOut) -or $afterFable) {
         $prompt += " Your account reached its weekly Fable limit, so this job runs on ${model}: the PR already holds the " +
             "ticket's decisions."
+    }
+    # A blocked ticket that a worker has, from a Now (docs/QUEUE.md, Now).
+    if ($job.Blockers) {
+        $blockers = '#' + ($job.Blockers -join ', #')
+        $prompt += " Your ticket is blocked by $blockers, which is still open, and the owner wants it built now: build " +
+            "it on main as it is, and do not wait for $blockers or ask about it. A merge conflict with $blockers later is accepted."
     }
     if ($given.Prompt) {
         $prompt += " $($given.Prompt)"

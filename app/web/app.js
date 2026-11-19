@@ -578,7 +578,7 @@ function info(s) {
       <li>A free worker takes, in order: the answers and rebases of its own PRs, its own ticket, the first queued ticket
         its account has room for (Limits).</li>
       <li>Two tickets of the same area (the same files) never run at the same time. A ticket "Blocked by" others waits
-        until they close.</li>
+        until they close, unless you press Now on it and accept a merge conflict with them.</li>
       <li>A run ends in a PR, in a question for you, or held at a limit (Limits). The merged PR closes its ticket and can
         add follow-ups and open questions: a follow-up without a question joins the queue, the others wait under
         Questions.</li>

@@ -46,7 +46,7 @@ GitHub builds nothing. A run's own checks are the gate, and a run that finds mai
 | `follow-up` | A draft ticket that the merger filed from a merged PR's Follow-up section (one for each `###`), with questions for the owner. No worker takes it until the owner answers it (the page, Questions). One without questions is filed `P1` instead |
 | `open-question` | A question that the merger filed from a merged PR's Open questions section (one for each `###`, `size:S`); the product has its default already. The owner keeps the default (closed) or changes it (queued `P1` with the answer) under the page's Questions |
 
-A line `Blocked by #3, #5` in a ticket's body holds it until those close. A run must end in a PR, a question or a
+A line `Blocked by #3, #5` in a ticket's body holds it until those close, unless the owner gives it a worker with Now. A run must end in a PR, a question or a
 pause (for the usage limit, or for an account that is out). The worker script parks anything else as `needs-owner`,
 with the log's path, so a failing ticket never loops.
 
@@ -350,6 +350,8 @@ checkpoint (a pause or a stop line) also starts fresh if the owner moved the wor
 writes the ticket to that worker's force file with `now` (`.queue/force-<N>.json`).
 
 - **The ticket** waits for that worker. No other worker takes it, and the page shows it as that worker's next.
+- **A blocked ticket** takes Now too: the owner accepts a merge conflict with its blocker. The run's first message
+  names the open blockers and tells the run to build on main as it is, without waiting or asking.
 - **A free worker** takes it at its next poll, before its own PRs and tickets.
 - **A worker in a run** gets the stop note (`stop.md`). The run ends at its next checkpoint: it pushes its work and
   posts a handoff comment. The script holds no session.
@@ -361,7 +363,7 @@ writes the ticket to that worker's force file with `now` (`.queue/force-<N>.json
 - **The model:** the server reads the Fable week of the account, not the models that its plan refused (`access.json`).
   The plan can therefore refuse the start of a Now run. The ticket then goes back to the queue (Models).
 - **The Now ends** without a run in these cases, and the worker deletes the file:
-  - The ticket left the queue: closed, claimed by another worker, blocked, or its complexity is off for the worker.
+  - The ticket left the queue: closed, claimed by another worker, or its complexity is off for the worker.
     The worker takes only the ticket that the file names, never another one (`Select-Now` in [areas.ps1](../areas.ps1)).
   - The worker holds a paused run. That run goes first.
   - The owner cancels the Now on the worker's card, or pauses or disables the worker. A cancel before the checkpoint
