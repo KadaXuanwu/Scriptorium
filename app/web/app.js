@@ -310,8 +310,11 @@ function complexityRow(c) {
     : `<button class="take${on ? ' on' : ''}" data-advisor="${name}" aria-pressed="${on}" aria-label="Advisor of a ${name} run">${icon(on ? 'check' : 'lock')}<span><b>Advisor</b></span></button>
       <select data-fallback="${name}" aria-label="Effort of a ${name} run without the advisor"${on ? '' : ' disabled'}>${
   ['', ...(state.efforts || [])].map((e) => `<option value="${esc(e)}"${e === fallback ? ' selected' : ''}>${esc(fallbackName(e))}</option>`).join('')}</select>`;
+  // The description is behind an (i) button: a popover that a tap outside closes, so a phone keeps the row short.
+  const about = esc(`about-${scope}-${c.name}`);
   return `<div class="config-row${busyClass(key)}"${busyAttr(key)}>
-    <span class="config-name"><b>${name}</b><small>${esc(c.description)}</small></span>
+    <span class="config-name"><b>${name}<button class="about" popovertarget="${about}" aria-label="What ${name} is">${icon('info')}</button></b>
+      <span class="pop about-text" id="${about}" popover>${esc(c.description)}</span></span>
     <select data-run-model="${name}" aria-label="Model of a ${name} run">${pickList([...(state.models || []), c.base?.model], c.model, modelName)}</select>
     <select data-run-effort="${name}" aria-label="Effort of a ${name} run">${pickList(state.efforts || [], c.effort, (v) => v)}</select>
     <label class="compact"><input type="number" inputmode="numeric" min="67" max="967" step="1" value="${Math.round(c.compactAt / 1000)}"

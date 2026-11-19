@@ -398,6 +398,14 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .config-row select { min-width: 0; }
 .config-name b { display: block; text-transform: capitalize; }
 .config-name small { display: block; font-size: 11px; color: var(--muted); }
+/* A complexity's (i) button and its description (app.js, complexityRow): the text opens under the button where the
+   browser can anchor it, else in the middle of the screen. */
+.config-name button.about { min-height: 0; width: 26px; height: 26px; padding: 0; margin: -4px 0 -4px 4px; vertical-align: middle; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
+.config-name button.about:hover { color: var(--ink); background: var(--raised); }
+.about-text { max-width: min(320px, calc(100vw - 32px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); box-shadow: var(--shadow); font-size: 13px; }
+@supports (position-area: bottom) {
+  .about-text { inset: auto; margin: 6px 10px 6px 0; position-area: bottom span-right; position-try-fallbacks: flip-block, flip-inline; }
+}
 /* A phone: a complexity's name and compact size, then its model and effort, then its advisor. */
 @media (max-width: 760px) {
   .config-head, .config-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
