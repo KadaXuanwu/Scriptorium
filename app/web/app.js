@@ -646,8 +646,7 @@ function count(id, n, hot) {
 
 const quiet = (text) => `<div class="quiet">${text}</div>`;
 
-// Questions, Queue and History show every project ('') or the one their select names: one choice for all three, kept on
-// the device.
+// Every tab shows every project ('') or the one its select names: one choice for all tabs, kept on the device.
 const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ } };
 const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
 let shownOf = kept('scriptorium-queue') || '';
@@ -670,20 +669,26 @@ function render() {
     s.accounts.some((a) => ['signedout', 'refused'].includes(a.status) && (a.own || a.uses.length)));
   document.title = (blocking.length ? `(${blocking.length}) ` : '') + 'Scriptorium' + (working ? ` · ${working} working` : '');
 
-  const active = workers.filter(({ item }) => item.status === 'active').length;
-  $('workers-sub').textContent = `${working} working · ${active} of ${workers.length} active`;
-  put($('all-buttons'), `<button data-status="active" data-worker="all">${icon('play')}All active</button>
-    <button data-status="paused" data-worker="all">${icon('pause')}Pause all</button>`);
-  put($('worker-list'), (drawEach(workers, workerCard) || quiet('No worker has reported yet.')) + addTile('worker', 'Add a worker'));
-  if ($('config').open) drawConfig();
-
-  // Questions, Queue and History: every project, or the one of their select.
+  // Every tab has the same select at the same spot: every project, or one. The tab counters stay for every project.
+  // Accounts are the PC's, so its select changes nothing there.
   if (!names.includes(shownOf)) shownOf = '';
   const shown = ({ p }) => !shownOf || p === shownOf;
-  // The select of a tab: All and each project, each with the count of its items in `list`.
+  // All and each project, each with the count of its items in `list` when the tab has one.
   const projectPick = (label, list) => (names.length > 1 ? `<select data-shown${shownOf ? ` class="of" style="--of:${colorOf(shownOf)}"` : ''} aria-label="${label}">${
-    [['', 'All'], ...names.map((p) => [p, p])].map(([value, text]) => `<option value="${esc(value)}"${shownOf === value ? ' selected' : ''}>${esc(text)} · ${
-      list.filter(({ p }) => !value || p === value).length}</option>`).join('')}</select>` : '');
+    [['', 'All'], ...names.map((p) => [p, p])].map(([value, text]) => `<option value="${esc(value)}"${shownOf === value ? ' selected' : ''}>${esc(text)}${
+      list ? ` · ${list.filter(({ p }) => !value || p === value).length}` : ''}</option>`).join('')}</select>` : '');
+  put($('workers-projects'), projectPick('The project of the workers', workers));
+  put($('accounts-projects'), projectPick('The project shown'));
+  put($('details-projects'), projectPick('The project of the details'));
+
+  const workersShown = workers.filter(shown);
+  const active = workersShown.filter(({ item }) => item.status === 'active').length;
+  $('workers-sub').textContent = `${workersShown.filter(({ item }) => item.activity === 'running').length} working · ${active} of ${workersShown.length} active`;
+  put($('all-buttons'), `<button data-status="active" data-worker="all">${icon('play')}All active</button>
+    <button data-status="paused" data-worker="all">${icon('pause')}Pause all</button>`);
+  put($('worker-list'), (drawEach(workersShown, workerCard) || quiet('No worker has reported yet.')) + addTile('worker', 'Add a worker'));
+  if ($('config').open) drawConfig();
+
   put($('questions-projects'), projectPick('The project of the questions', questions));
   const blockingShown = blocking.filter(shown);
   const openShown = open.filter(shown);
@@ -737,7 +742,7 @@ function render() {
   // that changes never redraws a field of the settings.
   let settings;
   try {
-    settings = names.map((p) => within(p, () => tagged(p, settingsBlock()))).join('');
+    settings = names.filter((p) => !shownOf || p === shownOf).map((p) => within(p, () => tagged(p, settingsBlock()))).join('');
   } catch (e) {
     settings = quiet('The settings could not be drawn from this state. Pull down or reload to fetch a new one.');
   }
@@ -745,10 +750,13 @@ function render() {
   // The info is one text for the PC: this address's project gives the common part, every project its own part.
   let text;
   try {
-    text = within(home, () => info({
-      ...s, questions: questions.map(({ item }) => item), stuck: stuck.map(({ item }) => item),
-      workers: workers.map(({ p, item }) => ({ ...item, project: names.length > 1 ? p : '' })),
-      per: names.map((p) => ({ name: p, plugins: states[p].plugins })),
+    // With one project chosen, the text is that project's: its plugins, workers, questions and stuck runs.
+    const base = shownOf || home;
+    const several = names.length > 1 && !shownOf;
+    text = within(base, () => info({
+      ...states[base], accounts: s.accounts, questions: questions.filter(shown).map(({ item }) => item), stuck: stuck.filter(shown).map(({ item }) => item),
+      workers: workersShown.map(({ p, item }) => ({ ...item, project: several ? p : '' })),
+      per: names.filter((p) => !shownOf || p === shownOf).map((p) => ({ name: p, plugins: states[p].plugins })),
     }));
   } catch (e) {
     text = quiet('The info could not be drawn from this state. Pull down or reload to fetch a new one.');
@@ -1031,11 +1039,13 @@ function sendStatus(project, worker, to, how) {
 }
 
 // "all" is the workers of every project.
-const statusTo = (project, worker, to, how) => Promise.all((worker === 'all' ? names : [project]).map((p) => sendStatus(p, worker, to, how)));
+// 'all' is every worker of the projects shown (the select).
+const statusTo = (project, worker, to, how) => Promise.all((worker === 'all' ? names.filter((p) => !shownOf || p === shownOf) : [project]).map((p) => sendStatus(p, worker, to, how)));
 
 function setStatus(project, worker, to) {
-  const views = worker === 'all' ? all('workers').map(({ item }) => item) : states[project].workers.filter((w) => w.id === worker);
-  const who = worker === 'all' ? 'all workers' : `worker ${worker}`;
+  const views = worker === 'all' ? all('workers').filter(({ p }) => !shownOf || p === shownOf).map(({ item }) => item)
+    : states[project].workers.filter((w) => w.id === worker);
+  const who = worker === 'all' ? `all workers${shownOf ? ` of ${shownOf}` : ''}` : `worker ${worker}`;
   if (to === 'active' || !views.some((w) => w.run)) {
     statusTo(project, worker, to, to === 'active' ? '' : 'now');
     return;

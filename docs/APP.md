@@ -254,9 +254,11 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
 
 - **Workers:** the workers of every project stand side by side, in the order of their numbers.
 - **Questions, Queue and History:** one list of every project. In the Queue a project's own order stays, and between
-  the projects the priority decides. Questions, Queue and History have a select with All and each project at the right
-  end of the title's line, each with its count of questions, queued tickets or merged PRs: a project shows that
-  project's lists and totals. The three tabs share the choice, and it stays on the device.
+  the projects the priority decides. Every tab has the same select at the right end of the title's line: All and each
+  project, on Workers, Questions, Queue and History with its count of workers, questions, queued tickets or merged PRs.
+  A project shows only that project's workers (All active and Pause all act on them), lists, totals, Details settings
+  and info text. Accounts are the PC's, so the select changes nothing there. All tabs share the choice, and it stays on
+  the device; the tab counters count every project.
 - **The mark:** while the PC has two projects or more, each worker, question, ticket and history row carries its
   project's name, in its project's colour (Details). A worker's mark is its project choice (Workers, The project
   choice).
