@@ -391,10 +391,11 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .settings-head h2 { margin: 0; }
 .settings-head input[type="color"] { display: inline-block; width: 44px; height: 32px; padding: 2px; }
 .settings-note { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
-/* The first column in px, not em: the head's smaller font would make it narrower than the rows' under it. */
-.config-head, .config-row { display: grid; grid-template-columns: 135px minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+/* Each row is a grid of its own: fixed outer columns in px keep the head's labels over the rows' fields (the compact
+   field is 131px wide). */
+.config-head, .config-row { display: grid; grid-template-columns: 135px minmax(0, 1fr) minmax(0, 1fr) 132px; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .config-head { font-size: 12px; font-weight: 600; color: var(--muted); }
-.config-head > :last-child, .config-row > small { grid-column: 2 / -1; }
+.config-row > small { grid-column: 2 / -1; }
 .config-row > small { font-size: 11px; color: var(--muted); }
 .config-row select { min-width: 0; }
 .config-name b { display: block; text-transform: capitalize; }
@@ -410,7 +411,9 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 /* A phone: a complexity's name and compact size, then its model and effort, then its advisor. */
 @media (max-width: 760px) {
   .config-head, .config-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .config-head > :last-child { grid-column: auto; text-align: right; }
+  /* The head names only the compact size, at the right end above its field: the lists say their model and effort. */
+  .config-head .wide { display: none; }
+  .config-head > :last-child { text-align: right; }
   .config-row > small { grid-column: 1 / -1; }
   .config-row > .config-name:first-child { order: -2; }
   .config-row .compact { order: -1; justify-self: end; }

@@ -333,7 +333,7 @@ function settingsBlock() {
   const override = model ? `<p class="settings-note">settings.json sets ${esc(modelName(model))}${effort ? ` · ${esc(effort)}` : ''}
     for every run: the models and efforts above are not in use.</p>` : '';
   return `<section class="settings">${head}
-    <div class="config-head"><span>Complexity</span><span>Model, effort, compacts near</span></div>
+    <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide">Effort</span><span>Compacts near</span></div>
     ${(state.complexities || []).map(complexityRow).join('')}
     <div class="config-row${busyClass('advisor-model')}"${busyAttr('advisor-model')}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
       <select data-advisor-model aria-label="Model of the advisor">${pickList(state.models || [], advisor.model, modelName)}</select>
