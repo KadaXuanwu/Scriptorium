@@ -91,6 +91,32 @@ $threw = $false
 try { Set-WorkerAccount $settings '1' 'nope' | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'unknown account'
 
+# Rename: an account keeps its place, its folder and its uses; a taken or bad name changes nothing; a new account
+# may not take a renamed account's folder.
+$register = '{"accounts":{"main":{"uses":["frontdesk"]},"temp":{"configDir":"C:/t","uses":["worker:1"]}}}'
+$renamed = (Rename-Account ($register | ConvertFrom-Json) 'main' 'first' | ConvertTo-Json -Depth 8 -Compress)
+Assert-Equal $renamed '{"accounts":{"first":{"uses":["frontdesk"]},"temp":{"configDir":"C:/t","uses":["worker:1"]}}}' 'renamed in its place'
+foreach ($bad in @('temp', 'Bad', '-x', '')) {
+    $threw = $false
+    try { Rename-Account ($register | ConvertFrom-Json) 'main' $bad | Out-Null } catch { $threw = $true }
+    Assert-Equal $threw $true "bad name '$bad'"
+}
+$threw = $false
+try { Rename-Account ($register | ConvertFrom-Json) 'nope' 'x' | Out-Null } catch { $threw = $true }
+Assert-Equal $threw $true 'no such account'
+$folders = '{"accounts":{"other":{"configDir":"C:/Users/me/.claude-temp1","uses":[]}}}' | ConvertFrom-Json
+$threw = $false
+try { Get-NewAccountDir $folders 'temp1' 'C:\Users\Me' | Out-Null } catch { $threw = $true }
+Assert-Equal $threw $true 'a new account may not take a renamed account''s folder'
+Assert-Equal (Get-NewAccountDir $folders 'temp2' 'C:\Users\me') 'C:/Users/me/.claude-temp2' 'a free folder'
+# A worker's name: trimmed, and '' takes it away.
+$named = Set-WorkerName ('{"workers":{"2":{"enabled":true}}}' | ConvertFrom-Json) '2' '  Fable box '
+Assert-Equal ($named.workers.'2' | ConvertTo-Json -Compress) '{"enabled":true,"name":"Fable box"}' 'a worker named'
+Assert-Equal ((Set-WorkerName $named '2' '').workers.'2' | ConvertTo-Json -Compress) '{"enabled":true}' 'a name taken away'
+$threw = $false
+try { Set-WorkerName $named '2' ('x' * 31) | Out-Null } catch { $threw = $true }
+Assert-Equal $threw $true 'a name too long'
+
 # Add a worker and Remove: the lowest free number; a fresh entry on its account; removal takes it off every account.
 Assert-Equal (Get-FreeWorkerId @('1', '3')) '2' 'a removed worker''s number comes back'
 Assert-Equal (Get-FreeWorkerId @()) '1' 'the first worker'

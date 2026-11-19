@@ -49,6 +49,11 @@ the working workers after it: "(1) Scriptorium · 2 working".
 
 ### Workers
 
+**Names.** A double-click on a worker's name, or Enter while the name has focus, opens a field over it: Enter or a
+click elsewhere saves, Escape keeps the name. A worker's name is the page's only (`workers.<id>.name`, the PC's, so it
+stays with a move); an empty one gives back "Worker N". Comments, pushes and dialogs keep the number, which the card's
+square shows. An account's name changes the same way (Accounts).
+
 **Worker status.** A worker has one of three statuses, on a switch that is always clickable:
 
 | Status | Means |
@@ -59,7 +64,9 @@ the working workers after it: "(1) Scriptorium · 2 working".
 
 Pause and Disable ask how the run in flight ends: **Now** (its process ends; work since the last checkpoint push is
 lost), **Next checkpoint** (it saves its work, then stops; after a pause its session is kept and resumes) or **After the
-ticket**. A worker with no run changes at once. The status stays Active until the run has ended that way; the switch
+ticket**. A worker with no run changes at once. A pause of a worker whose run is held (at a usage limit, at its account's
+stop line, or for its account) also changes at once, as Next checkpoint: that run has already stopped, and the pause
+keeps it from resuming. It keeps its session and its ticket. To let a held run finish first, leave the worker active. The status stays Active until the run has ended that way; the switch
 marks the target, and a line says "Pauses after the ticket". Active discards a pause or a disable that has not happened
 yet.
 
@@ -225,7 +232,10 @@ left of the handle, in its colour. Under the meter each guard has a slider: its 
 On a touch screen a slider moves only after a hold of 0.3 s on its handle, so a scroll never moves one.
 
 Also: **Sign in**, only while the account is signed out, and **Ping**. To change an account's login, remove the account
-and add one. The last tile adds an account: a dialog asks for its name and email, and the
+and add one. A double-click on an account's name renames it (Workers, Names): lower-case letters, digits and dashes,
+a name no other account has. Only its key in the register changes: its folder and its records stay, as the queue's
+files know an account by its folder. A new account may not take the old name while the renamed account has the folder
+of that name. The last tile adds an account: a dialog asks for its name and email, and the
 sign-in starts on this tab. The cross on a card removes an account that nothing uses: its login is signed out, and its
 folder stays.
 

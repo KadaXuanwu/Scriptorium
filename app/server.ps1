@@ -540,6 +540,25 @@ function Invoke-Action($request) {
             Set-Content $file (@{ ticket = $number; now = $true } | ConvertTo-Json -Compress) -Encoding utf8
             return "now: #$number on worker $($row.now.worker)"
         }
+        'rename-worker' {
+            # The worker's name on the page (docs/APP.md, Worker status): the PC's, so it stays with a move.
+            if (-not (Test-Path (Join-Path $mainQueue "worker-$worker.json"))) {
+                throw "no worker $worker"
+            }
+            Save-Settings (Set-WorkerName (Read-SettingsToEdit) $worker ([string]$request.name))
+            return "worker $worker named '$(([string]$request.name).Trim())'"
+        }
+        'rename-account' {
+            # An account's name (docs/APP.md, Accounts): only its key in the register; its folder and records stay.
+            $old = [string]$request.account
+            $new = [string]$request.name
+            Save-Settings (Rename-Account (Read-SettingsToEdit) $old $new)
+            # A sign-in of it goes on in the same folder; only its box shows the name.
+            if ($script:login -and $script:login.account -eq $old) {
+                $script:login.account = $new
+            }
+            return "account $old renamed $new"
+        }
         'assign' {
             if (-not (Test-Path (Join-Path $mainQueue "worker-$worker.json"))) {
                 throw "no worker $worker"
@@ -745,7 +764,7 @@ function Invoke-Action($request) {
                 throw "an account named $name exists: pick another name, or remove that account first"
             }
             if (-not $entry) {
-                $entry = [pscustomobject]@{ configDir = "$($HOME.Replace('\', '/'))/.claude-$name"; uses = [object[]]@() }
+                $entry = [pscustomobject]@{ configDir = (Get-NewAccountDir $settings $name $HOME); uses = [object[]]@() }
                 $settings.accounts | Add-Member -NotePropertyName $name -NotePropertyValue $entry
                 Save-Settings $settings
             }

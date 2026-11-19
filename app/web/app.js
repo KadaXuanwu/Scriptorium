@@ -200,6 +200,10 @@ function progressBar(worker) {
     <div class="prog-meta"><span>${held ? `held${elapsed ? ` at ${duration(elapsed)}` : ''}` : duration(elapsed)}</span><span>${right}</span></div>${steps}`;
 }
 
+// A name the owner can change in place (rename): a double-click on it, or Enter while it has focus.
+const renameable = (kind, id, name, shown) => `<span class="name" tabindex="0" data-rename="${kind}" data-id="${esc(id)}" data-name="${esc(name || '')}"
+  title="Double-click to rename">${esc(name || shown)}</span>`;
+
 // The workers whose details are open. Only where the cards stand in one column: there a card shows its last
 // checkpoint and its next ticket after a press on the arrow in its head (style.css). Side by side, every card shows all.
 const opened = new Set();
@@ -253,7 +257,7 @@ function workerCard(worker) {
 
   const card = `worker:${worker.id}`;
   return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}"${busyAttr(card)}>
-    <div class="worker-head"><span class="avatar">${id}</span><div class="who"><strong>Worker ${id}${project}</strong>
+    <div class="worker-head"><span class="avatar">${id}</span><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}</strong>
       <span class="doing ${tone}">${icon(glyph)}${words}</span></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
@@ -485,7 +489,7 @@ function accountCard(a) {
   if (a.signedIn) buttons.push(`<button data-ping="${name}" title="Starts its 5-hour window now (about 770 tokens)">Ping</button>`);
   const card = `account:${a.name}`;
   return `<article class="card account ${tone}${busyClass(card)}"${busyAttr(card)}>
-    <div class="account-head"><strong>${name}</strong>${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
+    <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
       <span class="chip ${tone}">${icon(glyph)}${words}</span>${cross('account', a.name, a.name)}</div>
     <div class="meta"><span class="email">${esc(a.signedIn ? a.email || '' : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${out}</div>
     ${windowMeter(a, 'five_hour', '5 hours', a.five_hour)}${windowMeter(a, 'seven_day', 'Week', a.seven_day,
@@ -592,7 +596,8 @@ function info(s) {
       return `Worker ${esc(w.id)}${w.project ? ` (${esc(w.project)})` : ''}: ${setting(esc(statusNames[w.status] || w.status), 'workers')}${w.account ? ` on ${esc(w.account)}` : ''}${off.length
         ? `, takes no ${setting(esc(off.join(', ')), 'workers')} tickets` : ''}.`;
     }))}
-      <p>Active takes tickets. Paused takes none and keeps its ticket. Disabled takes none, other workers take its
+      <p>Active takes tickets. Paused takes none and keeps its ticket; a run that waits at a usage limit or a stop line
+        then stays stopped until you set the worker active. Disabled takes none, other workers take its
         ticket, and its plugins close what they opened for it. Force (the arrow on Next) gives a free worker its next
         ticket now, past the limits.</p>
       <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes.${per.length > 1
@@ -1059,6 +1064,8 @@ const howOptions = {
   finish: ['check', 'After the ticket', 'The run finishes its ticket first.'],
 };
 const keeps = { paused: 'The worker keeps its ticket.', disabled: 'Its ticket goes back to the queue.' };
+// A run with a process. A held run (resetsAt: it waits for a reset, room, its account or the owner) already stopped.
+const working = (w) => w.run && !w.resetsAt;
 
 // Sends a status. Shown at once: the new status, or the target as pending while a run still works toward it.
 function sendStatus(project, worker, to, how) {
@@ -1066,7 +1073,7 @@ function sendStatus(project, worker, to, how) {
   return act(project, { action: 'status', worker, to, how }, {
     keys: mine(states[project]).map((w) => `worker:${w.id}`),
     apply: (s) => mine(s).forEach((w) => {
-      if (to !== 'active' && w.run && how !== 'now' && w.status === 'active') w.pending = { to, how };
+      if (to !== 'active' && w.run && how !== 'now' && (how === 'finish' || working(w)) && w.status === 'active') w.pending = { to, how };
       else Object.assign(w, { status: to, pending: null }, to === 'disabled' ? { next: null } : {});
     }),
   });
@@ -1080,8 +1087,10 @@ function setStatus(project, worker, to) {
   const views = worker === 'all' ? all('workers').filter(({ p }) => !shownOf || p === shownOf).map(({ item }) => item)
     : states[project].workers.filter((w) => w.id === worker);
   const who = worker === 'all' ? `all workers${shownOf ? ` of ${shownOf}` : ''}` : `worker ${worker}`;
-  if (to === 'active' || !views.some((w) => w.run)) {
-    statusTo(project, worker, to, to === 'active' ? '' : 'now');
+  // No choice while no run works: a pause only keeps a held run from resuming. 'checkpoint' ends no process ('now'
+  // would end a held run's compaction). A disable still asks: After the ticket lets a held run resume and finish.
+  if (to === 'active' || (!views.some(working) && (to === 'paused' || !views.some((w) => w.run)))) {
+    statusTo(project, worker, to, to === 'active' ? '' : 'checkpoint');
     return;
   }
   $('how').dataset.project = project;
@@ -1116,6 +1125,62 @@ const setColor = (project, value) => act(project, { action: 'color', value }, {
   keys: ['color'],
   apply: (s) => { s.color = value; },
   done: (s) => (s.color || '') === value,
+});
+
+// Renames in place (docs/APP.md): a field over the name. Enter or a click elsewhere saves, Escape keeps the name. The
+// 10 s redraw waits while the field has focus (put). A worker's empty name gives back "Worker <id>".
+function rename(label) {
+  if (label.querySelector('input')) return;
+  const { rename: kind, id, name } = label.dataset;
+  const shown = label.textContent;
+  const input = document.createElement('input');
+  input.className = 'rename';
+  input.value = name;
+  input.maxLength = kind === 'worker' ? 30 : 31;
+  input.setAttribute('aria-label', `New name of ${kind === 'worker' ? `worker ${id}` : `account ${id}`}`);
+  label.replaceChildren(input);
+  input.focus();
+  input.select();
+  let ended = false;
+  const end = async (save) => {
+    if (ended) return;
+    ended = true;
+    const value = kind === 'account' ? input.value.trim().toLowerCase() : input.value.trim();
+    label.textContent = shown;
+    if (!save || value === name || (kind === 'account' && !value)) return;
+    const project = projectOf(label);
+    if (kind === 'worker') {
+      await act(project, { action: 'rename-worker', worker: id, name: value }, {
+        keys: [`worker:${id}`],
+        apply: (s) => { workerOf(s, id).name = value; },
+        done: (s) => (workerOf(s, id)?.name || '') === value,
+      });
+    } else {
+      await act(project, { action: 'rename-account', account: id, name: value }, {
+        keys: [`account:${value}`],
+        apply: (s) => {
+          const account = accountOf(s, id);
+          if (account) account.name = value;
+          for (const w of s.workers) if (w.account === id) w.account = value;
+        },
+        done: (s) => !!accountOf(s, value),
+      });
+    }
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault();
+      end(e.key === 'Enter');
+    }
+  });
+  input.addEventListener('blur', () => end(true));
+}
+document.addEventListener('dblclick', (e) => {
+  const label = e.target.closest('[data-rename]');
+  if (label) rename(label);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches?.('[data-rename]')) rename(e.target);
 });
 
 document.addEventListener('click', async (e) => {

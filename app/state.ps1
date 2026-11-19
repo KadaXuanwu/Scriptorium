@@ -84,6 +84,53 @@ function Get-WorkerSettings($settings, [string] $id) {
     return $settings.workers.$id
 }
 
+# The register with worker $id's name on the page (`workers.<id>.name`), trimmed; '' takes it away (the page then
+# shows "Worker <id>"). Only the page shows it: comments and pushes keep the number.
+function Set-WorkerName($settings, [string] $id, [string] $name) {
+    $name = $name.Trim()
+    if ($name.Length -gt 30 -or $name -match '[\x00-\x1f]') {
+        throw 'a name has at most 30 characters'
+    }
+    $entry = Get-WorkerSettings $settings $id
+    $entry.PSObject.Properties.Remove('name')
+    if ($name) {
+        Set-JsonProperty $entry 'name' $name
+    }
+    return $settings
+}
+
+# The register with account $old named $new, in the same place in the list. Only the name changes: the queue's
+# files and a held run know an account by its login folder (`configDir`), which stays.
+function Rename-Account($settings, [string] $old, [string] $new) {
+    if ($new -cnotmatch '^[a-z0-9][a-z0-9-]{0,30}$') {
+        throw 'the name takes lower-case letters, digits and dashes'
+    }
+    if (-not ($settings.accounts -and $settings.accounts.PSObject.Properties[$old])) {
+        throw "no account $old"
+    }
+    if ($new -ne $old -and $settings.accounts.PSObject.Properties[$new]) {
+        throw "an account named $new exists"
+    }
+    $accounts = [pscustomobject]@{}
+    foreach ($property in $settings.accounts.PSObject.Properties) {
+        Set-JsonProperty $accounts $(if ($property.Name -eq $old) { $new } else { $property.Name }) $property.Value
+    }
+    $settings.accounts = $accounts
+    return $settings
+}
+
+# The login folder of a new account named $name, ~/.claude-<name>. Throws when an account has that folder: a renamed
+# account keeps the folder of its old name, and a second sign-in there would replace its login.
+function Get-NewAccountDir($settings, [string] $name, [string] $homeDir) {
+    $dir = "$($homeDir.Replace('\', '/'))/.claude-$name"
+    $holder = $settings.accounts.PSObject.Properties | Where-Object { $_.Value.configDir -and (Get-FolderKey ([string]$_.Value.configDir)) -eq (Get-FolderKey $dir) } |
+        Select-Object -First 1
+    if ($holder) {
+        throw "the folder .claude-$name is the folder of account $($holder.Name): pick another name"
+    }
+    return $dir
+}
+
 # The settings' entry of a complexity (`complexities.<name>`), made empty when it has none.
 function Get-ComplexitySettings($settings, [string] $name) {
     if (-not $settings.complexities) {
@@ -839,6 +886,8 @@ function New-Snapshot($data) {
         $marked = [bool]($data.control -and $data.control.disable -and $data.control.disable.$id)
         $status = Get-WorkerStatus ([string]$s.state) (Get-Mode $data.control $id) $enabled $marked
         $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced; now = [int]$worker.now }
+        # The owner's name for it (Set-WorkerName), '' for none.
+        $view.name = if ($data.settings -and $data.settings.workers -and $data.settings.workers.$id) { [string]$data.settings.workers.$id.name } else { '' }
         # The worker's complexity switches (limits.ps1): each with the model and effort its runs use (the settings'
         # `model`, else the complexity's first candidate) and the PR jobs it holds while it is off.
         $view.takes = @($complexities | ForEach-Object {

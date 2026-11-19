@@ -242,7 +242,8 @@ between runs.
 - `merger.ghConfigDir`: the same for the merger, which then merges as that bot.
 - `plugins.<name>`: settings of a plugin for this PC, over its entry in `scriptorium.json` ([PLUGINS.md](PLUGINS.md)).
 - `ntfy.topic`, `ntfy.server`: the page's pushes ([APP.md](APP.md), Notifications).
-- `workers.<id>` (the PC's): `ghConfigDir` for that worker only, `enabled`, `assignedOnly` and `complexity`.
+- `workers.<id>` (the PC's): `ghConfigDir` for that worker only, `enabled`, `assignedOnly`, `complexity` and `name`
+  (the worker's name on the page only; [APP.md](APP.md), Workers, Names).
 - `workers.<id>.complexity`: the worker's complexity switches, for example `{ "design": false }`: it takes no ticket of
   a complexity set to false (Dispatching). Left out: every complexity is on. The worker's Config sets it.
 - `workers.<id>.assignedOnly: true` keeps a worker to the tickets labelled `worker:<id>` and their PRs: no worker gives
