@@ -940,6 +940,19 @@ function Invoke-Action($request) {
             }
             return @{ message = "priority: $($request.priority)"; calls = @(, $editArgs) }
         }
+        'drop' {
+            # A parked ticket closes as not planned; a reopen on GitHub parks it again. A stale page never closes a
+            # ticket that was queued or claimed since.
+            $item = $script:snapshot.parked | Where-Object { $_.number -eq [int]$request.number } | Select-Object -First 1
+            if (-not $item) {
+                throw 'it is no longer parked'
+            }
+            $n = "$([int]$item.number)"
+            return @{ message = "drop: #$n"; calls = @(
+                (New-CommentCall 'ticket' $item.number $slug 'Dropped by the owner.'),
+                @('issue', 'close', $n, '--reason', 'not planned', '-R', $slug)
+            ) }
+        }
         default {
             throw "unknown action $($request.action)"
         }

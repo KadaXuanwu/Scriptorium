@@ -200,6 +200,10 @@ The repo may be private, so the server fetches each one once with the owner's `g
   - A pause or a disable of the worker ends a Now that still waits.
 - **On hold:** a ticket labelled `needs-owner` with no question on it.
 - **Parked:** no priority; a priority queues one.
+  - **The cross** drops one. The page asks first, and names each open ticket whose `Blocked by` line names it: such a
+    ticket stops waiting. The ticket gets the comment "Dropped by the owner." and closes as not planned. A reopen on
+    GitHub parks it again.
+  - A ticket that left Parked meanwhile (queued, claimed) is refused.
 
 ### Accounts
 

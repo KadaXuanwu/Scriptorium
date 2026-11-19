@@ -275,6 +275,10 @@ $rows = Get-QueueRows $issues @(@{ status = 'active'; activity = 'running' }, @{
 Assert-Equal $rows.queued[2].reason 'no free worker' 'no free worker'
 $rows = Get-QueueRows $issues @($free) ([pscustomobject]@{ waiting = [pscustomobject]@{ '4' = 'too big' } })
 Assert-Equal $rows.queued[2].reason 'too big' 'the dispatcher says it does not fit'
+# A parked ticket names the open tickets that its drop frees: those whose Blocked by line names it.
+$rows = Get-QueueRows @((Issue 5 @()), (Issue 7 @('P1') 'Blocked by #5, #9'), (Issue 8 @() 'Blocked by #5' '2026-10-11T10:00:00Z')) @($free)
+Assert-Equal ($rows.parked[0].blocks -join ',') '7,8' 'the tickets that wait on a parked one'
+Assert-Equal $rows.parked[1].blocks.Count 0 'none waits on it'
 # A complexity the owner switched off for a worker: the worker does not get such a ticket as its next, and a ticket
 # that no worker takes says so. No label is medium.
 $off = '{"workers":{"1":{"complexity":{"medium":false}}}}' | ConvertFrom-Json

@@ -570,6 +570,8 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
             $row.complexity = 'medium'
         }
         if (-not $row.priority) {
+            # The open tickets that a Blocked by line holds on it: a drop frees them (docs/APP.md, Queue).
+            $row.blocks = @($issues | Where-Object { @(Get-Blockers $_ @($issue.number)).Count } | ForEach-Object { $_.number })
             $parked += $row
             continue
         }

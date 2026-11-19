@@ -370,6 +370,9 @@ function prioritySelect(row) {
 // Now: the worker that does the ticket at once is the server's pick (row.now); without one, the button says why.
 const nowButton = (row) => (row.now
   ? `<button data-now="${row.number}"${row.now.worker ? '' : ` disabled title="${esc(row.now.why)}"`}>Now</button>` : '');
+// Drop: only a parked row has `blocks` (the tickets that wait on it), and only a parked row gets the cross.
+const dropButton = (row) => (row.blocks
+  ? `<button class="x" data-drop="${row.number}" title="Drop this ticket" aria-label="Drop ${esc(row.title)}">${icon('x')}</button>` : '');
 
 function ticketRow(row) {
   const estimate = row.seconds ? `<span class="estimate">≈ ${duration(row.seconds)}${row.cost ? ` · ${dollars(row.cost)}` : ''}</span>` : '';
@@ -377,7 +380,7 @@ function ticketRow(row) {
   const reason = row.reason ? `<span class="why${ready ? ' good' : ''}">${icon(ready ? 'next' : 'lock')}${esc(row.reason)}</span>` : '';
   const card = `ticket:${row.number}`;
   return `<div class="row${busyClass(card)}"${busyAttr(card)}><div class="what"><a href="${esc(row.url)}" target="_blank">${esc(row.title)}</a>
-    <div class="meta">${mark()}${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${nowButton(row)}${prioritySelect(row)}</div>`;
+    <div class="meta">${mark()}${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${nowButton(row)}${prioritySelect(row)}${dropButton(row)}</div>`;
 }
 
 
@@ -571,7 +574,8 @@ function info(s) {
     ])),
     section('How a ticket goes through', `<ol>
       <li>A ticket with a priority (P0, P1, P2) waits in the ${setting('Queue', 'queue')}, in this order: the priority,
-        then the larger size (L, M, S), then the older ticket. A ticket with no priority is Parked: no worker takes it.</li>
+        then the larger size (L, M, S), then the older ticket. A ticket with no priority is Parked: no worker takes it.
+        Its cross drops it: it closes on GitHub as not planned, and a ticket "Blocked by" it stops waiting.</li>
       <li><b>Now</b> gives a queued ticket to one worker at once: first a worker whose ticket in work changes the same
         files, then a free worker, then the worker whose account has the most room. A worker in a run ends it at the
         next checkpoint, and that ticket goes back to the queue.</li>
@@ -1158,6 +1162,19 @@ document.addEventListener('click', async (e) => {
       keys: [`ticket:${number}`],
       apply: (s) => { const r = rowOf(s, number); if (r) Object.assign(r, { taken: pick.worker, now: null, reason: `worker ${pick.worker} does it now` }); },
       done: (s) => !rowOf(s, number) || !!rowOf(s, number).taken,
+    });
+  } else if (data.drop) {
+    const number = Number(data.drop);
+    const row = rowOf(states[project], number);
+    if (!row) return;
+    const n = row.blocks?.length || 0;
+    const waits = n ? ` ${inWords(row.blocks.map((b) => `#${b}`))} ${n > 1 ? 'wait' : 'waits'} on it in a Blocked by line and ${n > 1 ? 'stop' : 'stops'} waiting.` : '';
+    if (!(await ask(`Drop "${row.title}"?`, `It closes on GitHub as not planned, with a comment, and leaves Parked. Reopen it on GitHub to park it again.${waits}`,
+      'Drop', { danger: true }))) return;
+    await act(project, { action: 'drop', number }, {
+      keys: [`ticket:${number}`],
+      after: (s) => { s.parked = s.parked.filter((r) => r.number !== number); },
+      done: (s) => !s.parked.some((r) => r.number === number),
     });
   } else if (data.unforce) {
     await act(project, { action: 'unforce', worker: data.unforce }, { keys: [`worker:${data.unforce}`], apply: (s) => { workerOf(s, data.unforce).forced = false; } });
