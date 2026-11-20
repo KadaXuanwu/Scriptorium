@@ -679,18 +679,22 @@ function render() {
   const working = workers.filter(({ item }) => item.activity === 'running').length;
   const stuck = all('stuck');
   const loaded = names.every((p) => states[p].github);
-  // Workers counts the workers with a run in flight; Accounts the accounts in use that are not out.
-  count('count-workers', working, workers.some(({ item }) => item.activity === 'down'));
-  count('count-questions', blocking.length || open.length, blocking.length > 0);
-  count('count-queue', all('queued').length + stuck.length, stuck.length > 0);
+  if (!names.includes(shownOf)) shownOf = '';
+  const shown = ({ p }) => !shownOf || p === shownOf;
+  // The tab counters are of the project the select shows, or of every project. Workers counts the workers with a run
+  // in flight; Accounts (the PC's, so for every project) the accounts in use that are not out.
+  const workersOf = workers.filter(shown);
+  const blockingOf = blocking.filter(shown);
+  const stuckOf = stuck.filter(shown);
+  count('count-workers', workersOf.filter(({ item }) => item.activity === 'running').length, workersOf.some(({ item }) => item.activity === 'down'));
+  count('count-questions', blockingOf.length || open.filter(shown).length, blockingOf.length > 0);
+  count('count-queue', all('queued').filter(shown).length + stuckOf.length, stuckOf.length > 0);
   count('count-accounts', s.accounts.filter((a) => ['ready', 'limit'].includes(a.status) && a.uses.length).length,
     s.accounts.some((a) => ['signedout', 'refused'].includes(a.status) && (a.own || a.uses.length)));
   document.title = (blocking.length ? `(${blocking.length}) ` : '') + 'Scriptorium' + (working ? ` · ${working} working` : '');
 
-  // Every tab has the same select at the same spot: every project, or one. The tab counters stay for every project.
-  // Accounts are the PC's, so its select changes nothing there.
-  if (!names.includes(shownOf)) shownOf = '';
-  const shown = ({ p }) => !shownOf || p === shownOf;
+  // Every tab has the same select at the same spot: every project, or one. Accounts are the PC's, so its select
+  // changes nothing there.
   // All and each project, each with the count of its items in `list` when the tab has one.
   const projectPick = (label, list) => (names.length > 1 ? `<select data-shown${shownOf ? ` class="of" style="--of:${colorOf(shownOf)}"` : ''} aria-label="${label}">${
     [['', 'All'], ...names.map((p) => [p, p])].map(([value, text]) => `<option value="${esc(value)}"${shownOf === value ? ' selected' : ''}>${esc(text)}${

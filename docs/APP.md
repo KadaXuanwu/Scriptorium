@@ -308,7 +308,7 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
   project, on Workers, Questions, Queue and History with its count of workers, questions, queued tickets or merged PRs.
   A project shows only that project's workers (All active and Pause all act on them), lists, totals, Details settings
   and info text. Accounts are the PC's, so the select changes nothing there. All tabs share the choice, and it stays on
-  the device; the tab counters count every project.
+  the device; the tab counters count the project shown (Accounts, the PC's, counts every project).
 - **The mark:** while the PC has two projects or more, each worker, question, ticket and history row carries its
   project's name, in its project's colour (Details). A worker's mark is its project choice (Workers, The project
   choice).
