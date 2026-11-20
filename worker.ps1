@@ -1692,9 +1692,12 @@ while ($true) {
                 $view = Get-HeldView $paused
                 # A run held for a pause that now waits for room reads as one held at the stop line.
                 $view.atLimit = $view.atLimit -or $view.stopped
-                # Looked at again every poll, so a stop meanwhile holds it.
+                # Looked at again every poll, so a stop meanwhile holds it; a disable wakes it at once.
                 Write-State 'paused' $view
-                Start-Sleep ([math]::Min($wait + 60, $PollSeconds))
+                $wake = (Get-Now) + [math]::Min($wait + 60, $PollSeconds)
+                while ((Get-Now) -lt $wake -and (Test-Enabled $Id)) {
+                    Start-Sleep 5
+                }
                 continue
             }
             $job = $paused
@@ -1846,9 +1849,10 @@ while ($true) {
             Write-State 'error' @{ error = "$_" }
         }
     }
-    # A force from the queue app since this poll began, or changed code, wakes the next one early.
+    # A force from the queue app since this poll began, changed code, or a disable (its editor closes at once) wakes
+    # the next one early.
     $wake = (Get-Now) + $PollSeconds
-    while ((Get-Now) -lt $wake -and -not (Test-CodeChanged) -and
+    while ((Get-Now) -lt $wake -and -not (Test-CodeChanged) -and (Test-Enabled $Id) -and
         -not ((Test-Path $forceFile) -and (Get-Item $forceFile).LastWriteTime -gt $polledAt)) {
         Start-Sleep 5
     }
