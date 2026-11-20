@@ -40,8 +40,10 @@ searches in one message. Read the part of a file that you need once, in one rang
 
 **Comments.** Everything a run writes on GitHub starts `**Worker <id>:**`. Any other comment is the owner's (or the
 front desk's for them), and it overrides the ticket. A comment is read when it carries your 👀. List a ticket's or a
-PR's comments with `gh api repos/{owner}/{repo}/issues/<number>/comments` (`id`, `body`, `reactions.eyes`). For each
-unread one, react (`gh api -X POST repos/{owner}/{repo}/issues/comments/<id>/reactions -f content=eyes`) and reply in
+PR's comments with
+`gh api repos/{owner}/{repo}/issues/<number>/comments --jq '.[] | {id, user: .user.login, body, eyes: .reactions.eyes}'`.
+For each unread one, react
+(`gh api --silent -X POST repos/{owner}/{repo}/issues/comments/<id>/reactions -f content=eyes`) and reply in
 one line what you do with it (`**Worker 1:** Read. Moving the check to the server; redoing the form part.`). Never
 @-mention the owner or request their review: the page tells their phone what waits on them.
 
@@ -78,13 +80,13 @@ the script resumes the same session after the reset.
 
 ## The steps
 
-1. **Branch.** `git fetch --prune`. Already on `t<N>` with uncommitted changes: they are this job's, from a run that
+1. **Branch.** `git fetch --prune -q`. Already on `t<N>` with uncommitted changes: they are this job's, from a run that
    was cut off. Commit them; do not reset. Otherwise the copy is yours: `git reset --hard` and `git clean -fd` (never
    `-x`) clear an old run. If `origin/t<N>` exists (a run before you, an answer, a rejected PR), run
    `git checkout -B t<N> origin/t<N>` and `git rebase origin/main`. Else run `git checkout -B t<N> origin/main`.
 2. **Read** `gh issue view <N> --json title,body,comments` (plain `gh issue view` prints nothing headless) and the
-   comments (Comments): the ticket, its decisions, any answers, why an earlier PR was closed. Then the project's
-   `CLAUDE.md` and the docs it points to for this work.
+   comments (Comments): the ticket, its decisions, any answers, why an earlier PR was closed. The project's `CLAUDE.md`
+   is in your context already: do not read it again. Read the docs that it names for this work.
 3. **Build to done.** The code, its tests, and the docs the work makes wrong. Run the project's checks (the plugins'
    playbooks and the project's own say which) as far as the change needs. A change to docs alone needs none. Something
    broken that you did not touch: fix it and say so in the PR.
