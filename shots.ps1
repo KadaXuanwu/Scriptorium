@@ -1,4 +1,4 @@
-# Pictures for a question to the owner (PLAYBOOK.md, Pictures): puts PNG or JPEG files on the branch
+# Pictures for a question to the owner (PLAYBOOK-pictures.md): puts PNG or JPEG files on the branch
 # shots-t<ticket>, never on the ticket's branch or main, and prints a markdown line for each, to paste into the question.
 # GitHub and the queue app show them. Run in the worker's clone, with the path of the Scriptorium folder:
 #   powershell -NoProfile -File <Scriptorium>/shots.ps1 -Ticket 12 shots/header-a.png shots/header-b.png

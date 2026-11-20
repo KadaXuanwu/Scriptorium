@@ -172,7 +172,7 @@ function Send-Comment($job, [string] $text) {
 }
 
 # Where a job's work happens: this repo, or another of the owner's named by its ticket's `repo:<Name>` label
-# (PLAYBOOK.md, Another repository). A job from before that label existed has none: this repo.
+# (PLAYBOOK-repo.md). A job from before that label existed has none: this repo.
 function Get-JobRepo($job) {
     if ($job.Repo) {
         return $job.Repo
@@ -642,10 +642,12 @@ function Get-ProjectComplexities {
 
 # The playbooks a run follows, in order (docs/PLUGINS.md, The playbook): the base's and each plugin's, copied into the
 # clone's queue folder before each run, then the project's own from origin/main of the clone. The run reads the copies:
-# it gets no folder of Scriptorium or of a plugin, so it cannot change the code that runs it.
+# it gets no folder of Scriptorium or of a plugin, so it cannot change the code that runs it. The base's parts
+# (PLAYBOOK-*.md) go beside its copy, unnamed: PLAYBOOK.md says when a run reads each.
 function Get-Playbooks {
     $folder = Join-Path $queueDir 'playbooks'
     New-Item -ItemType Directory -Force $folder | Out-Null
+    Copy-Item (Join-Path $PSScriptRoot 'PLAYBOOK-*.md') $folder -Force
     $sources = [ordered]@{ 'PLAYBOOK.md' = (Join-Path $PSScriptRoot 'PLAYBOOK.md') }
     foreach ($plugin in $plugins) {
         $sources["plugin-$($plugin.Name).md"] = Join-Path $plugin.Dir 'PLAYBOOK.md'
@@ -1148,15 +1150,17 @@ function Invoke-Worker($job, [string] $log, $paused) {
         $effort = Get-FallbackEffort $advisorOf $job.Complexity $model $effort $hasAdvisor
     }
 
+    # The base playbook's parts (Get-Playbooks) that a message names.
+    $parts = "$($queueDir.Replace('\', '/'))/playbooks"
     switch ($job.Kind) {
-        'answered' { $task = "apply the owner's answers and comments on PR #$($job.Pr) and its ticket #$($job.Ticket) (branch t$($job.Ticket))" }
-        'needs-rebase' { $task = "rebase PR #$($job.Pr) (ticket #$($job.Ticket), branch t$($job.Ticket)) onto main" }
+        'answered' { $task = "apply the owner's answers and comments on PR #$($job.Pr) and its ticket #$($job.Ticket) (branch t$($job.Ticket)), by step 8 of $parts/PLAYBOOK-jobs.md" }
+        'needs-rebase' { $task = "rebase PR #$($job.Pr) (ticket #$($job.Ticket), branch t$($job.Ticket)) onto main, by step 9 of $parts/PLAYBOOK-jobs.md" }
         default { $task = "ticket #$($job.Ticket), branch t$($job.Ticket)" }
     }
     $playbooks = Get-Playbooks
     if ($paused -and $paused.Session) {
         $cause = if ($paused.FableOut) {
-            "Your account reached its weekly Fable limit, so this session goes on with $model. Read the Fable limit part of the playbook first."
+            "Your account reached its weekly Fable limit, so this session goes on with $model. Read $parts/PLAYBOOK-fable.md first."
         } elseif ($paused.Stopped) { 'The owner paused your worker, and it is active again now.' } else { 'A usage limit or a lost login stopped you, and it is cleared now.' }
         # The pause can last hours, and the playbooks may change meanwhile: a resumed run shipped by old rules.
         $prompt = "$cause Checkpoint first (PLAYBOOK.md, Checkpoints). " +
@@ -1170,7 +1174,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
         } else {
             $prompt = "You are queue worker $Id, in your own clone of $slug; your ticket is in $repo. Run git fetch, then " +
                 "read and follow the playbooks in this order, a later one winning where two differ: $playbooks " +
-                "(Another repository applies). Your job: $task."
+                "(Another repository applies: read $parts/PLAYBOOK-repo.md). Your job: $task."
         }
         $resumeArgs = @()
     }

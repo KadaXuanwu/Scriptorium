@@ -67,7 +67,7 @@ The queue's rules are in the Scriptorium folder: `docs/QUEUE.md` (the queue), `d
      6. A small addition to a file that nearly every ticket changes needs no area, as git merges it. A rework of such a
         file does.
    - **Another repo:** work in another of the owner's repos (`repos` in `scriptorium.json`) gets `repo:<Name>` instead
-     of an area. The ticket stays here, and the PR opens there (`PLAYBOOK.md`, Another repository).
+     of an area. The ticket stays here, and the PR opens there (`PLAYBOOK-repo.md`).
    - **Size:** how much usage it takes, not how hard it is: `size:S` (little to read and change), `size:M` (a feature's
      worth of reading, changing and testing), `size:L` (many files, long checks). It decides which account can take it,
      so err large when unsure.
@@ -81,7 +81,7 @@ The queue's rules are in the Scriptorium folder: `docs/QUEUE.md` (the queue), `d
    - **Placeholder first:** a look or an asset for a feature the owner has not confirmed in use is a placeholder: the
      plainest thing that makes the feature work, with no variants, no polish and no hold. Write that into the ticket.
      The polished work is a later ticket. A new look still comes as three plain candidates with screenshots, the first
-     built in, and the owner picks in an open question (`PLAYBOOK.md`, The owner's pick).
+     built in, and the owner picks in an open question (`PLAYBOOK-pictures.md`, The owner's pick).
 3. Report the number and the link, in one line. Several asks in one message are several tickets: split them so each
    can merge alone, and chain them with `Blocked by` only where the order matters.
 

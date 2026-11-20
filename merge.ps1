@@ -104,8 +104,8 @@ while ($true) {
     }
     try {
         Set-GitHubIdentity
-        # Worker PRs in this repo and in every other repo an open ticket names with a `repo:<Name>` label (PLAYBOOK.md,
-        # Another repository). The parentheses unroll the list Windows PowerShell's ConvertFrom-Json passes on as one object.
+        # Worker PRs in this repo and in every other repo an open ticket names with a `repo:<Name>` label
+        # (PLAYBOOK-repo.md). The parentheses unroll the list Windows PowerShell's ConvertFrom-Json passes on as one object.
         $labels = ((((& gh issue list --state open --limit 500 --json labels -R $slug) -join "`n") | ConvertFrom-Json) |
             ForEach-Object { $_.labels } | ForEach-Object { $_.name })
         $repos = @(@($slug) + @($labels | Where-Object { $_ -like 'repo:*' } |

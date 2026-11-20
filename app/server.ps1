@@ -982,7 +982,7 @@ $types = @{
     '.webmanifest' = 'application/manifest+json'; '.png' = 'image/png'; '.jpg' = 'image/jpeg'; '.jpeg' = 'image/jpeg'
 }
 
-# A question's picture (PLAYBOOK.md, Pictures) from its branch shots-t<N> (shots.ps1): the repo is
+# A question's picture (PLAYBOOK-pictures.md) from its branch shots-t<N> (shots.ps1): the repo is
 # private, so the page cannot load it from GitHub itself. Fetched once with the owner's gh login, then kept in
 # .queue/shots. shortcut: a run that replaces a picture under the same name shows the old one here; key the cache by the
 # branch's commit if runs start to do that. The fetch runs in the request, so a first view waits for GitHub (15 s at most).

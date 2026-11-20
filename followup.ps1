@@ -55,7 +55,7 @@ function Get-FollowUpGeneration([string] $ticketBody) {
 }
 
 # The line the merger ends a follow-up with. From generation 2 it is a soft cap on more follow-ups, stricter in each
-# generation; none forbids one outright (PLAYBOOK.md, Follow-up).
+# generation; none forbids one outright (PLAYBOOK-followup.md, Generation).
 function Get-GenerationLine([int] $generation) {
     $note = switch ($generation) {
         { $_ -le 1 } { ''; break }
@@ -68,8 +68,8 @@ function Get-GenerationLine([int] $generation) {
 
 # A follow-up's labels (a follow-up decides its own size, complexity and area): $ticketLabels
 # with each line of the body in place of the labels of its kind. `**Size:**` gives `size:S`/`M`/`L`, `**Complexity:**`
-# `complexity:*`, `**Area:**` its `area:*` names, and `**Repo:** <Name>` the repo its work is in (PLAYBOOK.md,
-# Another repository; a name in $thisRepo, this repo's GitHub name or the project's, is this repo). $complexities: the
+# `complexity:*`, `**Area:**` its `area:*` names, and `**Repo:** <Name>` the repo its work is in (PLAYBOOK-repo.md;
+# a name in $thisRepo, this repo's GitHub name or the project's, is this repo). $complexities: the
 # names a Complexity line may give (project.ps1, Get-Complexities). A line without a valid value changes nothing.
 function Get-FollowUpLabels([string[]] $ticketLabels, [string] $body, [string[]] $thisRepo = @(),
     [string[]] $complexities = @('low', 'medium', 'high', 'design')) {

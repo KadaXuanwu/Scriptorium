@@ -38,7 +38,7 @@ GitHub builds nothing. A run's own checks are the gate, and a run that finds mai
 | `area:*` | The files it changes, so two workers stay off the same files. A ticket waits while a ticket in flight (claimed, not waiting on the owner) holds the same area, or one inside the other: `area:api` clashes with `area:api/auth`, and `area:api/auth` does not clash with `area:api/search` ([areas.ps1](../areas.ps1)). The list is not fixed: whoever writes a ticket uses an area that fits or makes a new one (the ticket skill, Areas) |
 | `size:S` / `M` / `L` | How much usage it will take, the front desk's estimate (a follow-up's: the run that writes it). None counts as M. It picks the pick-up limit only (Dispatching) |
 | `complexity:*` | How hard it is to get right, the front desk's call (a follow-up's: the run that writes it, never its ticket's). It picks the model (Models). None counts as medium. Independent of size: a one-line core rule can be high and S, a rename across fifty files low and L |
-| `repo:<Name>` | The work happens in the owner's repo `<Name>` ([PLAYBOOK.md](../PLAYBOOK.md), Another repository); it counts as an area |
+| `repo:<Name>` | The work happens in the owner's repo `<Name>` ([PLAYBOOK-repo.md](../PLAYBOOK-repo.md)); it counts as an area |
 | `worker:N` | Claimed by that worker, until its PR merges and closes the ticket |
 | `needs-owner` | Waits on the owner. On a ticket: a worker's question (nothing could be built), or a stuck run; removing it hands it back. On a PR: held for questions, or a run that could not finish. Never a way to keep a ticket for later: park it (no priority) or give it a `Blocked by` line |
 | `answered` | On a PR: the owner answered a held PR, or the merger found an owner's comment without 👀. Its worker applies them, then it merges |
@@ -389,4 +389,8 @@ next look. With no plugin, a run gets no MCP server and only the base's tools.
 The run follows [PLAYBOOK.md](../PLAYBOOK.md), then each plugin's playbook, then the project's own (`playbook` in
 `scriptorium.json`). Before each run, the worker script copies the first two into `.queue/playbooks` of the worker's
 copy and names them in the run's first message; the project's own the run reads from `origin/main`. A run gets no
-folder of Scriptorium or of a plugin, so it cannot change the code that runs it.
+folder of Scriptorium or of a plugin, so it cannot change the code that runs it. The parts of `PLAYBOOK.md` that few
+runs need (`PLAYBOOK-*.md`: follow-ups, another repository, pictures, the answered and the rebase job, the Fable limit)
+are copied beside it, and `PLAYBOOK.md` says when a run reads each. The message of an answered or a rebase job, of a
+job in another repository and of a resume at the Fable limit names its part. Each run holds the base playbook in its
+context from its first turn, so a part saves its size on each turn of a run that does not read it.

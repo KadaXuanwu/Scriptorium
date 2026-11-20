@@ -46,7 +46,7 @@ Assert-Equal ((Get-FollowUpLabels @('area:api') "**Size:** ``size:l```n**Complex
 Assert-Equal ((Get-FollowUpLabels @('area:api', 'size:S') "**Size:** M") -join ',') 'area:api,size:M' 'a size line replaces a size'
 Assert-Equal ((Get-FollowUpLabels @('area:api', 'size:S') "**Size:** big`n**Complexity:** hard") -join ',') 'area:api,size:S' 'no valid value changes nothing'
 Assert-Equal ((Get-FollowUpLabels @('area:api') "**Summary:** Medium-size.`n**Scope:** S") -join ',') 'area:api' 'no lines, no labels'
-# The playbook's template lines, copied unchanged, give no label (PLAYBOOK.md, Follow-up).
+# The playbook's template lines, copied unchanged, give no label (PLAYBOOK-followup.md).
 Assert-Equal ((Get-FollowUpLabels @('area:api') "**Size:** one of S, M, L.`n**Complexity:** one of low, medium, high, design.") -join ',') 'area:api' 'template lines'
 
 # View: the Summary line, else the first sentence; the Questions part up to the next label.

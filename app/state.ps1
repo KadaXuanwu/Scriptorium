@@ -822,7 +822,7 @@ function Get-Waiting($gh, [string] $slug) {
 # - 'back': a ticket goes back to its worker, with the answer or with "take your default".
 # - 'change': an open question's built default changes: queued with the answer.   'keep': it closes; nothing runs.
 # - 'queue': a follow-up is queued, with the answer if any.           'drop': a follow-up closes; nothing runs.
-# A follow-up asks "Do this?" first (PLAYBOOK.md, Ask or queue): its default decides, and a bare "no" drops it, so
+# A follow-up asks "Do this?" first (PLAYBOOK-followup.md, Ask or queue): its default decides, and a bare "no" drops it, so
 # no run starts only to read the word.
 function Get-AnswerRoute($item, [string] $text) {
     $text = $text.Trim()
