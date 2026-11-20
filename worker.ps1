@@ -58,9 +58,10 @@ New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir 
 # Every turn reads the whole context again, so Claude Code compacts a run's context at the compact size of the job's
 # complexity, which Invoke-Worker sets for each run (docs/CONFIG.md, The compact size). A run
 # never hands off to a fresh session: that cost 24 turns of reading, a compaction 7.
-# Tools no run used in 631 logs; without them every turn reads 4,750 tokens less.
+# Tools no run used in 631 logs; without them every turn reads 4,750 tokens less. Workflow: given in 89 of 698 logs,
+# never called, 1,977 tokens. Skill and ToolSearch stay: without them the tools Claude Code holds back load in full.
 $UnusedTools = 'Task,CronCreate,CronDelete,CronList,DesignSync,EnterWorktree,ExitWorktree,ListAgents,NotebookEdit,' +
-    'PushNotification,RemoteTrigger,ReportFindings,SendMessage,WebFetch,WebSearch'
+    'PushNotification,RemoteTrigger,ReportFindings,SendMessage,WebFetch,WebSearch,Workflow'
 Set-Location $Clone
 $repo = (& gh repo view --json nameWithOwner -q .nameWithOwner)
 # The repo's owner, whose other repos a ticket's `repo:<Name>` label names.
@@ -1198,13 +1199,16 @@ function Invoke-Worker($job, [string] $log, $paused) {
     if ($given.Prompt) {
         $prompt += " $($given.Prompt)"
     }
-    # Claude Code's own commit and PR attribution off: CLAUDE.md allows none. The advisor on (Use-Advisor turns it off).
+    # Claude Code's own commit and PR attribution off: CLAUDE.md allows none. Claude Code's own skills and the claude.ai
+    # account's off: 6,077 tokens less on every turn; the project's and the plugins' skills stay. The advisor on
+    # (Use-Advisor turns it off).
     $runSettings = Join-Path $queueDir 'run-settings.json'
     $advisorSetting = if ($advisor) { ",`"advisorModel`":`"$advisor`"" } else { '' }
     # The base's tools, the project's and the plugins' (Get-RunTools), as a list: a rule may hold a space
     # (`Bash(unity command:*)`), and a comma-joined --allowedTools value is not sure to keep such a rule whole.
     $allow = ConvertTo-Json -InputObject @(Get-RunTools $config $given) -Compress
     [System.IO.File]::WriteAllText($runSettings, '{"includeCoAuthoredBy":false,"attribution":{"commit":"","pr":""},' +
+        '"disableBundledSkills":true,"syncClaudeAiSkills":false,' +
         '"permissions":{"allow":' + $allow + '}' + $advisorSetting + '}')
     # The same for the run and for the compaction of its session (Compress-Session).
     $sessionArgs = @('--permission-mode', 'auto', '--mcp-config', "`"$mcpConfig`"",
