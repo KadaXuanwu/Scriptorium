@@ -94,12 +94,15 @@ the script resumes the same session after the reset.
    comments (Comments): the ticket, its decisions, any answers, why an earlier PR was closed. The project's `CLAUDE.md`
    is in your context already: do not read it again. Read the docs that it names for this work.
 3. **Build to done.** The code, its tests, and the docs the work makes wrong. Run the project's checks (the plugins'
-   playbooks and the project's own say which) as far as the change needs. A change to docs alone needs none. Something
-   broken that you did not touch: fix it and say so in the PR.
+   playbooks and the project's own say which) as far as the change needs. While you build, run the part of a check that
+   covers your change. A whole check that takes minutes runs once, last: after the rebase (5), when nothing changes the
+   code any more. A change to docs alone needs none. Something broken that you did not touch: fix it and say so in the
+   PR.
 4. **Broken tools.** A tool or a server is gone: start it again and retry. If it stays down, carry on with what does not
    need it, and come back. A step that needs a permission you lack: find another way, or ask a held question.
 5. **Rebase** (shipping, and the rebase job): `git fetch`, then `git rebase origin/main`. You know your ticket: read the
-   other side's change (`git log origin/main`, its PR) and keep it whole. If it brought changes, run the checks again.
+   other side's change (`git log origin/main`, its PR) and keep it whole. The whole check (3) runs after the rebase,
+   not before it. If a rebase brings changes after that check ran, run it again.
    A file that `.gitattributes` merges by union keeps both sides' lines: `git diff origin/main -- <file>` must show only
    your change. A line that both sides rewrote shows twice, and a line main deleted can come back. Fix it.
 6. **Hold or merge.** Only a blocking question holds the PR (What to ask); open questions merge on their defaults. A
@@ -109,7 +112,8 @@ the script resumes the same session after the reset.
    against Done (the numbers) and what you would try next, and put the rest of Done under Follow-up as one `###` with
    Questions None, so it is queued. If a rule in the way is the owner's, that rule is the question: open or blocking,
    by What to ask.
-7. **Ship.** Commit (a one-line message), rebase (5), and read `git diff origin/main --stat`: nothing you did not mean.
+7. **Ship.** Commit (a one-line message), rebase (5), run the whole check (3), and read `git diff origin/main --stat`:
+   nothing you did not mean.
    Read What to ask, Hold or merge and this step again before you write the body: the rules can change during a long
    run. Run `git push --force-with-lease -u origin t<N>`, then
    `gh pr create --base main --head t<N> --title "<the ticket's title>" --label worker:<id> --body-file <file>`, with
