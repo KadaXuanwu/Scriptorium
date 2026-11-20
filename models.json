@@ -14,7 +14,7 @@
     "design": { "description": "The worker finds the shape of the solution, and the choice stays", "models": ["claude-fable-5-2@high"] }
   },
   "afterFable": "claude-opus-5-5@xhigh",
-  "compactAt": 167000,
+  "compactAt": 250000,
   "runCap": 60,
   "advisor": { "model": "claude-fable-5-2" }
 }

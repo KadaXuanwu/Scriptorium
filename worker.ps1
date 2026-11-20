@@ -1069,7 +1069,7 @@ function Update-Usage([string] $log, [string] $account) {
 # that isn't a whole ticket (partial: paused, resumed, answers, rebase) counts toward the account's spending but not
 # toward ticket estimates. $numbers (usage.ps1, Get-RunNumbers; none if the log could not be read) become more fields
 # of the line, for report.ps1; the page reads the lines as objects and ignores them.
-function Add-History($job, [string] $account, [string] $model, [string] $text, [bool] $partial, [long] $startedAt, [double] $costBefore, $numbers) {
+function Add-History($job, [string] $account, [string] $model, [string] $text, [bool] $partial, [long] $startedAt, [double] $costBefore, $numbers, [bool] $resumed) {
     $start = Get-Usage $text -First
     $end = Get-Usage $text
     if (-not $start -or -not $end) {
@@ -1078,6 +1078,8 @@ function Add-History($job, [string] $account, [string] $model, [string] $text, [
     $run = @{
         account = $account; model = $model; size = $job.Size; complexity = $job.Complexity; ticket = $job.Ticket; kind = $job.Kind
         partial = $partial; at = (Get-Now); planSize = Get-AccountPlanSize $account
+        # Went on in a held session: report.ps1 shows what such a start reads again.
+        resumed = $resumed
     }
     # Seconds of wall time, run start to run end, for the queue app's typical run time. The log's own duration_ms is
     # only the last turn. The wall flag marks a line with this meaning; older lines hold the last turn only.
@@ -1396,7 +1398,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     $stopped = $hold -eq 'pause' -and [bool]$session
     if (-not $modelRefused) {
         $partial = $limited -or $fableOut -or [bool]$refusal -or $atLimit -or $stopped -or $freed -or [bool]$paused -or $job.Kind -ne 'ticket'
-        Add-History $job $account $model $text $partial $runStartedAt $costBefore $numbers
+        Add-History $job $account $model $text $partial $runStartedAt $costBefore $numbers ($resumeArgs.Count -gt 0)
     }
     # Not after a stop note the owner withdrew: that run resumes at once, with its cache still warm.
     if ($session -and ($atLimit -or ($stopped -and (Test-Path $stopFile)))) {

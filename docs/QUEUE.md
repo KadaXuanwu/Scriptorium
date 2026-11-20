@@ -10,7 +10,7 @@ their pull requests. The owner talks only to the front desk and to the page.
 | Front desk | The owner's own Claude Code session in the main checkout, with the ticket skill (`.claude/skills/ticket`). It files tickets, reports the queue and passes answers on. Also any work by hand | yes |
 | Worker 1 to N | A copy of the repo (`<main>-w1`, `-w2` and on, beside the main checkout), its environment (the plugins) and its worker script. Each can be disabled (Settings, `enabled`). The page adds and removes workers ([APP.md](APP.md), Workers) | no |
 | Worker script | [worker.ps1](../worker.ps1), one for each worker. It has the plugins make the environment ready (Start), dispatches (Dispatching; the scripts share a lock, so never the same ticket twice), starts a run, and checks that it ended in a PR, a question or a pause. However a run ends, the plugins leave the environment clean (EndRun) | no |
-| Run | One headless Claude Code session that does one job in a worker's copy, with what the plugins give it (GetRun); fresh for each job. Each turn reads the whole context again, so the cost of a turn grows with the context. Claude Code compacts it at the compact size of the ticket's complexity: at 167k with the default of `models.json` ([CONFIG.md](CONFIG.md), The compact size). A run never hands off to a fresh session: that read 24 turns again, a compaction 7. The tools no run uses are blocked (`$UnusedTools` in the worker script): 4,750 tokens less on every turn, 1,977 for `Workflow`, 275 for `Glob`, and 3,800 for `PowerShell` (a trial: the run's one shell is Bash, and PowerShell goes through it, [PLAYBOOK.md](../PLAYBOOK.md), One shell). The run's settings file (`.queue/run-settings.json`, the same for the run and for the compaction of its session) turns off Claude Code's own skills and the claude.ai account's (`disableBundledSkills`, `syncClaudeAiSkills`): 6,077 tokens less on every turn. The project's and the plugins' skills stay | yes |
+| Run | One headless Claude Code session that does one job in a worker's copy, with what the plugins give it (GetRun); fresh for each job. Each turn reads the whole context again, so the cost of a turn grows with the context. Claude Code compacts it at the compact size of the ticket's complexity: at 250k with the default of `models.json` ([CONFIG.md](CONFIG.md), The compact size). A run never hands off to a fresh session: that read 24 turns again, a compaction 7. The tools no run uses are blocked (`$UnusedTools` in the worker script): 4,750 tokens less on every turn, 1,977 for `Workflow`, 275 for `Glob`, and 3,800 for `PowerShell` (a trial: the run's one shell is Bash, and PowerShell goes through it, [PLAYBOOK.md](../PLAYBOOK.md), One shell). The run's settings file (`.queue/run-settings.json`, the same for the run and for the compaction of its session) turns off Claude Code's own skills and the claude.ai account's (`disableBundledSkills`, `syncClaudeAiSkills`): 6,077 tokens less on every turn. The project's and the plugins' skills stay | yes |
 | Page | [APP.md](APP.md): one web page on the owner's PC and phone with each worker's status and tickets, the questions for the owner, the queue with what is left, and the accounts with their stop lines; ntfy pushes | no |
 | Merger | [merge.ps1](../merge.ps1): squash-merges every worker PR that GitHub can merge, oldest first. It labels a conflicting one `needs-rebase`, and one with an owner's comment that its run never marked read `answered`, for its worker ([comments.ps1](../comments.ps1)). It files a merged PR's follow-ups and open questions, each with its generation, a soft cap from 2 ([followup.ps1](../followup.ps1)) | no |
 
@@ -100,8 +100,10 @@ More rules:
   `ctxMax` (the context), `read` and `write` (tokens from and to the cache), `compactions`, `advisorCalls` and
   `advisorCost` (the dollars of the advisor's model; a resumed run's less the part before its pause, which `paused.json`
   keeps as `AdvisorCost`; 0 when the advisor is the run's own model, because the log has one cost for each model).
+  `resumed` says that the run went on in a held session.
   [report.ps1](../report.ps1) `-Project <main>` prints their medians for each complexity and
-  model, of the whole-ticket runs. `-Logs <folder>` prints the tools that the runs of the folder's logs were given and
+  model, of the whole-ticket runs. Then it prints the same for the parts of interrupted tickets, the resumed parts
+  apart: `First` of a resumed part is what the resume reads again at full price. `-Logs <folder>` prints the tools that the runs of the folder's logs were given and
   how often they called each: run it after a Claude Code update to keep the block list (`$UnusedTools`) right.
 - **Usage:** per account in the PC's `usage.json` (Settings, The PC's files), from the runs' logs. When it is older
   than 30 minutes, the script reads it again with a one-word Haiku request with no tools or settings and a one-line
@@ -404,3 +406,15 @@ runs need (`PLAYBOOK-*.md`: follow-ups, another repository, pictures, the answer
 are copied beside it, and `PLAYBOOK.md` says when a run reads each. The message of an answered or a rebase job, of a
 job in another repository and of a resume at the Fable limit names its part. Each run holds the base playbook in its
 context from its first turn, so a part saves its size on each turn of a run that does not read it.
+
+## Further ideas
+
+Not built. Each needs a trial before it is worth its cost.
+
+- **A cheaper helper model.** A run hands its searching and the reading of docs to a cheap model, and gets back only
+  the answer. It needs the `Task` tool unblocked (`$UnusedTools` in the worker script) and a rule in the playbook.
+  Measured with Claude Code 2.1.323: the `Task` tool is 2,702 tokens on every turn. Estimated from 328 run logs of
+  one project (November 2026): searching and the reading of docs were about 6 % of the runs' cost, which is the most
+  that a helper can save, and the `Task` tool would cost about 1.5 %. Not known: how often a run would hand work
+  over, which decides the gain. The risk: a thin or wrong answer makes the run read the files anyway, and it pays
+  twice.

@@ -98,7 +98,7 @@ try { Get-Complexities $models ('{ "complexities": { "art": { "models": ["x"] } 
 Assert-Equal $threw $true 'a complexity of the project''s own needs a description'
 # The compact size: the complexity's own, else the project's, else models.json's; a name not in the list has medium's.
 Assert-Equal "$(Get-ComplexityCompactAt $list 'low') $(Get-ComplexityCompactAt $list 'review') $(Get-ComplexityCompactAt $list 'none')" '250000 400000 250000' 'the project''s compact size, a complexity''s own, medium''s for no complexity'
-Assert-Equal (Get-ComplexityCompactAt (Get-Complexities $models $null) 'design') 167000 'models.json''s compact size with no config'
+Assert-Equal (Get-ComplexityCompactAt (Get-Complexities $models $null) 'design') 250000 'models.json''s compact size with no config'
 # The page's size for a complexity (settings.json) goes over the project's and over the complexity's own; one for
 # a name not in the list changes nothing.
 $paged = Get-Complexities $models $own ('{ "complexities": { "review": { "compactAt": 90000 }, "low": { "compactAt": 300000 }, "gone": { "compactAt": 1 } } }' | ConvertFrom-Json)

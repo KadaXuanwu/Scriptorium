@@ -128,7 +128,7 @@ number below was measured apart, the newest with Claude Code 2.1.323. They do no
 
 | What | How |
 | ---- | --- |
-| One fresh session for one job | Each job starts a new session, and a run never hands off to another one. Claude Code compacts its context at the compact size of its complexity (167,000 tokens by default). A handoff read 24 turns again, a compaction 7 |
+| One fresh session for one job | Each job starts a new session, and a run never hands off to another one. Claude Code compacts its context at the compact size of its complexity (250,000 tokens by default). A handoff read 24 turns again, a compaction 7 |
 | The unused tools are blocked | 4,750 tokens less on every turn, 1,977 for `Workflow` and 275 for `Glob`. `Skill` and `ToolSearch` stay: without them, the tools that Claude Code holds back load in full |
 | No skills that a run does not use | Claude Code's own skills and those of the claude.ai account are off: 6,077 tokens less on every turn. The project's and the plugins' skills stay |
 | No MCP server of the login | A run gets only the servers that the project's plugins give it |
@@ -168,14 +168,17 @@ Two changes are trials. Each can be reverted alone, and a later check decides wh
 ### Measure it
 
 Each run's line in `.queue/history.jsonl` has its cost and its numbers: requests, tool calls, the tokens of the
-first request, the context size, the cache reads and writes, the compactions and the advisor's cost.
+first request, the context size, the cache reads and writes, the compactions, the advisor's cost, and whether the
+run went on in a held session.
 
 ```powershell
 powershell -NoProfile -File D:\Work\Scriptorium\report.ps1 -Project D:\Work\MyApp
 ```
 
-It prints the medians for each complexity and model. With `-Logs <a worker's .queue\logs>` it prints the tools that
-the runs were given and how often they called each: run it after a Claude Code update to keep the block list right.
+It prints the medians for each complexity and model. Then it prints those of the parts of interrupted tickets, the
+resumed parts apart: they show what a resume reads again. With `-Logs <a worker's .queue\logs>` it prints the tools
+that the runs were given and how often they called each: run it after a Claude Code update to keep the block list
+right.
 
 ## In the background
 
