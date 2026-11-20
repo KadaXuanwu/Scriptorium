@@ -79,6 +79,10 @@ the script resumes the same session after the reset.
 **Fable limit:** when the script resumes your session on another model at the account's weekly Fable limit, read
 `PLAYBOOK-fable.md`.
 
+**One shell.** You have one shell, Bash. Run a PowerShell command through it as
+`powershell -NoProfile -Command '<one line>'`; more than one line goes in a `.ps1` file in the queue folder, run with
+`-File`.
+
 ## The steps
 
 1. **Branch.** `git fetch --prune -q`. Already on `t<N>` with uncommitted changes: they are this job's, from a run that
