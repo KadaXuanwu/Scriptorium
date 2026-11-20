@@ -20,65 +20,44 @@ It works on any git repo on GitHub. Plugins add an environment, for example
 
 ### Tickets
 
-- **The front desk.** Setup adds a `ticket` skill to your project. Your own Claude Code session uses it to turn what
-  you describe into a complete ticket (priority, areas, size, complexity, blockers), report the queue, and pass your
-  answers and corrections on.
-- **A clear order.** Priority first, then the larger ticket, then the older one. A ticket without a priority is parked.
-- **Blockers.** A line `Blocked by #3` holds a ticket until #3 closes.
-- **Now and Force.** Give one ticket to one worker right away, or start a worker's next ticket past the limits.
-- **Other repos.** A `repo:<Name>` label builds the ticket in another repo of yours.
-- **Follow-ups.** Work a run finds outside its ticket comes back as a new ticket.
+- **The front desk:** a `ticket` skill in your project that turns what you describe into a complete ticket, reports the
+  queue and passes your answers on.
+- **Blockers, Now and Force:** hold a ticket until another closes, give a ticket to a worker right away, or start one
+  past the limits.
+- **Other repos:** a `repo:<Name>` label builds a ticket in another repo of yours.
 
-### Workers and merging
+### Workers
 
-- **Parallel workers,** each in its own clone, one ticket at a time.
-- **No two workers on the same files.** `area:*` labels keep tickets that touch the same code apart.
-- **Checkpoints.** A run pushes its work and notes what is done and what is next, so a stop loses little.
-- **A merger** squash-merges each worker pull request and sends conflicting ones back to their worker for a rebase.
-- **Bot accounts.** A worker can post as its own GitHub bot, so GitHub notifies you of its comments and pull requests.
-- **No loops.** A run that ends without a pull request or a question is parked with its reason until you press Retry.
+- **Parallel workers,** each in its own clone, never two on the same files.
+- **A merger** that merges pull requests and sends conflicts back for a rebase.
+- **Bot accounts,** so GitHub notifies you of a worker's comments and pull requests.
 
 ### Questions, not guesses
 
-- **Only product decisions.** A run asks about rules, looks and what a user sees, never about the workflow, and builds
-  a sensible default for the rest.
-- **Blocking or open.** A blocking question holds its work until you answer. An open one merges on its default, which
-  you keep or change later.
-- **Pictures.** A question about a look carries a screenshot of each choice; a new look comes as several candidates.
-- **One click to answer.** Accept the default or send an answer from the page. It goes to GitHub as a comment.
-- **Your comments count.** Comment on a ticket or its pull request and the run reads it at its next checkpoint,
-  marks it 👀 and replies.
+- A run asks you only product decisions (rules, looks, what a user sees) and builds a default for the rest.
+- A blocking question holds the work; an open one merges on its default, which you can change later.
+- Questions about a look come with screenshots of each choice.
+- Comment on a ticket or pull request and the run reads it at its next checkpoint.
 
 ### The page
 
-- **One web page** with Workers, Questions, Queue, Accounts, History and Details tabs.
-- **Control each worker:** active, paused or disabled, and whether its run stops now, at the next checkpoint or after
-  the ticket. Add, remove and rename workers, and move them between projects.
-- **See what is left:** why each ticket waits, the typical hours and cost of the queue, stuck runs and parked tickets.
-- **On your phone** as an installed app through Tailscale. The server listens on localhost only, and the page shows its
-  last state when the PC is off.
-- **Push notifications** through ntfy: blocking questions, stuck runs, limits, accounts that are out, scripts that are
-  down, an empty queue, merges.
+- Workers, questions, queue, accounts and history on one page, with controls to pause, stop or add workers.
+- Installs on your phone through Tailscale; nothing is open to the internet.
+- Push notifications through ntfy.
 
 ### Budget and models
 
-- **Your Claude plan, never an API key.** Workers can share one account or each have their own; the page adds and
-  signs in accounts.
-- **Stop lines and pick-up limits.** Choose where each account's workers stop in each usage window, and how late a
-  large ticket may start.
-- **Usage guards.** Keep a share of each week for the front desk and your own use.
-- **Spend room before it resets.** A ticket goes to the account with the most weekly room left per hour before its
-  reset.
-- **Nothing lost at a limit.** A run at a limit or an account that signs out is held and resumes in the same session.
-- **Complexity picks the model.** Each complexity has its own model and effort, an optional advisor and fallback models.
-  Add your own complexities per project.
+- **Your Claude plan, never an API key.** One or several accounts, shared by workers or one each.
+- **Limits you set:** where each account's workers stop, how late a large ticket may start, and a share kept for your
+  own use.
+- **Nothing lost at a limit:** a held run resumes in the same session.
+- **Complexity picks the model,** with effort, an optional advisor and fallbacks.
 
 ### Plugins and projects
 
-- **Plugins** add an environment (an engine, a build tool): they prepare it, give runs MCP servers, tools and rules,
-  and add a playbook of their own.
-- **Several projects on one PC,** shown together on one page, sharing the PC's accounts and workers.
-- **Your own rules.** A project playbook tells every run how your project works.
+- **Plugins** prepare an environment (an engine, a build tool) and give runs its tools and rules.
+- **Several projects** on one PC, on one page.
+- **A project playbook** tells every run how your project works.
 
 ## Built-in token savings
 
@@ -111,43 +90,15 @@ in `models.json`. `report.ps1` prints each run's cost and token numbers ([docs/Q
 
 Scripts run as hidden Windows tasks that start at logon and need nothing from you.
 
-**A worker script for each worker:**
+- **A worker script** for each worker picks the next ticket (never one another worker has), prepares the environment,
+  watches the account's usage, passes your comments to the run, and holds or resumes runs at limits. A run that ends
+  without a pull request or a question is parked; an account that signs out stops only its own workers.
+- **The merger** merges pull requests, sends conflicts back to their worker, and files follow-ups and open questions as
+  new tickets.
+- **The page server** reads GitHub and the workers, carries out your clicks and sends notifications.
 
-- Has the plugins open the environment before a run and leave it clean after.
-- Picks the next job under a lock all workers share, so no ticket is taken twice: answers and rebases of its own pull
-  requests first, then new tickets.
-- Gives the run copies of the playbooks and only the tools, skills and MCP servers it needs.
-- Reads the plan's usage from the run's log and shares it with the other workers.
-- Tells the run to stop at its next checkpoint when the account reaches its stop line, and takes that back if room
-  returns.
-- Compacts a held run while its cache is warm, then resumes the same session when the account has room or you set the
-  worker active.
-- Switches a run to a fallback model when the plan refuses one, and resumes on another model at the Fable limit.
-- Passes your comments on the ticket or pull request to the run.
-- Checks that each run ended in a pull request, a question or a pause, and parks anything else.
-- Detects an account that is signed out or refused, stops only its workers, returns their unstarted tickets to the
-  queue, and tests the account until it answers again.
-- Hands the tickets of a disabled or removed worker back to the queue.
-- Records each run's log, model, time, cost and token numbers in the history.
-
-**The merger:**
-
-- Squash-merges worker pull requests that GitHub can merge, oldest first, which closes their tickets.
-- Sends a pull request that conflicts with main, or has a comment of yours its run did not read, back to its worker.
-- Files the follow-ups and open questions of a merged pull request as new tickets.
-
-**The page server:**
-
-- Reads GitHub and the workers' files, and serves the page to the PC and your Tailscale devices.
-- Turns your clicks into labels, comments and worker controls.
-- Sends the push notifications.
-- Checks the accounts' usage when no run has read it lately.
-
-**Also:**
-
-- Every script restarts itself between jobs when Scriptorium, a plugin or `scriptorium.json` changes, never mid-run.
-- A run cannot change the code that runs it: it gets no folder of Scriptorium or of a plugin.
-- Only the runs use a model, apart from a tiny usage reading and the page's Ping.
+Scripts pick up new Scriptorium or plugin code between jobs, never mid-run, and a run cannot change the code that runs
+it.
 
 ## What it needs
 
