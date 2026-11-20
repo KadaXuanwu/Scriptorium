@@ -1128,6 +1128,14 @@ function New-Snapshot($data) {
     }
     $gh = $data.gh
     if ($gh) {
+        # A worker's state is newer than GitHub's reading (once a minute): the ticket of a run that began since has
+        # no worker label there yet. It counts as claimed, so it leaves the queue and is nobody's next at once.
+        foreach ($view in $workers | Where-Object { $_.ticket -and $_.run }) {
+            $issue = $gh.issues | Where-Object { [int]$_.number -eq $view.ticket } | Select-Object -First 1
+            if ($issue -and -not (Get-Names $issue | Where-Object { $_ -like 'worker:*' })) {
+                $issue.labels = @($issue.labels) + [pscustomobject]@{ name = "worker:$($view.id)" }
+            }
+        }
         foreach ($view in $workers | Where-Object { $_.status -eq 'paused' -and -not $_.ticket }) {
             # A paused worker keeps its ticket: the one it claimed that has no PR yet.
             $branches = @($gh.prs | ForEach-Object { $_.headRefName })
