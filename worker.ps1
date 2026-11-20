@@ -61,8 +61,9 @@ New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir 
 # Tools no run used in 631 logs; without them every turn reads 4,750 tokens less. Workflow: given in 89 of 698 logs,
 # never called, 1,977 tokens. Skill and ToolSearch stay: without them the tools Claude Code holds back load in full.
 # PowerShell (trial): 3,800 tokens, 749 calls against 40,868 of Bash; the run's one shell is Bash (PLAYBOOK.md, One shell).
+# Glob: 275 tokens, 10 calls in 328 logs; a run finds files with Grep and Bash.
 $UnusedTools = 'Task,CronCreate,CronDelete,CronList,DesignSync,EnterWorktree,ExitWorktree,ListAgents,NotebookEdit,' +
-    'PushNotification,RemoteTrigger,ReportFindings,SendMessage,WebFetch,WebSearch,Workflow,PowerShell'
+    'PushNotification,RemoteTrigger,ReportFindings,SendMessage,WebFetch,WebSearch,Workflow,PowerShell,Glob'
 Set-Location $Clone
 $repo = (& gh repo view --json nameWithOwner -q .nameWithOwner)
 # The repo's owner, whose other repos a ticket's `repo:<Name>` label names.

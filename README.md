@@ -129,7 +129,7 @@ number below was measured apart, the newest with Claude Code 2.1.323. They do no
 | What | How |
 | ---- | --- |
 | One fresh session for one job | Each job starts a new session, and a run never hands off to another one. Claude Code compacts its context at the compact size of its complexity (167,000 tokens by default). A handoff read 24 turns again, a compaction 7 |
-| The unused tools are blocked | 4,750 tokens less on every turn, and 1,977 for `Workflow`. `Skill` and `ToolSearch` stay: without them, the tools that Claude Code holds back load in full |
+| The unused tools are blocked | 4,750 tokens less on every turn, 1,977 for `Workflow` and 275 for `Glob`. `Skill` and `ToolSearch` stay: without them, the tools that Claude Code holds back load in full |
 | No skills that a run does not use | Claude Code's own skills and those of the claude.ai account are off: 6,077 tokens less on every turn. The project's and the plugins' skills stay |
 | No MCP server of the login | A run gets only the servers that the project's plugins give it |
 | No advisor by accident | The worker script sets the advisor for each run or turns it off, so an advisor in a login's own settings does not count. A run on the advisor's own model gets none |
@@ -141,7 +141,7 @@ number below was measured apart, the newest with Claude Code 2.1.323. They do no
 | The next run does not start from zero | Each checkpoint pushes the work and writes what is done and what is next. A handoff comment, a follow-up's Cause line and an open question's Where line tell the next run where to start |
 | An answer that needs no run starts none | Accept default closes an open question and merges a held pull request as it is. A follow-up whose default is "no" closes |
 | A short playbook | Five parts that few runs need are files of their own. A run reads a part only when its job needs it |
-| Short tool output | The playbook tells a run to read a file part once and to keep a command's output short. Its commands for comments and for git print only what the run needs. A run does not read the project's `CLAUDE.md` a second time: Claude Code has loaded it already |
+| Short tool output | The playbook tells a run to read a file part once and to keep a command's output short. Its commands for comments and for git print only what the run needs. At a checkpoint a run looks for its three notes by name and never lists its whole queue folder. A run does not read the project's `CLAUDE.md` a second time: Claude Code has loaded it already |
 | A cheap usage reading | The usage comes from the run's own log. Without a run, and only when the last reading is older than 30 minutes, a one-word request with no tools reads it: about 900 tokens, where the whole harness took 46,097 |
 | No model outside the runs | The dispatcher, the merger, the page and the pushes are scripts. No agent talks to another: a run reads only its own ticket |
 | No loop on a failure | A failing ticket is parked for you. A follow-up of a follow-up has a soft cap |

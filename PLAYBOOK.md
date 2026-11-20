@@ -55,7 +55,8 @@ one line what you do with it (`**Worker 1:** Read. Moving the check to the serve
 2. Read new comments (the PR's too, once there is one).
 3. In the queue folder that the job names, write `progress.json`: `{"ticket": <N>, "done": "<the part just done>",
    "next": "<the next part>"}`, on one line, for the page.
-4. Look for `limit.md`, `stop.md` and `comments.md` in the queue folder.
+4. Look for the three notes by name: `ls <queue folder>/{limit,stop,comments}.md 2>/dev/null`. Never list the whole
+   queue folder: it holds the files of every run before you.
 
 Claude Code compacts your context when it grows large: the checkpoint's commit and `progress.json` are what you find
 again after it.
