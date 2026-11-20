@@ -15,5 +15,6 @@
   },
   "afterFable": "claude-opus-5-5@xhigh",
   "compactAt": 167000,
+  "runCap": 60,
   "advisor": { "model": "claude-fable-5-2" }
 }

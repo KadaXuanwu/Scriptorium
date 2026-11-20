@@ -1225,6 +1225,11 @@ function Invoke-Worker($job, [string] $log, $paused) {
         $sessionArgs += @('--add-dir', "`"$Clone`"")
     }
     $claudeArgs = @('-p', "`"$prompt`"") + $resumeArgs + $sessionArgs
+    # The cap of one run (docs/QUEUE.md, Models), for the run alone: a compaction of its session never gets it.
+    $runCap = (Read-Models).runCap
+    if ($runCap) {
+        $claudeArgs += @('--max-budget-usd', [string]$runCap)
+    }
 
     Remove-Item $warnFile, $stopFile, $commentsFile, $handoffFile -ErrorAction SilentlyContinue
     if (-not $paused) {
@@ -1320,7 +1325,9 @@ function Invoke-Worker($job, [string] $log, $paused) {
     # The account refused the run, or the run could not start on it (limits.ps1, $OutKinds): its kind and its text.
     $refusal = ''
     $refusalText = ''
-    $session = [regex]::Match($text, '"session_id":"([^"]+)"').Groups[1].Value
+    # The run reached its cap: parked like a run without a PR (Test-Outcome), never held.
+    $capped = $false
+    $session =[regex]::Match($text, '"session_id":"([^"]+)"').Groups[1].Value
     # A resumed session's result holds its whole cost, the part before the pause too.
     $costBefore = if ($paused -and $paused.Session -and $paused.Cost) { [double]$paused.Cost } else { 0.0 }
     $cost = $costBefore
@@ -1343,6 +1350,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
         $result = $resultLine | ConvertFrom-Json
         $cost = [math]::Max($cost, [double]$result.total_cost_usd)
         $kind = Get-Refusal $result
+        $capped = $result.subtype -eq 'error_max_budget_usd'
         $refusalText = [string]$result.result
         # A run refused at its first turn did no work: it starts fresh later, not as a resume. Not for the plan's
         # limit: that pause resumes the session the refusal named, as before.
@@ -1375,7 +1383,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     # Ended at the stop note of the owner's Now with its job not done: never held. The main loop frees its ticket.
     $freed = [bool]$script:stopNoted -and (Test-NowElsewhere $job) -and -not (Test-Finished $job)
     $hold = $null
-    if (-not ($freed -or $limited -or $refusal -or $modelRefused -or $fableOut)) {
+    if (-not ($freed -or $limited -or $refusal -or $modelRefused -or $fableOut -or $capped)) {
         $clean = [bool]$resultLine -and -not $result.is_error
         $hold = Get-Hold ([bool]$script:limitNoted) ([bool]$script:stopNoted) (Test-Path $stopFile) $clean (Test-Enabled $Id)
         if ($hold -and (Test-Finished $job)) {
@@ -1405,6 +1413,8 @@ function Invoke-Worker($job, [string] $log, $paused) {
         # began is not held: it goes back to the queue (Remove-Claims).
         Holds = [bool]$session -or $job.Kind -ne 'ticket'
         LoggedOut = $false
+        # The cap in dollars that the run reached, else 0.
+        Capped = $(if ($capped) { [double]$runCap } else { 0 })
         Session = $session
         Cost = $cost
         AdvisorCost = $advisorCost
@@ -1490,17 +1500,19 @@ function Test-Finished($job) {
 }
 
 # A run must end its job (Test-Finished); anything else is parked for the owner, so a failing ticket never loops.
-function Test-Outcome($job, [string] $log) {
+# $cap: the cap in dollars that the run reached (models.json, runCap), else 0; the comment then names it.
+function Test-Outcome($job, [string] $log, [double] $cap) {
     if (Test-Finished $job) {
         return
     }
+    $why = if ($cap) { "reached the cap of $cap dollars for one run (runCap in models.json) and " } else { '' }
     if ($job.Kind -ne 'ticket') {
         & gh pr edit $job.Pr --add-label needs-owner -R (Get-JobRepo $job) | Out-Null
-        Send-Comment $job "stopped without finishing ($($job.Kind)). Log: ``$log``"
+        Send-Comment $job "${why}stopped without finishing ($($job.Kind)). Log: ``$log``"
         return
     }
     & gh issue edit $job.Ticket --add-label needs-owner -R $repo | Out-Null
-    Send-Comment $job "stopped without a PR or a question. Log: ``$log``"
+    Send-Comment $job "${why}stopped without a PR or a question. Log: ``$log``"
 }
 
 # Compacts a session that is held at the workers' limit or for the owner's pause, at once.
@@ -1816,7 +1828,7 @@ while ($true) {
                 Remove-Item $pausedFile -ErrorAction SilentlyContinue
                 # A stop note the owner withdrew may have ended the run already: its ticket resumes, it is not parked.
                 if (-not $script:stopNoted) {
-                    Test-Outcome $job $log
+                    Test-Outcome $job $log $end.Capped
                 }
                 Write-Log "done #$($job.Ticket)"
             }

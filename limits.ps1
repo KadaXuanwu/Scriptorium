@@ -155,7 +155,7 @@ function Get-Hold([bool] $limitNoted, [bool] $stopNoted, [bool] $stopStands, [bo
 # - 'start': the run did no work (no cost) and its first request failed, for a cause the text does not name: the
 #   service is down, a wrong model name. It catches a wording this list does not know. Before it, a refusal with a new
 #   wording marked a ticket stuck every 75 seconds.
-# - '': the run's own failure, or no error.
+# - '': the run's own failure, its cap (models.json, runCap: `subtype` `error_max_budget_usd`), or no error.
 # 'subscription' and 'login' put the account out for every worker on it; so does 'start' when the account refuses a
 # probe too, else it stops only the worker (worker.ps1, Get-Out). The texts are the CLI's own.
 $OutKinds = @('subscription', 'login', 'start')
@@ -165,7 +165,8 @@ $OutKinds = @('subscription', 'login', 'start')
 $BareRequestArgs = @('--model', 'haiku', '--tools=', '--system-prompt', 'Reply with one dot.', '--setting-sources=local',
     '--strict-mcp-config', '--disable-slash-commands', '--max-turns', '1')
 function Get-Refusal($result) {
-    if (-not $result -or -not $result.is_error) {
+    # Before the texts: the cap's wording is unknown, and a word like "limit" would hold the run for the account.
+    if (-not $result -or -not $result.is_error -or $result.subtype -eq 'error_max_budget_usd') {
         return ''
     }
     $text = [string]$result.result

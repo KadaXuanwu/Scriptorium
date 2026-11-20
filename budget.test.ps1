@@ -199,6 +199,8 @@ Assert-Same (Get-Refusal (Result '{"subtype":"success","is_error":true,"total_co
 Assert-Same (Get-Refusal (Result '{"subtype":"success","is_error":true,"total_cost_usd":0,"result":"API Error: 529 Overloaded"}')) 'start' 'a run that did no work, for a cause the list does not know'
 Assert-Same (Get-Refusal (Result '{"subtype":"success","is_error":true,"total_cost_usd":3.1,"result":"API Error: 529 Overloaded"}')) '' 'the same error after work is the failure of the run'
 Assert-Same (Get-Refusal (Result '{"subtype":"error_max_turns","is_error":true,"total_cost_usd":3.1,"result":"Reached the turn limit."}')) '' 'a failure of the run itself'
+# The cap of one run (models.json, runCap) is never an account's refusal, whatever its text says.
+Assert-Same (Get-Refusal (Result '{"subtype":"error_max_budget_usd","is_error":true,"total_cost_usd":60.4,"result":"Budget limit reached"}')) '' 'a run that reached its cap'
 Assert-Same (Get-Refusal (Result '{"subtype":"success","is_error":false,"total_cost_usd":0,"result":"ok"}')) '' 'a probe that the account answered'
 Assert-Same (Get-Refusal $null) '' 'no result line'
 Assert-Same (($OutKinds | Sort-Object) -join ',') 'login,start,subscription' 'the kinds that put an account out'

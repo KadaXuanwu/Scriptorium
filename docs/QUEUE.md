@@ -168,6 +168,14 @@ count. A session keeps its advisor through a hold, a resume and a compaction.
 **Without the advisor:** a new run of a complexity with the advisor, on an account that cannot give it now, takes the
 complexity's `advisorFallback` effort, where one is set (`Get-FallbackEffort`), and keeps it through a resume.
 
+**The cap of a run:** `runCap`, in dollars at the API's price as Claude Code counts them (60). The worker script gives
+each run `--max-budget-usd` with it, but not the compaction of its session. It counts the cost of one process, so a
+resumed session starts at zero again. A run that reaches it ends with the `subtype` `error_max_budget_usd`. That is
+never an account's refusal (`Get-Refusal`), and the run is not held: it is parked like a run without a PR, and the
+comment names the cap. The next run finds its pushed and its uncommitted work ([PLAYBOOK.md](../PLAYBOOK.md), step 1).
+The cap is insurance: the largest session in the logs to 2026-11-19 cost 47.30 dollars. Without `runCap` a run has no
+cap.
+
 The front desk keeps `models.json` current: a new model or price, a plan change, or the owner's verdict on PRs by model.
 The run costs by model are in `.queue/history.jsonl`. Change `updated` with it.
 
