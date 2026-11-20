@@ -114,7 +114,8 @@ function markdown(text) {
         const src = `${api(scope, 'api/shot')}?branch=${branch}&amp;name=${name}`;
         return `<a class="shot" href="${src}" target="_blank"><img src="${src}" alt="${alt}" loading="lazy"></a>`;
       })
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)|(https:\/\/[^\s<]*[^\s<.,;:!?)\]])/g, (all, label, href, bare) => {
+    // An address after a raw " is inside a picture's markup above (esc leaves no other "): not a link again.
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)|(?<!")(https:\/\/[^\s<"]*[^\s<".,;:!?)\]])/g, (all, label, href, bare) => {
       if (bare) {
         const issue = /^https:\/\/github\.com\/[^/]+\/([^/]+)\/(?:pull|issues)\/(\d+)$/.exec(bare);
         return `<a href="${bare}" target="_blank">${issue ? `${issue[1]}#${issue[2]}` : bare}</a>`;
