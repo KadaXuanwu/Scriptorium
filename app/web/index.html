@@ -111,6 +111,12 @@
   <div class="dialog-head"><h2 id="how-title"></h2><button data-close>Cancel</button></div>
   <div id="how-options" class="options"></div>
 </dialog>
+<!-- A question's pictures at full size, one at a time (app.js, Viewer). -->
+<dialog id="viewer">
+  <div class="dialog-head"><h2 id="viewer-count"></h2><a id="viewer-open" target="_blank">Open in a tab</a><button data-close>Close</button></div>
+  <img id="viewer-img" alt="">
+  <div class="viewer-foot"><button class="round" data-view="-1" aria-label="Previous picture">&lsaquo;</button><div id="viewer-text" class="text"></div><button class="round" data-view="1" aria-label="Next picture">&rsaquo;</button></div>
+</dialog>
 <!-- A question before an action: the page's own dialog, never the browser's, the same for every action (app.js, ask).
      Adding something puts its fields in it. -->
 <dialog id="ask">

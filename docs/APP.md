@@ -185,7 +185,14 @@ queue does (`Get-AnswerRoute`), and the answer goes on GitHub as the owner's com
 | Open question | Closed; nothing runs | Queued `P1`: a run changes the built default |
 | Follow-up | Queued `P1`, or closed if its "Do this?" default is no | Queued `P1` with the answer; a bare "no" closes it |
 
-**Pictures:** a question that shows a look carries screenshots of its choices. They live on the branch `shots-t<N>`.
+**Pictures:** every question has a banner, a screenshot of what it is about: its first picture that stands alone on a
+line. The card shows it on top, from edge to edge, cut to 3:1 around its middle. A question about a look also carries a
+screenshot of each choice: list lines that stand together and hold a picture show as rows, the picture whole (16:9) on
+most of the row and the text beside it, or under it in a narrow card. The page lays this out for every count of
+pictures; the question's text says nothing about layout (`PLAYBOOK-pictures.md`). A tap on a picture opens the viewer:
+one picture at a time in one fixed box, and a tap, an arrow key or a swipe steps to the next choice, so two choices
+compare in place. A question from before the rule has no banner, and its card starts with its head. The pictures live
+on the branch `shots-t<N>`.
 The repo may be private, so the server fetches each one once with the owner's `gh` login and keeps it in `.queue/shots`
 (`/api/shot`, which serves nothing but a picture of a shots branch).
 

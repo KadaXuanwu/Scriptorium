@@ -133,3 +133,14 @@ function Get-FollowUpView([string] $body) {
     }
     return @{ summary = $summary; questions = $questions; details = $details }
 }
+
+# The titles of the questions a PR body files for the owner (its Open questions, and its Follow-ups that ask) whose
+# Questions part has no banner: no picture alone on a line (PLAYBOOK-pictures.md, Banner). The merger sends such a PR
+# back to its worker once (merge.ps1).
+function Get-BannerlessQuestions([string] $prBody) {
+    $items = @(Split-FollowUps $prBody 'Open question' 'Open questions') + @(Split-FollowUps $prBody 'Follow-up')
+    return @($items | Where-Object {
+            $asked = (Get-FollowUpView $_.body).questions
+            $asked -and $asked -notmatch '(?m)^[ 	]*!\[[^\]]*\]\([^)\s]+\)[ 	]*?$'
+        } | ForEach-Object { $_.title })
+}

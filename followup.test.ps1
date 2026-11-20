@@ -78,4 +78,12 @@ Assert-Equal ((Get-GenerationLine 6) -like '*strictest: this ticket is generatio
 $title = 'When is a saved filter "out of date" for a user?'
 Assert-Equal (& git rev-parse --sq-quote (ConvertTo-NativeArg $title) 'next') " '$title' 'next'" 'a title with quotes stays one argument'
 
+# The banner gate: a question with no picture alone on a line is named; one with it, or with no question, is not.
+$shot = '![banner](https://github.com/o/r/blob/shots-t3/banner.png?raw=true)'
+$pr = "Closes #3`n`n## Open questions`n### With banner`n**Summary:** x`n**Questions:**`n$shot`n1. Keep? Default: yes.`n" +
+    "### Choice picture only`n**Summary:** x`n**Questions:**`n1. Which?`n- A (default): $shot`n`n" +
+    "## Follow-up`n### Asks`n**Summary:** x`n**Questions:** 1. Do this? Default: yes.`n### Queued`n**Summary:** x`n**Questions:** None."
+Assert-Equal ((Get-BannerlessQuestions $pr) -join '|') 'Choice picture only|Asks' 'questions without a banner'
+Assert-Equal (Get-BannerlessQuestions "Closes #3`n`n## Open questions`nNone`n`n## Follow-up`nNone").Count 0 'no questions, no gate'
+
 Write-Output 'ok'

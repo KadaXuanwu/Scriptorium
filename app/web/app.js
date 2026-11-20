@@ -106,14 +106,50 @@ function modelName(id) {
 // Questions and tickets arrive as markdown: links, bold, code, italics and line breaks are enough to read them. A link
 // into the repo has no address the page can open, so it shows as its text. A bare address is a link too; a GitHub
 // issue or PR address shows as repo#N, as GitHub shows it. A question's picture on its shots branch (shots.ps1)
-// shows as the picture, from the server (the repo is private); a tap opens it whole.
+// shows as the picture, from the server (the repo is private); a tap opens it in the viewer.
+const shotRe = /!\[([^\]]*)\]\(https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/blob\/(shots-t\d+)\/([\w.-]+\.(?:png|jpe?g))(?:\?raw=true)?\)/i;
+const shotHtml = (all, alt, branch, name) => {
+  const src = `${api(scope, 'api/shot')}?branch=${branch}&amp;name=${name}`;
+  return `<a class="shot" href="${src}" target="_blank"><img src="${src}" alt="${alt}" loading="lazy"></a>`;
+};
+// One choice of a question: its picture beside its text. One without a picture is a row of text.
+function choice(line) {
+  const shot = shotRe.exec(line);
+  // The choice's name, up to its first colon, stands bold on a line of its own above what it changes.
+  const text = inline(line.replace(/^\s*[-*] /, '').replace(shotRe, '').trim().replace(/:$/, '')).replace(/^([^:<]{1,60}):\s+/, '<b>$1</b><br>');
+  return `<div class="choice">${shot ? shotHtml(...shot) : ''}<div>${text}</div></div>`;
+}
+// The page arranges the pictures, not the writer: list lines that stand together and hold a picture are the choices,
+// one row each, the same for every count of pictures (PLAYBOOK-pictures.md).
 function markdown(text) {
-  return esc(text)
-    .replace(/!\[([^\]]*)\]\(https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/blob\/(shots-t\d+)\/([\w.-]+\.(?:png|jpe?g))(?:\?raw=true)?\)/gi,
-      (all, alt, branch, name) => {
-        const src = `${api(scope, 'api/shot')}?branch=${branch}&amp;name=${name}`;
-        return `<a class="shot" href="${src}" target="_blank"><img src="${src}" alt="${alt}" loading="lazy"></a>`;
-      })
+  const parts = [];
+  let run = [];
+  const flush = () => {
+    if (!run.length) return;
+    parts.push(run.some((line) => shotRe.test(line))
+      ? { html: `<div class="choices">${run.map(choice).join('')}</div>`, block: true } : { html: run.map(inline).join('<br>') });
+    run = [];
+  };
+  for (const line of esc(text).split('\n')) {
+    if (/^\s*[-*] /.test(line)) run.push(line);
+    else { flush(); parts.push({ html: inline(line) }); }
+  }
+  flush();
+  return parts.map((part, i) => part.html + (parts[i + 1] && !part.block && !parts[i + 1].block ? '<br>' : '')).join('');
+}
+// A question's banner: its first picture that stands alone on a line, in the question or else in its details. Returns
+// the picture and both texts without that line; no banner for a question written before the rule.
+function takeBanner(q) {
+  const alone = new RegExp(`^[ \\t]*${shotRe.source}[ \\t]*\\r?\\n?`, 'im');
+  for (const field of ['question', 'details']) {
+    const hit = alone.exec(q[field] || '');
+    if (hit) return { ...q, [field]: q[field].replace(alone, ''), banner: shotHtml(...esc(hit[0]).match(shotRe)).replace('class="shot"', 'class="shot banner"') };
+  }
+  return q;
+}
+function inline(text) {
+  return text
+    .replace(new RegExp(shotRe.source, 'gi'), shotHtml)
     // An address after a raw " is inside a picture's markup above (esc leaves no other "): not a link again.
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)|(?<!")(https:\/\/[^\s<"]*[^\s<".,;:!?)\]])/g, (all, label, href, bare) => {
       if (bare) {
@@ -124,8 +160,7 @@ function markdown(text) {
     })
     .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>')
-    .replace(/\n/g, '<br>');
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
 }
 
 const badges = (items) => (items || []).filter(Boolean).map((a) => `<span class="badge">${esc(a)}</span>`).join('');
@@ -352,13 +387,14 @@ function settingsBlock() {
 
 const questionTags = { pr: 'Holds a PR', ticket: 'Holds a ticket', question: 'Default is built', followup: 'New work' };
 
-function questionCard(q) {
+function questionCard(asked) {
+  const q = takeBanner(asked);
   const key = esc(q.key);
   const details = q.details
     ? `<details data-key="more-${esc(scope)}-${key}"><summary>More</summary><div class="text">${markdown(q.details)}</div></details>` : '';
   const tag = questionTags[q.kind] + (q.kind === 'followup' && q.size ? ` · size ${esc(q.size)}` : '');
   const card = `question:${q.key}`;
-  return `<article class="card question${q.blocking ? ' blocking' : ''}${busyClass(card)}"${busyAttr(card)}>
+  return `<article class="card question${q.blocking ? ' blocking' : ''}${busyClass(card)}"${busyAttr(card)}>${q.banner || ''}
     <div class="question-head"><span class="tag">${tag}</span>${mark()}<a href="${esc(q.url)}" target="_blank">${esc(q.title)}</a></div>
     <div class="text ask">${markdown(q.question)}</div>${details}
     <textarea data-key="${key}" rows="2" placeholder="${q.kind === 'followup' ? 'Your answer. &quot;No&quot; drops it.' : 'Your answer'}"></textarea>
@@ -569,8 +605,8 @@ function info(s) {
     section('What needs you', items([
       `${setting('Questions', 'questions')}: only about the product (a rule, a look, what a user sees), never the workflow.
         A blocking question holds its PR or ticket until you answer (${blocking} now); answer the others when you like.
-        Accept default takes the worker's proposal. A new look comes as three candidates with a picture each, the first
-        built in.`,
+        Accept default takes the worker's proposal. Every question has a picture of what it is about. A new look comes
+        as three candidates with a picture each, the first built in; tap a picture to step through them.`,
       `${setting('Stuck', 'queue')} runs (Queue) ended with no PR and no question. Nothing retries by itself: read the
         reason, then Retry (${s.stuck.length} now).`,
       `${setting('Accounts', 'accounts')} that are signed out or refuse runs: their workers wait until you sign in or
@@ -1187,6 +1223,42 @@ document.addEventListener('dblclick', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.matches?.('[data-rename]')) rename(e.target);
 });
+
+// ---- Viewer
+// A question's pictures one at a time, each in the same place at the same size: a step shows what differs between two
+// choices. A tap on the picture, an arrow key or a swipe steps; the text under it is the choice's.
+let viewed = { shots: [], at: 0 };
+function view(step) {
+  const n = viewed.shots.length;
+  viewed.at = (viewed.at + step + n) % n;
+  const shot = viewed.shots[viewed.at];
+  $('viewer-img').src = shot.src;
+  $('viewer-open').href = shot.src;
+  $('viewer-text').innerHTML = shot.text;
+  $('viewer-count').textContent = n > 1 ? `${viewed.at + 1} / ${n}` : 'Picture';
+  document.querySelectorAll('#viewer [data-view]').forEach((b) => { b.hidden = n < 2; });
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-view], #viewer-img')) return view(Number(e.target.closest('[data-view]')?.dataset.view || 1));
+  const shot = e.target.closest('a.shot');
+  if (!shot || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  e.preventDefault();
+  // The steps go through the card's choices; the banner is not one of them and shows alone.
+  const all = shot.matches('.banner') ? [shot] : [...(shot.closest('.question') || shot.closest('.text')).querySelectorAll('a.shot:not(.banner)')];
+  viewed = { at: all.indexOf(shot), shots: all.map((a) => ({ src: a.href, text: a.parentElement.classList.contains('choice') ? a.nextElementSibling.innerHTML : '' })) };
+  view(0);
+  $('viewer').showModal();
+});
+$('viewer').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') view(e.key === 'ArrowLeft' ? -1 : 1);
+});
+let viewerTouch = 0;
+$('viewer').addEventListener('touchstart', (e) => { viewerTouch = e.touches[0].clientX; }, { passive: true });
+$('viewer').addEventListener('touchend', (e) => {
+  const moved = e.changedTouches[0].clientX - viewerTouch;
+  if (Math.abs(moved) > 40) view(moved > 0 ? -1 : 1);
+});
+// ---- Viewer end
 
 document.addEventListener('click', async (e) => {
   const target = e.target.closest('button');

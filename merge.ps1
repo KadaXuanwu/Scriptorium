@@ -34,6 +34,8 @@ $emptyBody = Join-Path $Project '.queue\empty-body.txt'
 [System.IO.File]::WriteAllText($emptyBody, '')
 # Wakes (docs/QUEUE.md, Wakes): a worker writes the first when its run ends; this script writes the second after a
 # pass that changed a PR, for the idle workers.
+# The start of the merger's comment on a PR whose question has no banner; a PR that has it is not sent back again.
+$bannerNote = '**Merger:** a question has no banner picture:'
 $wakeMerger = Join-Path $Project '.queue\wake-merger'
 $wakeWorkers = Join-Path $Project '.queue\wake-workers'
 
@@ -142,6 +144,15 @@ while ($true) {
                 # A comment the run never read (it came after its last checkpoint): back to its worker first.
                 & gh pr edit $pr.number --add-label answered -R $where | Out-Null
                 Add-Content $log "$(Get-Date -Format s) unread comments, answered $where#$($pr.number)" -Encoding utf8
+                $changed = $true
+            } elseif ($pr.mergeable -eq 'MERGEABLE' -and ($bare = @(Get-BannerlessQuestions ([string]$pr.body))) -and
+                -not (@((((& gh pr view $pr.number --json comments -R $where) -join "`n") | ConvertFrom-Json).comments) |
+                    Where-Object { ([string]$_.body).StartsWith($bannerNote) })) {
+                # The banner gate (PLAYBOOK-pictures.md): back to its worker, once. A PR that already has this comment
+                # merges as it is, so a run that cannot take a picture never stalls the queue.
+                & gh pr comment $pr.number --body (ConvertTo-NativeArg "$bannerNote $($bare -join '; '). Put the banner's line first under its Questions (PLAYBOOK-pictures.md), then remove ``answered``. If no picture can be taken, reply why.") -R $where | Out-Null
+                & gh pr edit $pr.number --add-label answered -R $where | Out-Null
+                Add-Content $log "$(Get-Date -Format s) no banner, answered $where#$($pr.number)" -Encoding utf8
                 $changed = $true
             } elseif ($pr.mergeable -eq 'MERGEABLE') {
                 # Under the workers' dispatch lock (worker.ps1) from the merge to the ticket's close: a worker that

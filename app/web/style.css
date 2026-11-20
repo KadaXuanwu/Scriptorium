@@ -364,9 +364,28 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 .question-head a { color: var(--muted); }
 .text { overflow-wrap: anywhere; }
 .text code { background: var(--raised); padding: 0 4px; border-radius: 4px; font-size: 13px; }
-/* A question's picture: whole on a phone, beside the next on a wide screen; a tap opens it at full size. */
+/* A picture in running text; a tap opens it in the viewer. */
 .text .shot { display: inline-block; vertical-align: top; max-width: 100%; margin: 6px 6px 6px 0; }
 .text .shot img { display: block; max-width: 100%; max-height: 260px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); }
+/* A question's banner: wide and low, from edge to edge at the top of its card, cut to 3:1 around its middle. */
+.question { container-type: inline-size; }
+.question > .banner { display: block; margin: -18px -18px 14px; }
+.banner img { display: block; width: 100%; aspect-ratio: 3 / 1; object-fit: cover; border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; }
+/* A question's choices: one row each, the picture whole (16:9, never cut) on most of the row and the text beside it;
+   in a narrow card the picture has the full width and the text stands under it. The same for every count. */
+.choices { display: grid; gap: 10px; margin: 10px 0; }
+.choice { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 3fr); gap: 12px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); font-size: 14px; }
+.choice:not(:has(.shot)) { grid-template-columns: minmax(0, 1fr); }
+.text .choice .shot { display: block; margin: 0; }
+.text .choice .shot img { width: 100%; max-height: none; aspect-ratio: 16 / 9; object-fit: contain; background: var(--bg); border-radius: 8px; }
+@container (max-width: 520px) { .choice { grid-template-columns: minmax(0, 1fr); } }
+/* The viewer: the picture's box has one size for every picture, so a step changes only what the pictures differ in. */
+#viewer { width: min(1500px, calc(100vw - 16px)); max-height: 96dvh; padding: 14px; }
+#viewer-img { display: block; width: 100%; height: calc(96dvh - 160px); object-fit: contain; background: var(--bg); border-radius: 8px; cursor: pointer; }
+.viewer-foot { display: flex; align-items: center; gap: 12px; min-height: 48px; margin-top: 10px; }
+#viewer-text { flex: 1; text-align: center; font-size: 14px; }
+/* The link to the picture itself (a phone zooms there) stands at the right, before Close. */
+#viewer-open { margin-left: auto; font-size: 13px; }
 .ask { margin: 10px 0 12px; font-size: 16px; }
 .question textarea { margin-bottom: 10px; }
 details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 10px; }
