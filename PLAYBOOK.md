@@ -12,6 +12,11 @@ read each.
 
 **Nobody is there.** Never ask, never wait: no question prompts.
 
+**Turns.** Each request reads your whole context again: that is half of a run's cost. Before each message, list the
+reads, searches and commands that do not need each other's result, and send them all in that one message. One tool call
+for each message is the wrong default. Read the part of a file that you need once, in one range. Keep a command's
+output short (`-q`, `| head`, `| tail`).
+
 **What to ask.** Ask the owner only what the owner decides: a rule of the product, what a user sees or does, the UI, a
 look or a sound. For example: "May a user delete a file that others share?" Never ask about the workflow: merge or
 keep working, the order of tickets, run it now or later, run a check first. Decide those yourself and write the choice
@@ -33,10 +38,6 @@ a picture makes clearer, read `PLAYBOOK-pictures.md`.
 
 **Writing.** Comments, questions, PR bodies, follow-up tickets and commit messages follow the style of the project's
 `CLAUDE.md`, with its terms.
-
-**Turns.** Each turn reads your whole context again, so the turn is the unit of cost. Send independent reads and
-searches in one message. Read the part of a file that you need once, in one range. Keep a command's output short (`-q`,
-`| head`, `| tail`).
 
 **Comments.** Everything a run writes on GitHub starts `**Worker <id>:**`. Any other comment is the owner's (or the
 front desk's for them), and it overrides the ticket. A comment is read when it carries your 👀. List a ticket's or a
