@@ -32,6 +32,10 @@ New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 # A squash commit is its PR's title alone: the branch's own commit messages stay out of main.
 $emptyBody = Join-Path $Project '.queue\empty-body.txt'
 [System.IO.File]::WriteAllText($emptyBody, '')
+# Wakes (docs/QUEUE.md, Wakes): a worker writes the first when its run ends; this script writes the second after a
+# pass that changed a PR, for the idle workers.
+$wakeMerger = Join-Path $Project '.queue\wake-merger'
+$wakeWorkers = Join-Path $Project '.queue\wake-workers'
 
 # A merged PR's Follow-up section (PLAYBOOK.md, Ship) filed as draft tickets for the owner, one per
 # `### <title>`. One with no questions has nothing for the owner to decide, so it is queued (P1) at once; one with
@@ -102,6 +106,8 @@ while ($true) {
         Add-Content $log "$(Get-Date -Format s) script changed: restarting on the new code" -Encoding utf8
         Restart-OnNewCode (Get-TaskName $config.name 'merger')
     }
+    $passAt = Get-Date
+    $changed = $false
     try {
         Set-GitHubIdentity
         # Worker PRs in this repo and in every other repo an open ticket names with a `repo:<Name>` label
@@ -123,36 +129,62 @@ while ($true) {
                 ($names | Where-Object { @('needs-rebase', 'needs-owner', 'answered') -contains $_ })) {
                 continue
             }
-            # UNKNOWN: a list doesn't make GitHub compute it, asking for the one PR does; the answer is there next pass.
-            if ($pr.mergeable -eq 'UNKNOWN') {
-                & gh pr view $pr.number --json mergeable -R $where | Out-Null
-            } elseif ($pr.mergeable -eq 'MERGEABLE' -and (Get-UnreadCount $ticket $slug) + (Get-UnreadCount $pr.number $where) -gt 0) {
+            # UNKNOWN: a list doesn't make GitHub compute it, asking for the one PR does. A wake comes seconds after a
+            # run opened its PR, so ask up to three times, 5 seconds apart; else the answer is there next pass.
+            for ($try = 0; $pr.mergeable -eq 'UNKNOWN' -and $try -lt 3; $try++) {
+                if ($try) {
+                    Start-Sleep 5
+                }
+                # A view that fails reads as '': the PR waits for the next pass, and the pass goes on.
+                $pr.mergeable = [string](& gh pr view $pr.number --json mergeable -q .mergeable -R $where)
+            }
+            if ($pr.mergeable -eq 'MERGEABLE' -and (Get-UnreadCount $ticket $slug) + (Get-UnreadCount $pr.number $where) -gt 0) {
                 # A comment the run never read (it came after its last checkpoint): back to its worker first.
                 & gh pr edit $pr.number --add-label answered -R $where | Out-Null
                 Add-Content $log "$(Get-Date -Format s) unread comments, answered $where#$($pr.number)" -Encoding utf8
+                $changed = $true
             } elseif ($pr.mergeable -eq 'MERGEABLE') {
-                & gh pr merge $pr.number --squash --body-file $emptyBody -R $where
-                if ($LASTEXITCODE -eq 0) {
-                    & gh api -X DELETE "repos/$where/git/refs/heads/$($pr.headRefName)" | Out-Null
-                    Add-Content $log "$(Get-Date -Format s) merged $where#$($pr.number)" -Encoding utf8
-                    # GitHub's close from "Closes #N" can miss, and an open ticket goes back to its worker; close it here.
-                    # No comment: GitHub's own close often comes after this check, so one would land on most tickets.
-                    if ((((& gh issue view $ticket --json state -R $slug) -join "`n") | ConvertFrom-Json).state -eq 'OPEN') {
-                        & gh issue close $ticket -R $slug | Out-Null
+                # Under the workers' dispatch lock (worker.ps1) from the merge to the ticket's close: a worker that
+                # looks between the two sees its ticket open without a PR, and starts it again or parks it.
+                $merged = $false
+                $lock = Enter-PcLock "$($config.name)-Queue"
+                try {
+                    & gh pr merge $pr.number --squash --body-file $emptyBody -R $where
+                    $merged = $LASTEXITCODE -eq 0
+                    if ($merged) {
+                        $changed = $true
+                        & gh api -X DELETE "repos/$where/git/refs/heads/$($pr.headRefName)" | Out-Null
+                        Add-Content $log "$(Get-Date -Format s) merged $where#$($pr.number)" -Encoding utf8
+                        # GitHub's close from "Closes #N" can miss, and an open ticket goes back to its worker; close it here.
+                        # No comment: GitHub's own close often comes after this check, so one would land on most tickets.
+                        if ((((& gh issue view $ticket --json state -R $slug) -join "`n") | ConvertFrom-Json).state -eq 'OPEN') {
+                            & gh issue close $ticket -R $slug | Out-Null
+                        }
                     }
+                } finally {
+                    Exit-PcLock $lock
+                }
+                if ($merged) {
                     New-FollowUp $pr $where $ticket
                 }
             } elseif ($pr.mergeable -eq 'CONFLICTING') {
                 & gh pr edit $pr.number --add-label needs-rebase -R $where | Out-Null
                 Add-Content $log "$(Get-Date -Format s) needs-rebase $where#$($pr.number)" -Encoding utf8
+                $changed = $true
             }
         }
     } catch {
         Add-Content $log "$(Get-Date -Format s) error: $_" -Encoding utf8
     }
-    # Changed code wakes the next pass early.
+    # At the end of the pass, after the ticket closed and the follow-ups were filed: a merge frees the ticket's
+    # areas, and a label gives a worker a job. The idle workers look now, not at their next poll.
+    if ($changed) {
+        Send-Wake $wakeWorkers
+    }
+    # Changed code or a wake (a worker's run ended, the owner acted on the page) wakes the next pass early.
     $wake = (Get-Date).AddSeconds($PollSeconds)
-    while ((Get-Date) -lt $wake -and -not (Test-CodeChanged)) {
+    while ((Get-Date) -lt $wake -and -not (Test-CodeChanged) -and
+        -not ((Test-Path $wakeMerger) -and (Get-Item $wakeMerger).LastWriteTime -gt $passAt)) {
         Start-Sleep 5
     }
 }

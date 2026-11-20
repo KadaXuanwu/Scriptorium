@@ -30,6 +30,28 @@ the scripts with `-Project "<main>"`.
 
 GitHub builds nothing. A run's own checks are the gate, and a run that finds main broken fixes it in its PR.
 
+## Wakes
+
+The merger and an idle worker each look every 5 minutes (`-PollSeconds`). Two files in the main checkout's `.queue`
+end that wait early. A script wakes when its file was written after its look began, so no wake is lost. No model is
+involved.
+
+| File | Who writes it | Who wakes |
+| ---- | ------------- | --------- |
+| `wake-merger` | A worker script when its run ends; the page's server after a write to GitHub | The merger |
+| `wake-workers` | The merger at the end of a pass that merged or labelled a PR; the page's server after a write to GitHub | Every idle worker |
+
+- A PR merges seconds after its run ends. GitHub does not know yet whether a new PR can merge, so the merger asks up
+  to three times, 5 seconds apart.
+- A merge closes the ticket and frees its areas. The merger wakes the workers after that, so the ticket that waited
+  on those areas starts at once.
+- The merger holds the workers' dispatch lock from a merge to its ticket's close. A worker that looked between the
+  two would see its ticket open without a PR, and start it again.
+- A comment on a PR that is already merged reaches no run. Comment while the run works: it reads comments at each
+  checkpoint.
+- These still wait for the poll: a ticket that the front desk files, and the areas that a held PR (`needs-owner`)
+  frees.
+
 ## Labels
 
 | Label | Means |

@@ -54,6 +54,9 @@ $historyFile = Join-Path $mainQueueDir 'history.jsonl'
 $accessFile = Join-Path $PcDir 'access.json'
 # Forced from the queue app: the next job starts past the area, room and ceiling checks; the run ending clears it.
 $forceFile = Join-Path $mainQueueDir "force-$Id.json"
+# Wakes (docs/QUEUE.md, Wakes): a write to the first ends the merger's wait, a write to the second an idle worker's.
+$wakeMerger = Join-Path $mainQueueDir 'wake-merger'
+$wakeWorkers = Join-Path $mainQueueDir 'wake-workers'
 New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir | Out-Null
 # Every turn reads the whole context again, so Claude Code compacts a run's context at the compact size of the job's
 # complexity, which Invoke-Worker sets for each run (docs/CONFIG.md, The compact size). A run
@@ -1267,7 +1270,8 @@ function Invoke-Worker($job, [string] $log, $paused) {
         $process = Start-Process (Get-Command claude).Source -ArgumentList $claudeArgs -WorkingDirectory $dir -NoNewWindow `
             -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
         while (-not $process.HasExited) {
-            Start-Sleep 30
+            # Returns at once when the run ends, so its end is not seen up to 30 seconds late.
+            [void]$process.WaitForExit(30000)
             # Never let a hiccup here end the watch: the run would go on unwatched and its ticket start again.
             try {
                 # First, so a failure below never makes a live script look down in the queue app.
@@ -1599,6 +1603,12 @@ $script:claimsAt = 0
 # Runs in a row that did not start although the account answered a probe.
 $script:startFails = 0
 while ($true) {
+    # $job is still the last pass's. Its run may have opened or pushed a PR: the merger looks now, not at its next
+    # poll. Only here, after the run's outcome is settled: Test-Outcome parks a ticket whose PR merged before its
+    # ticket closed.
+    if ($job) {
+        Send-Wake $wakeMerger
+    }
     # Between jobs only: a run in progress finishes on the old code.
     if (Test-CodeChanged) {
         Write-Log 'script changed: restarting on the new code'
@@ -1835,7 +1845,14 @@ while ($true) {
                 Remove-Item $pausedFile -ErrorAction SilentlyContinue
                 # A stop note the owner withdrew may have ended the run already: its ticket resumes, it is not parked.
                 if (-not $script:stopNoted) {
-                    Test-Outcome $job $log $end.Capped
+                    # Under the dispatch lock, which the merger holds from a merge to its ticket's close (merge.ps1):
+                    # between the two, a merged ticket reads as one without a PR.
+                    $lock = Enter-PcLock "$($config.name)-Queue"
+                    try {
+                        Test-Outcome $job $log $end.Capped
+                    } finally {
+                        Exit-PcLock $lock
+                    }
                 }
                 Write-Log "done #$($job.Ticket)"
             }
@@ -1849,13 +1866,14 @@ while ($true) {
             Write-State 'error' @{ error = "$_" }
         }
     }
-    # A force from the queue app since this poll began, changed code, or a disable (looked at once a minute; its
-    # editors then close) wakes the next one early.
+    # A force from the queue app since this poll began, a wake (the merger changed a PR, the owner acted on the
+    # page), changed code, or a disable (looked at once a minute; its editors then close) wakes the next one early.
     $wake = (Get-Now) + $PollSeconds
     $enabledAt = Get-Now
     $enabled = $true
     while ((Get-Now) -lt $wake -and -not (Test-CodeChanged) -and $enabled -and
-        -not ((Test-Path $forceFile) -and (Get-Item $forceFile).LastWriteTime -gt $polledAt)) {
+        -not ((Test-Path $forceFile) -and (Get-Item $forceFile).LastWriteTime -gt $polledAt) -and
+        -not ((Test-Path $wakeWorkers) -and (Get-Item $wakeWorkers).LastWriteTime -gt $polledAt)) {
         Start-Sleep 5
         if ((Get-Now) - $enabledAt -ge 60) {
             $enabledAt = Get-Now

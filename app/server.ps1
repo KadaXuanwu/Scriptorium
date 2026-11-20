@@ -1158,6 +1158,9 @@ while ($true) {
             $reason = $write.job.ChildJobs[0].JobStateInfo.Reason.Message
             Remove-Job $write.job -Force
             Write-AppLog $(if ($failed) { "action failed: $($write.message): $reason" } else { "action: $($write.message)" })
+            # The owner's answer, merge or queued ticket: the merger and the idle workers look now (docs/QUEUE.md, Wakes).
+            Send-Wake (Join-Path $mainQueue 'wake-merger')
+            Send-Wake (Join-Path $mainQueue 'wake-workers')
             $script:nextGh = 0
             $script:nextLocal = 0
             try {

@@ -34,6 +34,15 @@ function Test-CodeChanged {
     return (Get-CodeStamp) -ne $script:codeAt
 }
 
+# Ends the wait of the scripts that watch $file (docs/QUEUE.md, Wakes). A write that fails (two scripts write at
+# once) is no loss: the poll still comes.
+function Send-Wake([string] $file) {
+    try {
+        [System.IO.File]::WriteAllText($file, '')
+    } catch {
+    }
+}
+
 # Through the task once this loop has ended (each task runs one instance), so the task still owns the loop.
 function Restart-OnNewCode([string] $Task) {
     $powershell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
