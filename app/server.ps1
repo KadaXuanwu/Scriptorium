@@ -1194,7 +1194,12 @@ while ($true) {
         }
         if ($ghJob -and $ghJob.State -ne 'Running') {
             if ($ghJob.State -eq 'Completed') {
-                $script:gh = (Receive-Job $ghJob) | ConvertFrom-Json
+                $read = (Receive-Job $ghJob) | ConvertFrom-Json
+                # A ticket that the front desk filed, or an area that a held PR freed: no script saw it happen.
+                if (Test-NewWork $script:gh $read) {
+                    Send-Wake (Join-Path $mainQueue 'wake-workers')
+                }
+                $script:gh = $read
             } else {
                 Write-AppLog "GitHub fetch $($ghJob.State): $($ghJob.ChildJobs[0].JobStateInfo.Reason)"
             }

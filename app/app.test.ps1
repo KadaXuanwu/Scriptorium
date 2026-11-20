@@ -451,6 +451,14 @@ Assert-Equal "$($snapshot.left.count) $($snapshot.left.seconds) $($snapshot.left
 # A ticket that a worker took since GitHub's last reading has no worker label there yet: it is not queued or next.
 $fresh = New-Snapshot @{ now = 0; slug = 'o/r'; workers = @($busyWorker); runs = $runs; gh = @{ issues = @((Issue 1 @('P1', 'area:ui')), (Issue 2 @('P1', 'area:ui'))); prs = @(); merged = @() } }
 Assert-Equal "$($fresh.queued.number -join ',') $($fresh.workers[0].next.number) $($fresh.queued[0].reason)" '2 2 ui busy' 'a ticket in work leaves the queue before GitHub shows its label'
+# A GitHub reading wakes the idle workers when it offers work that the reading before it did not (Test-NewWork).
+$before = @{ issues = @((Issue 1 @('P1', 'area:ui', 'worker:1')), (Issue 2 @('P1', 'area:ui')), (Issue 3 @())) }
+Assert-Equal (Test-NewWork $null $before) $false 'the first reading wakes nobody'
+Assert-Equal (Test-NewWork $before $before) $false 'the same reading wakes nobody'
+Assert-Equal (Test-NewWork $before @{ issues = @($before.issues) + (Issue 4 @('P2')) }) $true 'a ticket that the front desk filed wakes the workers'
+Assert-Equal (Test-NewWork $before @{ issues = @($before.issues[0], $before.issues[1], (Issue 3 @('P1'))) }) $true 'a parked ticket that got a priority wakes them'
+Assert-Equal (Test-NewWork $before @{ issues = @((Issue 1 @('P1', 'area:ui', 'worker:1', 'needs-owner')), $before.issues[1], $before.issues[2]) }) $true 'a held PR frees its area: it wakes them'
+Assert-Equal (Test-NewWork $before @{ issues = @($before.issues[0], (Issue 2 @('P1', 'area:ui', 'worker:2')), $before.issues[2]) }) $false 'a ticket that a worker took wakes nobody'
 $json = New-Snapshot @{ now = 0; slug = 'o/r'; workers = @(); runs = @(); gh = @{ issues = @((Issue 2 @('P1'))); prs = @(); merged = @() } } | ConvertTo-Json -Depth 5 -Compress
 Assert-Equal ($json -match '"areas":\[\]') $true 'no area is an empty list'
 

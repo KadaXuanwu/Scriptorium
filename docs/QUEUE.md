@@ -39,7 +39,7 @@ involved.
 | File | Who writes it | Who wakes |
 | ---- | ------------- | --------- |
 | `wake-merger` | A worker script when its run ends; the page's server after a write to GitHub | The merger |
-| `wake-workers` | The merger at the end of a pass that merged or labelled a PR; the page's server after a write to GitHub | Every idle worker |
+| `wake-workers` | The merger at the end of a pass that merged or labelled a PR; the page's server after a write to GitHub, and when its reading of GitHub (once a minute) offers new work | Every idle worker |
 
 - A PR merges seconds after its run ends. GitHub does not know yet whether a new PR can merge, so the merger asks up
   to three times, 5 seconds apart.
@@ -49,8 +49,9 @@ involved.
   two would see its ticket open without a PR, and start it again.
 - A comment on a PR that is already merged reaches no run. Comment while the run works: it reads comments at each
   checkpoint.
-- These still wait for the poll: a ticket that the front desk files, and the areas that a held PR (`needs-owner`)
-  frees.
+- New work that no script saw happen wakes the workers within a minute, from the server's reading of GitHub
+  (`Test-NewWork` in [state.ps1](../app/state.ps1)): a ticket that the front desk filed or that got a priority, and
+  an area that a held PR (`needs-owner`) freed. With the page's server down, these wait for the poll.
 
 ## Labels
 

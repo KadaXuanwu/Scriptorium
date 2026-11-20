@@ -508,6 +508,28 @@ function Get-BusyAreas($issues, [int] $except = 0) {
     } | ForEach-Object { Get-Names $_ } | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
 }
 
+# Whether a GitHub reading offers the workers work that the reading before it did not: a ticket that entered the queue
+# (filed, given a priority, handed back), or an area that no ticket in flight holds any more (a PR held for the
+# owner). The server then wakes the idle workers (docs/QUEUE.md, Wakes). The first reading offers nothing new.
+function Test-NewWork($old, $new) {
+    if (-not $old -or -not $new) {
+        return $false
+    }
+    $queued = {
+        param($issues)
+        @($issues | Where-Object {
+            $n = Get-Names $_
+            ($n | Where-Object { $_ -match '^P[0-2]$' }) -and -not ($n | Where-Object { $_ -like 'worker:*' -or $_ -eq 'needs-owner' })
+        } | ForEach-Object { [int]$_.number })
+    }
+    $was = @(& $queued $old.issues)
+    if (@(& $queued $new.issues | Where-Object { $was -notcontains $_ }).Count -gt 0) {
+        return $true
+    }
+    $busy = @(Get-BusyAreas $new.issues)
+    return @(Get-BusyAreas $old.issues | Where-Object { $busy -notcontains $_ }).Count -gt 0
+}
+
 # The complexity of a PR's ticket; medium without the label, as for the workers.
 function Get-QueueComplexity($pr, $issues) {
     $ticket = $issues | Where-Object { "t$($_.number)" -eq $pr.headRefName } | Select-Object -First 1
