@@ -159,6 +159,11 @@ function Get-Hold([bool] $limitNoted, [bool] $stopNoted, [bool] $stopStands, [bo
 # 'subscription' and 'login' put the account out for every worker on it; so does 'start' when the account refuses a
 # probe too, else it stops only the worker (worker.ps1, Get-Out). The texts are the CLI's own.
 $OutKinds = @('subscription', 'login', 'start')
+# The cheapest request an account answers: Haiku with no tools, settings, plugins or skills, and a one-line system
+# prompt in place of Claude Code's own, about 900 tokens. The page's Ping (app/server.ps1) and the worker's probe (worker.ps1, Invoke-Probe) send it, each in a folder
+# with no CLAUDE.md. A probe of the whole harness read 46,097 tokens.
+$BareRequestArgs = @('--model', 'haiku', '--tools=', '--system-prompt', 'Reply with one dot.', '--setting-sources=local',
+    '--strict-mcp-config', '--disable-slash-commands', '--max-turns', '1')
 function Get-Refusal($result) {
     if (-not $result -or -not $result.is_error) {
         return ''

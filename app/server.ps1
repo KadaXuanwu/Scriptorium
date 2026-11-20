@@ -806,8 +806,7 @@ function Invoke-Action($request) {
             # The temp folder has no CLAUDE.md for the CLI to find.
             Push-Location $env:TEMP
             try {
-                & claude -p . --model haiku --tools= --system-prompt 'Reply with one dot.' --setting-sources=local `
-                    --strict-mcp-config --disable-slash-commands --max-turns 1 | Out-Null
+                & claude -p . @BareRequestArgs | Out-Null
                 if ($LASTEXITCODE) {
                     throw "the ping failed (exit $LASTEXITCODE): is the account signed in?"
                 }

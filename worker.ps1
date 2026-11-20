@@ -503,8 +503,9 @@ function Get-FreshUsage([string] $configDir) {
     return $usage
 }
 
-# A probe: one word from Haiku on a login, in a folder with no CLAUDE.md. The cheapest request that shows the
-# account's usage and whether the account takes requests; a refused one costs nothing. Returns its stream-json text.
+# A probe: one word from Haiku on a login, in a folder with no CLAUDE.md (limits.ps1, $BareRequestArgs). The cheapest
+# request that shows the account's usage (its rate_limit_event) and whether the account takes requests; a refused one
+# costs nothing. Returns its stream-json text.
 function Invoke-Probe([string] $configDir) {
     $ErrorActionPreference = 'Continue'
     $dir = Join-Path $env:TEMP "scriptorium-$($config.name)-probe"
@@ -515,7 +516,7 @@ function Invoke-Probe([string] $configDir) {
     }
     Push-Location $dir
     try {
-        return (& claude -p 'Reply: ok' --model haiku --output-format stream-json --verbose 2>$null) -join "`n"
+        return (& claude -p 'Reply: ok' @BareRequestArgs --output-format stream-json --verbose 2>$null) -join "`n"
     } finally {
         Pop-Location
         $env:CLAUDE_CONFIG_DIR = $previousConfigDir

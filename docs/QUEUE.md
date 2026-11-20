@@ -103,7 +103,8 @@ More rules:
   model, of the whole-ticket runs. `-Logs <folder>` prints the tools that the runs of the folder's logs were given and
   how often they called each: run it after a Claude Code update to keep the block list (`$UnusedTools`) right.
 - **Usage:** per account in the PC's `usage.json` (Settings, The PC's files), from the runs' logs. When it is older than 30 minutes, the script reads
-  it again with a one-word Haiku request. That reading is the account's, so the front desk's and the owner's own use
+  it again with a one-word Haiku request with no tools or settings and a one-line system prompt, about 900 tokens, the same as the
+  page's Ping (`$BareRequestArgs` in [limits.ps1](../limits.ps1)). That reading is the account's, so the front desk's and the owner's own use
   count too. Each reading keeps the login's email; when a login folder is signed in to another account, its reading
   counts as none. A save keeps each window from the stored reading where that one is further on (a later reset, or the
   same reset and a higher share): a run that waits on a long task has only an old event in its log.
