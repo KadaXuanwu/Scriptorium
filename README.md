@@ -128,16 +128,22 @@ number below was measured apart, the newest with Claude Code 2.1.323. They do no
 
 | What | How |
 | ---- | --- |
-| One session for one job | A run never hands off to a fresh session. Claude Code compacts its context at the compact size of its complexity (167,000 tokens by default). A handoff read 24 turns again, a compaction 7 |
-| The unused tools are blocked | 4,750 tokens less on every turn, and 1,977 for `Workflow` |
+| One fresh session for one job | Each job starts a new session, and a run never hands off to another one. Claude Code compacts its context at the compact size of its complexity (167,000 tokens by default). A handoff read 24 turns again, a compaction 7 |
+| The unused tools are blocked | 4,750 tokens less on every turn, and 1,977 for `Workflow`. `Skill` and `ToolSearch` stay: without them, the tools that Claude Code holds back load in full |
 | No skills that a run does not use | Claude Code's own skills and those of the claude.ai account are off: 6,077 tokens less on every turn. The project's and the plugins' skills stay |
 | No MCP server of the login | A run gets only the servers that the project's plugins give it |
-| A compaction before each hold | A run that stops at a usage limit or for your pause is compacted at once, while its cache is warm. At the resume the cache is gone, and a whole session would be read again at full price |
-| A resume in place of a new start | A held run goes on in the same session, with its context and its uncommitted work |
+| No advisor by accident | The worker script sets the advisor for each run or turns it off, so an advisor in a login's own settings does not count. A run on the advisor's own model gets none |
+| The environment is ready first | The plugins open what a run needs (an editor, a server) before the run starts, so no turn waits for it |
+| A compaction before each hold | A run that stops at a usage limit or for your pause is compacted at once, with its own model, tools and settings, so the compaction reads the context from the warm cache. At the resume the cache is gone, and a whole session would be read again at full price. A run whose pause you take back goes on at once, with no compaction |
+| A resume in place of a new start | A held run goes on in the same session, with its context and its uncommitted work. At the Fable limit it goes on in that session on another model |
+| Fewer runs cut off | A large ticket is not started late in a 5-hour window, so a run seldom reaches the stop line. The stop note is taken back if the account has room again before the run ends |
+| Fewer rebase runs | Two tickets that change the same files never run at the same time |
+| The next run does not start from zero | Each checkpoint pushes the work and writes what is done and what is next. A handoff comment, a follow-up's Cause line and an open question's Where line tell the next run where to start |
+| An answer that needs no run starts none | Accept default closes an open question and merges a held pull request as it is. A follow-up whose default is "no" closes |
 | A short playbook | Five parts that few runs need are files of their own. A run reads a part only when its job needs it |
-| Short tool output | The playbook tells a run to read a file part once and to keep a command's output short. Its commands for comments and for git print only what the run needs |
-| A cheap usage reading | The usage comes from the run's own log. Without a run, a one-word request with no tools reads it: about 900 tokens, where the whole harness took 46,097 |
-| No model outside the runs | The dispatcher, the merger, the page and the pushes are scripts |
+| Short tool output | The playbook tells a run to read a file part once and to keep a command's output short. Its commands for comments and for git print only what the run needs. A run does not read the project's `CLAUDE.md` a second time: Claude Code has loaded it already |
+| A cheap usage reading | The usage comes from the run's own log. Without a run, and only when the last reading is older than 30 minutes, a one-word request with no tools reads it: about 900 tokens, where the whole harness took 46,097 |
+| No model outside the runs | The dispatcher, the merger, the page and the pushes are scripts. No agent talks to another: a run reads only its own ticket |
 | No loop on a failure | A failing ticket is parked for you. A follow-up of a follow-up has a soft cap |
 
 ### Trials
@@ -153,7 +159,9 @@ Two changes are trials. Each can be reverted alone, and a later check decides wh
 
 - **The model and the effort** of each complexity (the page, Details).
 - **The advisor switch** of each complexity. Each call of the advisor reads the whole session, uncached.
-- **The compact size.** A larger size keeps more of the work in view and costs more on each turn.
+- **The compact size.** A larger size keeps more of the work in view and costs more on each turn. A size that is
+  not a plain number from 67000 to 967000 stops the scripts: Claude Code once read `250k` as its minimum without a
+  word.
 - **The cap of one run:** `runCap` in `models.json`, 60 dollars at the API's price. A run that reaches it is parked
   for you.
 
