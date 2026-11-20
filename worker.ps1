@@ -1328,7 +1328,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     $refusalText = ''
     # The run reached its cap: parked like a run without a PR (Test-Outcome), never held.
     $capped = $false
-    $session =[regex]::Match($text, '"session_id":"([^"]+)"').Groups[1].Value
+    $session = [regex]::Match($text, '"session_id":"([^"]+)"').Groups[1].Value
     # A resumed session's result holds its whole cost, the part before the pause too.
     $costBefore = if ($paused -and $paused.Session -and $paused.Cost) { [double]$paused.Cost } else { 0.0 }
     $cost = $costBefore

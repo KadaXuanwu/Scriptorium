@@ -99,12 +99,14 @@ More rules:
   ([usage.ps1](../usage.ps1)): `requests`, `toolCalls`, `first` (the tokens of the first request), `ctxMean` and
   `ctxMax` (the context), `read` and `write` (tokens from and to the cache), `compactions`, `advisorCalls` and
   `advisorCost` (the dollars of the advisor's model; a resumed run's less the part before its pause, which `paused.json`
-  keeps as `AdvisorCost`). [report.ps1](../report.ps1) `-Project <main>` prints their medians for each complexity and
+  keeps as `AdvisorCost`; 0 when the advisor is the run's own model, because the log has one cost for each model).
+  [report.ps1](../report.ps1) `-Project <main>` prints their medians for each complexity and
   model, of the whole-ticket runs. `-Logs <folder>` prints the tools that the runs of the folder's logs were given and
   how often they called each: run it after a Claude Code update to keep the block list (`$UnusedTools`) right.
-- **Usage:** per account in the PC's `usage.json` (Settings, The PC's files), from the runs' logs. When it is older than 30 minutes, the script reads
-  it again with a one-word Haiku request with no tools or settings and a one-line system prompt, about 900 tokens, the same as the
-  page's Ping (`$BareRequestArgs` in [limits.ps1](../limits.ps1)). That reading is the account's, so the front desk's and the owner's own use
+- **Usage:** per account in the PC's `usage.json` (Settings, The PC's files), from the runs' logs. When it is older
+  than 30 minutes, the script reads it again with a one-word Haiku request with no tools or settings and a one-line
+  system prompt, about 900 tokens, the same as the page's Ping (`$BareRequestArgs` in [limits.ps1](../limits.ps1)).
+  That reading is the account's, so the front desk's and the owner's own use
   count too. Each reading keeps the login's email; when a login folder is signed in to another account, its reading
   counts as none. A save keeps each window from the stored reading where that one is further on (a later reset, or the
   same reset and a higher share): a run that waits on a long task has only an old event in its log.

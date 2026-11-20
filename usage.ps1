@@ -6,6 +6,7 @@
 # The user lines are never parsed: they hold the tool results, the large part of a log. A result line starts with
 # another key in newer Claude Code ({"duration_api_ms"...), so it is found by its type. advisorCost is the result's cost
 # of each model other than the run's own (the init line's model): the whole session's, the part before a pause too.
+# An advisor of the run's own model has no cost of its own in the result: advisorCost is then 0.
 # A line Windows PowerShell cannot parse (keys that differ only in case) is left out.
 function Get-RunNumbers([string] $text) {
     $context = [ordered]@{}
