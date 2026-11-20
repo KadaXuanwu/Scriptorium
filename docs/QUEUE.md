@@ -95,7 +95,13 @@ More rules:
   checkpoint (The usage limit).
 - **History:** `.queue/history.jsonl` keeps the dollar cost of every run (a resumed run's less the part before its
   pause) and its rise in each window, from its log's first and last usage reading. The page shows typical times and
-  costs from it; the dispatcher does not read it.
+  costs from it; the dispatcher does not read it. Each line also has the run's numbers from its log
+  ([usage.ps1](../usage.ps1)): `requests`, `toolCalls`, `first` (the tokens of the first request), `ctxMean` and
+  `ctxMax` (the context), `read` and `write` (tokens from and to the cache), `compactions`, `advisorCalls` and
+  `advisorCost` (the dollars of the advisor's model; a resumed run's less the part before its pause, which `paused.json`
+  keeps as `AdvisorCost`). [report.ps1](../report.ps1) `-Project <main>` prints their medians for each complexity and
+  model, of the whole-ticket runs. `-Logs <folder>` prints the tools that the runs of the folder's logs were given and
+  how often they called each: run it after a Claude Code update to keep the block list (`$UnusedTools`) right.
 - **Usage:** per account in the PC's `usage.json` (Settings, The PC's files), from the runs' logs. When it is older than 30 minutes, the script reads
   it again with a one-word Haiku request. That reading is the account's, so the front desk's and the owner's own use
   count too. Each reading keeps the login's email; when a login folder is signed in to another account, its reading

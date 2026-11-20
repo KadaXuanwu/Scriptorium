@@ -20,6 +20,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'restart.ps1')
 . (Join-Path $PSScriptRoot 'areas.ps1')
 . (Join-Path $PSScriptRoot 'comments.ps1')
+. (Join-Path $PSScriptRoot 'usage.ps1')
 
 $Project = Resolve-Project $Project
 $config = Read-Project $Project
@@ -1060,8 +1061,9 @@ function Update-Usage([string] $log, [string] $account) {
 # Every run's cost: in dollars (the log's result, less $costBefore: a resumed session's result counts the part before
 # its pause again) and per window from its first and last usage readings, a window that reset meanwhile left out. A run
 # that isn't a whole ticket (partial: paused, resumed, answers, rebase) counts toward the account's spending but not
-# toward ticket estimates.
-function Add-History($job, [string] $account, [string] $model, [string] $text, [bool] $partial, [long] $startedAt, [double] $costBefore) {
+# toward ticket estimates. $numbers (usage.ps1, Get-RunNumbers; none if the log could not be read) become more fields
+# of the line, for report.ps1; the page reads the lines as objects and ignores them.
+function Add-History($job, [string] $account, [string] $model, [string] $text, [bool] $partial, [long] $startedAt, [double] $costBefore, $numbers) {
     $start = Get-Usage $text -First
     $end = Get-Usage $text
     if (-not $start -or -not $end) {
@@ -1083,6 +1085,11 @@ function Add-History($job, [string] $account, [string] $model, [string] $text, [
     foreach ($window in $windows) {
         if ($start.$window -and $end.$window -and $start.$window.resetsAt -eq $end.$window.resetsAt) {
             $run[$window] = [math]::Max(0.0, [double]$end.$window.used - [double]$start.$window.used)
+        }
+    }
+    if ($numbers) {
+        foreach ($key in $numbers.Keys) {
+            $run[$key] = $numbers[$key]
         }
     }
     Add-Content $historyFile ($run | ConvertTo-Json -Compress) -Encoding utf8
@@ -1308,6 +1315,20 @@ function Invoke-Worker($job, [string] $log, $paused) {
     # A resumed session's result holds its whole cost, the part before the pause too.
     $costBefore = if ($paused -and $paused.Session -and $paused.Cost) { [double]$paused.Cost } else { 0.0 }
     $cost = $costBefore
+    # The same for its advisor's cost, the session's so far kept beside Cost (Suspend-Job). The run's numbers for the
+    # history: a log they cannot be read from loses only them, never the run's end.
+    $advisorBefore = if ($paused -and $paused.Session -and $paused.AdvisorCost) { [double]$paused.AdvisorCost } else { 0.0 }
+    $advisorCost = $advisorBefore
+    $numbers = $null
+    try {
+        $numbers = Get-RunNumbers $text
+        $advisorCost = [math]::Max($advisorBefore, $numbers.advisorCost)
+        # shortcut: a session that goes on with another model after the Fable limit counts its earlier Fable cost as
+        # the advisor's. Its lines are partial and the report leaves them out; keep the cost by model if it needs them.
+        $numbers.advisorCost = [math]::Max(0.0, $numbers.advisorCost - $advisorBefore)
+    } catch {
+        Write-Log "run numbers error: $_"
+    }
     $resultLine = ($text -split "`n") | Where-Object { $_ -like '*"type":"result"*' } | Select-Object -Last 1
     if ($resultLine) {
         $result = $resultLine | ConvertFrom-Json
@@ -1356,7 +1377,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     $stopped = $hold -eq 'pause' -and [bool]$session
     if (-not $modelRefused) {
         $partial = $limited -or $fableOut -or [bool]$refusal -or $atLimit -or $stopped -or $freed -or [bool]$paused -or $job.Kind -ne 'ticket'
-        Add-History $job $account $model $text $partial $runStartedAt $costBefore
+        Add-History $job $account $model $text $partial $runStartedAt $costBefore $numbers
     }
     # Not after a stop note the owner withdrew: that run resumes at once, with its cache still warm.
     if ($session -and ($atLimit -or ($stopped -and (Test-Path $stopFile)))) {
@@ -1377,6 +1398,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
         LoggedOut = $false
         Session = $session
         Cost = $cost
+        AdvisorCost = $advisorCost
         Usage = $usage
         Model = $model
         Effort = $effort
@@ -1402,6 +1424,7 @@ function Suspend-Job($job, $end) {
     }
     @{
         Kind = $job.Kind; Ticket = $job.Ticket; Title = $job.Title; Pr = $job.Pr; Repo = (Get-JobRepo $job); Size = $job.Size; Complexity = $job.Complexity; Session = $end.Session; Cost = $end.Cost
+        AdvisorCost = $end.AdvisorCost
         Model = $end.Model; Effort = $end.Effort; Advisor = [string]$end.Advisor; ConfigDir = $end.ConfigDir; ResetsAt = $resetsAt; LoggedOut = [bool]$end.LoggedOut
         AtLimit = [bool]$end.AtLimit; Stopped = [bool]$end.Stopped; FableOut = [bool]$end.FableOut
         # The time worked so far, so the queue app's progress goes on from here after the resume.
