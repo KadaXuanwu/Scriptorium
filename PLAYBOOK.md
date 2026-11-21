@@ -33,8 +33,8 @@ one of two kinds:
   can be built without the answer: push the branch, comment the question on the ticket (the options and what each
   changes), run `gh issue edit <N> --add-label needs-owner`, and stop.
 
-**The owner's pick** and **Pictures:** every question, of either kind and also a follow-up's, starts with a banner
-picture. Before you build a new look (an icon, an effect, a layout) or write a question, read `PLAYBOOK-pictures.md`.
+**The owner's pick** and **Pictures:** before you build a new look (an icon, an effect, a layout) or write a question
+(each starts with a banner picture), read `PLAYBOOK-pictures.md`.
 
 **Writing.** Comments, questions, PR bodies, follow-up tickets and commit messages follow the style of the project's
 `CLAUDE.md`, with its terms.
@@ -124,8 +124,8 @@ the script resumes the same session after the reset.
    - **Decision:** only when you hold it: one line, at most 25 words, the choice the owner makes and its default
      (`**Decision:** May a user delete a shared file? Default: no.`), never a workflow choice. The page shows this line
      on the card and folds the Held questions away.
-   - **Held questions:** the banner picture's line (`PLAYBOOK-pictures.md`), then the blocking questions, each with the
-     default and what changes with the answer; or None.
+   - **Held questions:** the banner's line, then the blocking questions, each with the default and what changes with
+     the answer; or None.
    - **Verified:** which checks, and the test count.
    - **Model:** the model and effort the run started with (the job names them).
    - `## Open questions`: the open questions (What to ask), one `###` each, or None. When the PR merges, the merger files
@@ -136,8 +136,8 @@ the script resumes the same session after the reset.
      ```
      ### <title: the decision, in the product's words>
      **Summary:** one sentence the owner reads on a phone: the question.
-     **Questions:** the banner picture's line (`PLAYBOOK-pictures.md`), then numbered: the question, the default
-     built, the other choices and what each changes.
+     **Questions:** the banner's line, then numbered: the question, the default built, the other choices and what each
+     changes.
      **Where:** where the default lives: files, config fields, tests (linked). A changed answer starts here.
      ```
 

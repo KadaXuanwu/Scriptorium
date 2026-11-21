@@ -150,7 +150,7 @@ while ($true) {
                     Where-Object { ([string]$_.body).StartsWith($bannerNote) })) {
                 # The banner gate (PLAYBOOK-pictures.md): back to its worker, once. A PR that already has this comment
                 # merges as it is, so a run that cannot take a picture never stalls the queue.
-                & gh pr comment $pr.number --body (ConvertTo-NativeArg "$bannerNote $($bare -join '; '). Put the banner's line first under its Questions (PLAYBOOK-pictures.md), then remove ``answered``. If no picture can be taken, reply why.") -R $where | Out-Null
+                & gh pr comment $pr.number --body (ConvertTo-NativeArg "$bannerNote $($bare -join '; '). Add it (PLAYBOOK-pictures.md, Banner), or reply why none can be taken.") -R $where | Out-Null
                 & gh pr edit $pr.number --add-label answered -R $where | Out-Null
                 Add-Content $log "$(Get-Date -Format s) no banner, answered $where#$($pr.number)" -Encoding utf8
                 $changed = $true

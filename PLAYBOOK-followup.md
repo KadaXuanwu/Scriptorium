@@ -35,8 +35,8 @@ merger makes a new one. Without this line, the follow-up keeps this ticket's are
 **Scope:** what it includes and what it leaves out.
 **Done when:** a check the next run can do itself, with numbers.
 **Decisions:** this ticket's rules that still apply, or None.
-**Questions:** the banner picture's line (`PLAYBOOK-pictures.md`), then what only the owner can decide, numbered: the
-question, the default the next run takes, the other choices and what each changes. Or None (Ask or queue).
+**Questions:** the banner's line (`PLAYBOOK-pictures.md`), then what only the owner can decide, numbered: the question,
+the default the next run takes, the other choices and what each changes. Or None (Ask or queue).
 ```
 
 The page shows the owner the Summary and the Questions as one question, the rest folded. The answer arrives as a
