@@ -148,6 +148,9 @@ it.
 Setup adds `scriptorium.json`, the ticket skill, the GitHub labels, one worker and the logon tasks, then prints the
 page address and the ntfy topic. Add `-WhatIf` to preview. It is safe to run again.
 
+To add another project, run step 3 with its folder; it joins the same page. Only setup and uninstall add or remove a
+project, not the page.
+
 Or paste [PROMPT.md](PROMPT.md) into Claude Code in your project.
 
 Then open the page, add workers and accounts, and file your first ticket.
