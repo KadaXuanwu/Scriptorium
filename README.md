@@ -37,7 +37,8 @@ It works on any git repo on GitHub. Plugins add an environment, for example
 - A run asks you only product decisions (rules, looks, what a user sees) and builds a default for the rest.
 - A blocking question holds the work; an open one merges on its default, which you can change later.
 - Every question comes with a screenshot of what it is about; one about a look, with a screenshot of each choice.
-- Comment on a ticket or pull request and the run reads it at its next checkpoint.
+- Comment on a ticket or pull request and the run reads it at its next checkpoint. Only comments from people with
+  write access count, so strangers on a public repo cannot steer a run.
 
 ### The page
 

@@ -2,10 +2,14 @@
 # the worker script (a note in the run's queue folder). Dot-sourced by merge.ps1 and worker.ps1, checked by
 # comments.test.ps1.
 
-# Of a ticket's or PR's comments (the GitHub API's objects), the owner's a run hasn't marked read (👀): anything
-# not starting **Worker.
+# Who may steer a run: people with write access to the repo. A stranger's comment on a public repo is never read.
+$TrustedAuthors = @('OWNER', 'MEMBER', 'COLLABORATOR')
+
+# Of a ticket's or PR's comments (the GitHub API's objects), the owner's a run hasn't marked read (👀): a trusted
+# author's, not starting **Worker.
 function Select-Unread($comments) {
-    return @($comments | Where-Object { -not ([string]$_.body).StartsWith('**Worker') -and $_.reactions.eyes -eq 0 })
+    return @($comments | Where-Object { $TrustedAuthors -contains $_.author_association -and
+        -not ([string]$_.body).StartsWith('**Worker') -and $_.reactions.eyes -eq 0 })
 }
 
 function Get-UnreadCount([int] $number, [string] $slug) {
