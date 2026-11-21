@@ -22,5 +22,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Parse every .ps1 and run every *.test.ps1 in ${{ matrix.shell }}
-        shell: ${{ matrix.shell }}
+        shell: pwsh
         run: ${{ matrix.shell }} -NoProfile -ExecutionPolicy Bypass -File check.ps1
