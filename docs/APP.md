@@ -54,6 +54,10 @@ click elsewhere saves, Escape keeps the name. A worker's name is the page's only
 stays with a move); an empty one gives back "Worker N". Comments, pushes and dialogs keep the number, which the card's
 square shows. An account's name changes the same way (Accounts).
 
+**Order.** A press on a card's empty space (not on a control or on text) and a drag move the card among the others:
+with a mouse at once, on a touch screen after a short hold. The order is kept on the device, not in the settings; a
+new worker goes last, after the others in the order of their numbers. Account cards move the same way.
+
 **Worker status.** A worker has one of three statuses, on a switch that is always clickable:
 
 | Status | Means |
@@ -309,7 +313,7 @@ server first, and the server says yes only to the pages of this PC's projects (P
 One page shows every project that Scriptorium runs on the PC, with no switch between them. Each project keeps its own
 queue and page server ([README.md](../README.md), Limits); the page loads them all and shows them together.
 
-- **Workers:** the workers of every project stand side by side, in the order of their numbers.
+- **Workers:** the workers of every project stand side by side, in the owner's order (Workers, Order).
 - **Questions, Queue and History:** one list of every project. In the Queue a project's own order stays, and between
   the projects the priority decides. Every tab has the same select at the right end of the title's line: All and each
   project, on Workers, Questions, Queue and History with its count of workers, questions, queued tickets or merged PRs.

@@ -36,9 +36,12 @@ const rowOf = (s, number) => [...s.queued, ...s.parked].find((row) => row.number
 // Redraws a list only when it changed and holds no field in use, so typing, the phone keyboard and open folds
 // survive the 5 s refresh.
 const drawn = new WeakMap();
+// A card being moved (Reorder, below): its list waits for the drop.
+let drag = null;
 function put(el, html) {
   const active = document.activeElement;
   if (el.contains(active) && active.matches('textarea, select, input')) return;
+  if (drag && el.contains(drag.card)) return;
   if (drawn.get(el) === html) return;
   const open = [...el.querySelectorAll('details[open][data-key]')].map((d) => d.dataset.key);
   el.innerHTML = html;
@@ -292,7 +295,7 @@ function workerCard(worker) {
       names.map((p) => `<option${p === scope ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select>` : '';
 
   const card = `worker:${worker.id}`;
-  return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}"${busyAttr(card)}>
+  return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}" data-card="${esc(`${scope}|${worker.id}`)}"${busyAttr(card)}>
     <div class="worker-head"><span class="avatar">${id}</span><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}</strong>
       <span class="doing ${tone}">${icon(glyph)}${words}</span></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
@@ -525,7 +528,7 @@ function accountCard(a) {
   const buttons = a.status === 'signedout' ? [`<button class="primary" data-login="${name}">Sign in</button>`] : [];
   if (a.signedIn) buttons.push(`<button data-ping="${name}" title="Starts its 5-hour window now (about 770 tokens)">Ping</button>`);
   const card = `account:${a.name}`;
-  return `<article class="card account ${tone}${busyClass(card)}"${busyAttr(card)}>
+  return `<article class="card account ${tone}${busyClass(card)}" data-card="${name}"${busyAttr(card)}>
     <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
       <span class="chip ${tone}">${icon(glyph)}${words}</span>${cross('account', a.name, a.name)}</div>
     <div class="meta"><span class="email">${esc(a.signedIn ? a.email || '' : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${out}</div>
@@ -705,13 +708,25 @@ const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(va
 const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
 let shownOf = kept('scriptorium-queue') || '';
 
+// The owner's order of the worker and account cards (dragged on the page, kept on the device). A card not in it goes
+// after the others: workers in the order of their numbers, accounts in the settings' order.
+const order = kept('scriptorium-order') || {};
+const placeIn = (kind, a, b) => {
+  const list = order[kind] || [];
+  const [i, j] = [list.indexOf(a), list.indexOf(b)];
+  return (i < 0) - (j < 0) || i - j;
+};
+const workerKey = ({ p, item }) => `${p}|${item.id}`;
+const workersInOrder = () => all('workers').sort((a, b) => placeIn('workers', workerKey(a), workerKey(b)) || a.item.id - b.item.id || a.p.localeCompare(b.p));
+const accountsInOrder = () => [...states[home].accounts].sort((a, b) => placeIn('accounts', a.name, b.name));
+
 function render() {
   const s = states[home];
   const questions = all('questions');
   const blocking = questions.filter(({ item }) => item.blocking);
   const open = questions.filter(({ item }) => !item.blocking);
-  // The workers side by side, in the order of their numbers.
-  const workers = all('workers').sort((a, b) => a.item.id - b.item.id || a.p.localeCompare(b.p));
+  // The workers side by side, in the owner's order.
+  const workers = workersInOrder();
   const working = workers.filter(({ item }) => item.activity === 'running').length;
   const stuck = all('stuck');
   const loaded = names.every((p) => states[p].github);
@@ -783,7 +798,7 @@ function render() {
   const code = $('login-code')?.value || '';
   within(home, () => {
     put($('login-box'), loginBox(s.login));
-    put($('account-list'), (s.accounts.map((a) => tagged(home, accountCard(a))).join('') || quiet('No accounts in the settings.')) + addTile('account', 'Add an account'));
+    put($('account-list'), (accountsInOrder().map((a) => tagged(home, accountCard(a))).join('') || quiet('No accounts in the settings.')) + addTile('account', 'Add an account'));
   });
   if (code && $('login-code')) $('login-code').value = code;
 
@@ -1457,8 +1472,67 @@ for (const type of ['pointerup', 'pointercancel']) {
   document.addEventListener(type, (e) => {
     document.querySelector('input.held')?.classList.remove('held');
     if (hold && e.pointerId === hold.id) release();
+    if (drag && e.pointerId === drag.id) endDrag(e.type === 'pointerup');
   });
 }
+
+// Reorder: a worker's or an account's card moves when held on its empty space (not on a control, a meter or text) and
+// dragged, with a mouse at once, on a touch screen after a hold, as a slider. Letting go keeps the order on the device.
+function cardToDrag(target) {
+  const card = target.closest?.('#worker-list > [data-card], #account-list > [data-card]');
+  if (!card || card.inert || target.closest('a, button, select, input, textarea, label, [data-rename], .meter')) return null;
+  // Text stays selectable: only a part with no text of its own starts a drag.
+  return [...target.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim()) ? null : card;
+}
+function armDrag() {
+  if (!drag.card.isConnected) return endDrag(false);
+  drag.armed = true;
+  getSelection().removeAllRanges();
+  drag.card.classList.add('dragging');
+  document.documentElement.classList.add('dragging-cards');
+  if (drag.touch) navigator.vibrate?.(10);
+}
+function endDrag(drop) {
+  clearTimeout(drag.timer);
+  const { card, list, armed } = drag;
+  drag = null;
+  if (!armed) return;
+  card.classList.remove('dragging');
+  document.documentElement.classList.remove('dragging-cards');
+  if (drop) {
+    const kind = list.id === 'worker-list' ? 'workers' : 'accounts';
+    const full = kind === 'workers' ? workersInOrder().map(workerKey) : accountsInOrder().map((a) => a.name);
+    const moved = [...list.querySelectorAll(':scope > [data-card]')].map((c) => c.dataset.card).filter((k) => full.includes(k));
+    // The cards the project select hides keep their places: the shown ones fill the places the shown ones had.
+    const shownKeys = new Set(moved);
+    let i = 0;
+    order[kind] = full.map((k) => (shownKeys.has(k) ? moved[i++] : k));
+    keep('scriptorium-order', order);
+  }
+  drawn.delete(list);
+  render();
+}
+document.addEventListener('pointerdown', (e) => {
+  if (hold || drag || e.button !== 0) return;
+  const card = cardToDrag(e.target);
+  if (!card) return;
+  drag = { card, list: card.parentElement, id: e.pointerId, x: e.clientX, y: e.clientY, armed: false, touch: e.pointerType !== 'mouse' };
+  if (drag.touch) drag.timer = setTimeout(armDrag, holdMs);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  if (!drag.armed) {
+    if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) <= 8) return;
+    // A finger that moved before the hold was over scrolls.
+    if (drag.touch) return endDrag(false);
+    armDrag();
+    if (!drag) return;
+  }
+  const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-card]');
+  if (!over || over === drag.card || over.parentElement !== drag.list) return;
+  if (drag.card.compareDocumentPosition(over) & Node.DOCUMENT_POSITION_FOLLOWING) over.after(drag.card);
+  else over.before(drag.card);
+});
 // Pull down to refresh, as in a phone app: with the list at its top, a drag down brings a mark from the top edge, and
 // letting go past the line loads the page again (new code and a fresh state). The page itself never scrolls (its
 // panes do), so the browser's own pull to refresh cannot work here.
@@ -1489,7 +1563,7 @@ document.addEventListener('touchmove', (e) => {
   const dx = e.touches[0].clientX - pull.x;
   const dy = e.touches[0].clientY - pull.y;
   // A slider in the hand, a second finger, or a drag up or to the side: not a pull.
-  if (hold?.armed || e.touches.length !== 1 || dy < 0 || (!pull.by && Math.abs(dx) > Math.abs(dy))) {
+  if (hold?.armed || drag?.armed || e.touches.length !== 1 || dy < 0 || (!pull.by && Math.abs(dx) > Math.abs(dy))) {
     endPull();
     return;
   }
@@ -1502,9 +1576,9 @@ document.addEventListener('touchmove', (e) => {
 document.addEventListener('touchend', endPull);
 document.addEventListener('touchcancel', endPull);
 
-// An armed slider holds the page still, and a long hold opens no menu.
-document.addEventListener('touchmove', (e) => { if (hold?.armed) e.preventDefault(); }, { passive: false });
-document.addEventListener('contextmenu', (e) => { if (hold) e.preventDefault(); });
+// An armed slider or card holds the page still, and a long hold opens no menu.
+document.addEventListener('touchmove', (e) => { if (hold?.armed || drag?.armed) e.preventDefault(); }, { passive: false });
+document.addEventListener('contextmenu', (e) => { if (hold || drag) e.preventDefault(); });
 
 document.addEventListener('change', async (e) => {
   const data = e.target.dataset;
