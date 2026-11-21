@@ -2,9 +2,12 @@
 # account register with its lines and guards, each worker's own entry (a worker's number is the PC's), and the
 # accounts' usage, out and access records. Dot-sourced through project.ps1; only definitions.
 
-# The folder, one for the Windows user. A test sets another before it loads this file: a folder that is set stays.
+. (Join-Path $PSScriptRoot 'platform.ps1')
+
+# The folder, one for the PC's user: %LOCALAPPDATA% on Windows, ~/Library/Application Support on macOS, ~/.local/share
+# on Linux. A test sets another before it loads this file: a folder that is set stays.
 if (-not $PcDir) {
-    $PcDir = Join-Path $env:LOCALAPPDATA 'Scriptorium'
+    $PcDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Scriptorium'
 }
 # The keys of the settings that are the PC's. Every other key is the project's own.
 $PcKeys = @('accounts', 'keep', 'workers')
@@ -178,7 +181,7 @@ function Test-PcKeys($own) {
 # A script from before the PC's files that still runs (a run in progress ends on its old code) reads the project's
 # file without them from then on: default lines and the command-line login, until it restarts.
 function Move-PcSettings([string] $main) {
-    $file = Join-Path $main '.queue\settings.json'
+    $file = Join-Path $main '.queue/settings.json'
     $lock = Enter-PcLock 'Settings'
     try {
         $own = Read-JsonFile $file
@@ -200,14 +203,14 @@ function Move-PcSettings([string] $main) {
 # Fable run reads the Fable week), a refused model. A record that does not parse is dropped: each is read again at no
 # cost.
 function Move-PcRecords([string] $main) {
-    $found = @($PcRecords | Where-Object { Test-Path (Join-Path $main ".queue\$_") })
+    $found = @($PcRecords | Where-Object { Test-Path (Join-Path $main ".queue/$_") })
     if (-not $found.Count) {
         return
     }
     $lock = Enter-PcLock 'Usage'
     try {
         foreach ($name in $found) {
-            $from = Join-Path $main ".queue\$name"
+            $from = Join-Path $main ".queue/$name"
             $to = Join-Path $PcDir $name
             $old = $null
             $pc = $null
@@ -253,7 +256,7 @@ function Initialize-Pc([string] $main) {
 # applies from the next. $null when neither file is there. PC keys that the project's file holds move to the PC's
 # file first.
 function Read-ProjectSettings([string] $main) {
-    $file = Join-Path $main '.queue\settings.json'
+    $file = Join-Path $main '.queue/settings.json'
     $own = Read-JsonFile $file
     if (Test-PcKeys $own) {
         Move-PcSettings $main
@@ -282,5 +285,5 @@ function Save-ProjectSettings([string] $main, $settings) {
         Set-JsonProperty $(if ($PcKeys -contains $property.Name) { $pc } else { $own }) $property.Name $property.Value
     }
     Save-JsonFile (Join-Path $PcDir 'settings.json') $pc
-    Save-JsonFile (Join-Path $main '.queue\settings.json') $own
+    Save-JsonFile (Join-Path $main '.queue/settings.json') $own
 }

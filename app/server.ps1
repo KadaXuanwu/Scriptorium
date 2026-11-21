@@ -12,8 +12,8 @@ $ErrorActionPreference = 'Stop'
 # gh writes UTF-8; Windows PowerShell would read it in the console's old code page and garble titles.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot 'state.ps1')
-. (Join-Path $PSScriptRoot '..\restart.ps1')
-. (Join-Path $PSScriptRoot '..\tasks.ps1')
+. (Join-Path $PSScriptRoot '../restart.ps1')
+. (Join-Path $PSScriptRoot '../tasks.ps1')
 
 $Main = Resolve-Project $Project
 $config = Read-Project $Main
@@ -22,7 +22,7 @@ $plugins = @()
 try {
     $plugins = Import-Plugins (Split-Path $PSScriptRoot -Parent) $config
 } catch {
-    Add-Content (Join-Path $Main '.queue\app.log') "$(Get-Date -Format s) plugins: $_" -Encoding utf8
+    Add-Content (Join-Path $Main '.queue/app.log') "$(Get-Date -Format s) plugins: $_" -Encoding utf8
 }
 Start-CodeWatch (@((Join-Path $Main 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }))
 if (-not $Port) {
@@ -30,9 +30,9 @@ if (-not $Port) {
 }
 
 # One server per project: stopping the task ends only its console host, so an older loop may still run. End it.
-Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+Get-CommandLines -Shells |
     Where-Object { $_.ProcessId -ne $PID -and (Test-ProjectProcess $_.CommandLine 'server.ps1' $Main) } |
-    ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
+    ForEach-Object { Stop-ProcessTree $_.ProcessId }
 
 $mainQueue = Join-Path $Main '.queue'
 $web = Join-Path $PSScriptRoot 'web'
@@ -133,9 +133,8 @@ function Read-Runs {
 
 # A login's state from its files, no process started: signed in (a refresh token), its plan and its email.
 function Get-LoginInfo([string] $configDir) {
-    $dir = if ($configDir) { $configDir } else { Join-Path $HOME '.claude' }
     $profileFile = if ($configDir) { Join-Path $configDir '.claude.json' } else { Join-Path $HOME '.claude.json' }
-    $credentials = Read-Json (Join-Path $dir '.credentials.json')
+    $credentials = Read-Credentials $configDir
     $info = @{ signedIn = [bool]($credentials -and $credentials.claudeAiOauth -and $credentials.claudeAiOauth.refreshToken) }
     if ($info.signedIn) {
         $info.plan = Get-PlanName $credentials
@@ -158,9 +157,15 @@ function Start-Login([string] $name, [string] $configDir, [string] $email) {
     $out = Join-Path $mainQueue 'login.txt'
     Remove-Item $out -ErrorAction SilentlyContinue
     $info = New-Object System.Diagnostics.ProcessStartInfo
-    $info.FileName = $env:ComSpec
     $emailArg = if ($email) { " --email `"$email`"" } else { '' }
-    $info.Arguments = "/c claude auth login$emailArg > `"$out`" 2>&1"
+    if ($OnWindows) {
+        $info.FileName = $env:ComSpec
+        $info.Arguments = "/c claude auth login$emailArg > `"$out`" 2>&1"
+    } else {
+        $info.FileName = '/bin/sh'
+        $info.ArgumentList.Add('-c')
+        $info.ArgumentList.Add("claude auth login$emailArg > '$out' 2>&1")
+    }
     $info.UseShellExecute = $false
     $info.RedirectStandardInput = $true
     $info.CreateNoWindow = $true
@@ -176,7 +181,7 @@ function Start-Login([string] $name, [string] $configDir, [string] $email) {
 
 function Stop-Login {
     if ($script:login -and -not $script:login.process.HasExited) {
-        & taskkill /T /F /PID $script:login.process.Id | Out-Null
+        Stop-ProcessTree $script:login.process.Id
     }
     $script:login = $null
 }
@@ -271,10 +276,10 @@ function Set-Enabled([string] $worker, [bool] $enabled) {
 # Ends a worker's run now: the process started with its clone's MCP config, and its children. Work since the run's
 # last checkpoint push is lost.
 function Stop-Run([string] $worker, $state) {
-    $mcp = (Join-Path (Get-Clone $worker $state) '.queue\mcp.json').ToLowerInvariant()
-    $runs = @(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($mcp) })
+    $mcp = (Join-Path (Get-Clone $worker $state) '.queue/mcp.json').ToLowerInvariant()
+    $runs = @(Get-CommandLines | Where-Object { $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($mcp) })
     foreach ($run in $runs) {
-        & taskkill /T /F /PID $run.ProcessId | Out-Null
+        Stop-ProcessTree $run.ProcessId
     }
     return $runs.Count
 }
@@ -330,7 +335,7 @@ $script:deletes = @()
 $script:note = ''
 
 function Start-CopyDelete([string] $folder) {
-    $job = Start-Job -ArgumentList (Join-Path $PSScriptRoot '..\tasks.ps1'), $folder -ScriptBlock {
+    $job = Start-Job -ArgumentList (Join-Path $PSScriptRoot '../tasks.ps1'), $folder -ScriptBlock {
         param([string] $tasks, [string] $folder)
         . $tasks
         Remove-Tree $folder
@@ -369,7 +374,7 @@ function Update-Snapshot {
         $workers += @{
             id = $id; state = $state; forced = Test-Path (Join-Path $mainQueue "force-$id.json")
             now = Read-Now (Join-Path $mainQueue "force-$id.json")
-            progress = Read-Json (Join-Path $clone '.queue\progress.json')
+            progress = Read-Json (Join-Path $clone '.queue/progress.json')
         }
     }
     # A worker marked to disable after its ticket, whose run has ended: disable it now.
@@ -587,7 +592,7 @@ function Invoke-Action($request) {
             # account the owner picked ('' for the command-line login). A number is the PC's, not the project's: the
             # worker tasks of every project count. Its card shows at once; its clone, label and task come from a job.
             $taken = @(Get-ChildItem (Join-Path $mainQueue 'worker-*.json') | ForEach-Object { $_.BaseName.Substring(7) }) +
-                @(Get-ScheduledTask -TaskName (Get-WorkerTaskName '*' '*') -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName.Split(' ')[-1] })
+                @(Get-QueueTasks (Get-WorkerTaskName '*' '*') | ForEach-Object { $_.TaskName.Split(' ')[-1] })
             $id = Get-FreeWorkerId $taken
             $account = [string]$request.account
             Save-Settings (Set-WorkerEntry (Read-SettingsToEdit) $id $true $account)
@@ -596,7 +601,7 @@ function Invoke-Action($request) {
             Remove-Item (Join-Path $mainQueue "force-$id.json") -ErrorAction SilentlyContinue
             Write-Setup $id 'setup' ''
             $script:setups[$id] = @{ at = Get-Now
-                job = Start-Job -ScriptBlock $installWorker -ArgumentList (Join-Path $PSScriptRoot '..\tasks.ps1'), $Main, $config.name, $slug, $id }
+                job = Start-Job -ScriptBlock $installWorker -ArgumentList (Join-Path $PSScriptRoot '../tasks.ps1'), $Main, $config.name, $slug, $id }
             return "adding worker $id on $(if ($account) { $account } else { 'the command-line login' })"
         }
         'remove-worker' {
@@ -657,7 +662,7 @@ function Invoke-Action($request) {
             # As Remove counts a script alive: after the PC wakes, a state is old though its run goes on.
             $fresh = (Get-Now) - [math]::Max([long]$state.at, [long]$script:awake) -le $StaleSeconds
             $marked = [bool]($oldControl -and $oldControl.disable -and $oldControl.disable.$worker)
-            $refusal = Get-MoveRefusal $state $fresh (Test-Path (Join-Path $copy '.queue\paused.json')) $marked
+            $refusal = Get-MoveRefusal $state $fresh (Test-Path (Join-Path $copy '.queue/paused.json')) $marked
             if ($refusal) {
                 throw "worker ${worker}: $refusal"
             }
@@ -688,7 +693,7 @@ function Invoke-Action($request) {
                 throw
             }
             $script:setups[$worker] = @{ at = Get-Now; job = Start-Job -ScriptBlock $installWorker `
-                -ArgumentList (Join-Path $PSScriptRoot '..\tasks.ps1'), $Main, $config.name, $slug, $worker }
+                -ArgumentList (Join-Path $PSScriptRoot '../tasks.ps1'), $Main, $config.name, $slug, $worker }
             # The owner's tick: its copy of the old project goes, now that the worker has left it.
             return "worker $worker comes from $from, $status$(if ($request.deleteCopy -eq $true) { Remove-Copy $old.main $worker })"
         }
@@ -804,7 +809,7 @@ function Invoke-Action($request) {
                 Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue
             }
             # The temp folder has no CLAUDE.md for the CLI to find.
-            Push-Location $env:TEMP
+            Push-Location ([IO.Path]::GetTempPath())
             try {
                 & claude -p . @BareRequestArgs | Out-Null
                 if ($LASTEXITCODE) {
@@ -987,7 +992,7 @@ $types = @{
 # .queue/shots. shortcut: a run that replaces a picture under the same name shows the old one here; key the cache by the
 # branch's commit if runs start to do that. The fetch runs in the request, so a first view waits for GitHub (15 s at most).
 function Get-Shot([string] $branch, [string] $name) {
-    $file = Join-Path $mainQueue "shots\$branch\$name"
+    $file = Join-Path $mainQueue "shots/$branch/$name"
     if (-not (Test-Path $file)) {
         if (-not $script:ghToken) {
             $script:ghToken = [string](& gh auth token)
@@ -1059,7 +1064,7 @@ function Invoke-Request($context) {
         $id = [string]$request.QueryString['worker']
         $state = Read-Json (Join-Path $mainQueue "worker-$id.json")
         $log = if ($state -and $state.log) { $state.log } elseif ($state) {
-            (Get-ChildItem (Join-Path (Get-Clone $id $state) '.queue\logs\*.jsonl') -ErrorAction SilentlyContinue |
+            (Get-ChildItem (Join-Path (Get-Clone $id $state) '.queue/logs/*.jsonl') -ErrorAction SilentlyContinue |
                 Sort-Object LastWriteTime | Select-Object -Last 1).FullName
         }
         Send-Json $context 200 (@{ log = $log; steps = @(Get-Steps $log 40) } | ConvertTo-Json -Depth 4 -Compress)

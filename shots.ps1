@@ -19,12 +19,20 @@ function Invoke-Git {
     return $out
 }
 
-Add-Type -AssemblyName System.Drawing
+# shortcut: System.Drawing draws on Windows only (.NET 7 and later), so macOS and Linux upload the originals; use sips or
+# ImageMagick there if the page loads slowly.
+$canShrink = $env:OS -eq 'Windows_NT'
+if ($canShrink) {
+    Add-Type -AssemblyName System.Drawing
+}
 
 # A small copy of the picture in $dir, so the page loads it fast: its long side at most 1280 px for the banner (a strip
 # on the page) and 1600 px for the others (whole in the viewer), and a JPEG unless it has see-through parts. The
 # original when the copy would only be bigger.
 function Get-SmallShot([string] $path, [string] $dir) {
+    if (-not $canShrink) {
+        return $path
+    }
     $name = Split-Path $path -Leaf
     $max = if ($name -like 'banner*') { 1280 } else { 1600 }
     $resize = {

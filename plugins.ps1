@@ -12,7 +12,7 @@ function Get-PluginDir([string] $install, [string] $name, $entry) {
     if ($source -and $source -notmatch '^(https?|git|ssh)://|^git@' -and (Test-Path $source -PathType Container)) {
         return (Resolve-Path $source).Path
     }
-    return Join-Path $install "plugins\$name"
+    return Join-Path $install "plugins/$name"
 }
 
 # One plugin from its folder: its manifest, its hooks in a module of its own (so the helpers of two plugins never

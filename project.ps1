@@ -5,7 +5,7 @@
 
 # The main checkout's full path, as every task and process match writes it.
 function Resolve-Project([string] $Project) {
-    return (Resolve-Path $Project).Path.TrimEnd('\')
+    return (Resolve-Path $Project).Path.TrimEnd('\', '/')
 }
 
 # The project's scriptorium.json with its defaults: port 8770, no repos, no extra tools, no plugins. Throws for a

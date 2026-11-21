@@ -6,9 +6,21 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            shell: powershell
+          - os: windows-latest
+            shell: pwsh
+          - os: ubuntu-latest
+            shell: pwsh
+          - os: macos-latest
+            shell: pwsh
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Parse every .ps1 and run every *.test.ps1 in Windows PowerShell
-        shell: powershell
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File check.ps1
+      - name: Parse every .ps1 and run every *.test.ps1 in ${{ matrix.shell }}
+        shell: ${{ matrix.shell }}
+        run: ${{ matrix.shell }} -NoProfile -ExecutionPolicy Bypass -File check.ps1

@@ -10,7 +10,7 @@ $script:watched = @()
 # script, with no list to keep.
 function Get-CodeStamp {
     $files = @(Get-ChildItem $PSScriptRoot -Recurse -Filter *.ps1 | Where-Object {
-        $_.Name -notlike '*.test.ps1' -and $_.FullName -notlike "$PSScriptRoot\plugins\*" -and $_.FullName -notlike "$PSScriptRoot\_source\*"
+        $_.Name -notlike '*.test.ps1' -and $_.FullName -notlike (Join-Path $PSScriptRoot 'plugins/*') -and $_.FullName -notlike (Join-Path $PSScriptRoot '_source/*')
     })
     foreach ($path in $script:watched) {
         if (Test-Path $path -PathType Container) {
@@ -43,10 +43,13 @@ function Send-Wake([string] $file) {
     }
 }
 
-# Through the task once this loop has ended (each task runs one instance), so the task still owns the loop.
+# Through the task once this loop has ended (each task runs one instance), so the task still owns the loop. On macOS
+# and Linux the exit code alone does it: launchd and systemd start the script again (tasks.ps1, Get-UnitText).
 function Restart-OnNewCode([string] $Task) {
-    $powershell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-    Start-Process "$env:SystemRoot\System32\conhost.exe" -ArgumentList ("--headless `"$powershell`" -NoProfile " +
+    if (-not $OnWindows) {
+        exit $RestartCode
+    }
+    Start-Process "$env:SystemRoot\System32\conhost.exe" -ArgumentList ("--headless `"$(Get-ShellPath)`" -NoProfile " +
         "-Command `"Start-Sleep 10; Start-ScheduledTask -TaskName '$Task'`"")
     exit
 }

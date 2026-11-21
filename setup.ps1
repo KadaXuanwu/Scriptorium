@@ -61,14 +61,29 @@ $checks = @()
 function Add-Check([bool] $ok, [string] $what, [string] $fix, [bool] $optional = $false) {
     $script:checks += , [pscustomobject]@{ ok = $ok; what = $what; fix = $fix; optional = $optional }
 }
-Add-Check ([Environment]::OSVersion.Platform -eq 'Win32NT') 'Windows 10 or 11' 'Scriptorium runs on Windows only'
+if ($OnWindows) {
+    Add-Check $true 'Windows' ''
+} else {
+    Add-Check ($PSVersionTable.PSVersion -ge [version]'7.4') "PowerShell 7.4 or later (this is $($PSVersionTable.PSVersion))" 'install the current PowerShell: https://aka.ms/powershell'
+}
+$install = if ($OnWindows) { 'winget install --id ' } elseif ($OnMac) { 'brew install ' } else { '' }
 $tools = [ordered]@{
-    git = 'install it: winget install --id Git.Git, then open a new terminal'
-    gh = 'install the GitHub CLI: winget install --id GitHub.cli, then open a new terminal'
-    claude = 'install Claude Code (https://claude.com/claude-code), then open a new terminal'
+    git = if ($install) { "install it: $install$(if ($OnWindows) { 'Git.Git' } else { 'git' })" } else { 'install it with your package manager, for example: sudo apt install git' }
+    gh = if ($install) { "install the GitHub CLI: $install$(if ($OnWindows) { 'GitHub.cli' } else { 'gh' })" } else { 'install the GitHub CLI: https://github.com/cli/cli#installation' }
+    claude = 'install Claude Code: https://claude.com/claude-code'
 }
 foreach ($tool in $tools.Keys) {
-    Add-Check ([bool](Get-Command $tool -ErrorAction SilentlyContinue)) "$tool on the PATH" $tools[$tool]
+    Add-Check ([bool](Get-Command $tool -ErrorAction SilentlyContinue)) "$tool on the PATH" "$($tools[$tool]), then open a new terminal"
+}
+if (-not $OnWindows -and -not $OnMac) {
+    # The workers are systemd user services. Without lingering they end when the owner logs out.
+    $ErrorActionPreference = 'Continue'
+    & systemctl --user show-environment *> $null
+    $systemd = $LASTEXITCODE -eq 0
+    $linger = [string](& loginctl show-user $env:USER --property=Linger --value 2>$null)
+    $ErrorActionPreference = 'Stop'
+    Add-Check $systemd 'systemd user services' 'run setup in a login session of a Linux with systemd'
+    Add-Check ($linger -eq 'yes') 'the workers keep running after you log out' "optional: sudo loginctl enable-linger $env:USER" $true
 }
 $ghReady = $false
 if (Get-Command gh -ErrorAction SilentlyContinue) {
@@ -81,8 +96,7 @@ if (Get-Command gh -ErrorAction SilentlyContinue) {
 if (Get-Command claude -ErrorAction SilentlyContinue) {
     # The command-line login, the one setup gives a new worker: signed in while it holds a refresh token. Only -Check
     # stops on it: a PC whose workers all run on accounts added on the page may leave it signed out.
-    $credentials = Join-Path $HOME '.claude\.credentials.json'
-    $claudeReady = (Test-Path $credentials) -and ((Get-Content $credentials -Raw) -match '"refreshToken"')
+    $claudeReady = (Get-CredentialsText '') -match '"refreshToken"'
     Add-Check $claudeReady 'Claude Code signed in' 'run claude, then /login with your Claude Pro or Max plan' (-not $Check)
 }
 $main = ''
@@ -220,11 +234,11 @@ if (-not ((Test-Path $ignore) -and (Select-String -Path $ignore -Pattern '^/?\.q
     Invoke-Step 'Add .queue/ to .gitignore' { Add-Content $ignore $line -Encoding utf8 }
     $added += '.gitignore'
 }
-$skill = Join-Path $main '.claude\skills\ticket\SKILL.md'
+$skill = Join-Path $main '.claude/skills/ticket/SKILL.md'
 if (-not (Test-Path $skill)) {
     Invoke-Step 'Add the ticket skill: .claude/skills/ticket/SKILL.md' {
         New-Item -ItemType Directory -Force (Split-Path $skill) | Out-Null
-        Copy-Item (Join-Path $PSScriptRoot 'templates\skills\ticket\SKILL.md') $skill
+        Copy-Item (Join-Path $PSScriptRoot 'templates/skills/ticket/SKILL.md') $skill
     }
     $added += '.claude/skills/ticket/SKILL.md'
 }
@@ -233,14 +247,14 @@ if (-not (Test-Path $skill)) {
 # this project on the command-line login, which is also the owner's own.
 # The project's workers: the ones it has, then new ones up to -Workers, each with the lowest number that no worker of
 # the PC has (a worker's number is the PC's).
-$ids = @(Get-ChildItem (Join-Path $main '.queue\worker-*.json') -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName.Substring(7) }) +
-    @(Get-ScheduledTask -TaskName (Get-WorkerTaskName $config.name '*') -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName.Split(' ')[-1] })
+$ids = @(Get-ChildItem (Join-Path $main '.queue/worker-*.json') -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName.Substring(7) }) +
+    @(Get-QueueTasks (Get-WorkerTaskName $config.name '*') | ForEach-Object { $_.TaskName.Split(' ')[-1] })
 $ids = @($ids | Sort-Object { [int]$_ } -Unique)
-$taken = @(Get-ScheduledTask -TaskName (Get-WorkerTaskName '*' '*') -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName.Split(' ')[-1] })
+$taken = @(Get-QueueTasks (Get-WorkerTaskName '*' '*') | ForEach-Object { $_.TaskName.Split(' ')[-1] })
 while ($ids.Count -lt $Workers) {
     $ids += Get-FreeWorkerId ($taken + $ids)
 }
-$settingsFile = Join-Path $main '.queue\settings.json'
+$settingsFile = Join-Path $main '.queue/settings.json'
 $lock = Enter-PcLock 'Settings'
 try {
     # -WhatIf changes nothing: not the move of an older project's account keys to the PC's file either.
@@ -393,8 +407,8 @@ foreach ($dir in $botDirs) {
 
 # The logon tasks: the workers, the merger and the page's server.
 $tasks = [ordered]@{
-    (Get-TaskName $config.name 'merger') = "-File `"$PSScriptRoot\merge.ps1`" $(Get-ProjectArg $main)"
-    (Get-TaskName $config.name 'app') = "-File `"$PSScriptRoot\app\server.ps1`" $(Get-ProjectArg $main)"
+    (Get-TaskName $config.name 'merger') = "-File `"$(Join-Path $PSScriptRoot 'merge.ps1')`" $(Get-ProjectArg $main)"
+    (Get-TaskName $config.name 'app') = "-File `"$(Join-Path $PSScriptRoot 'app/server.ps1')`" $(Get-ProjectArg $main)"
 }
 foreach ($i in $ids) {
     $tasks[(Get-WorkerTaskName $config.name $i)] = Get-WorkerArguments $main $i "$main-w$i"
@@ -403,7 +417,7 @@ Invoke-Step "Register the logon tasks: $($tasks.Keys -join ', ')$(if ($Start) { 
     foreach ($task in $tasks.Keys) {
         Register-QueueTask $task $tasks[$task] $main
         if ($Start) {
-            Start-ScheduledTask -TaskName $task
+            Start-QueueTask $task
         }
     }
 }

@@ -23,7 +23,7 @@ Set-Content (Join-Path $main 'scriptorium.json') "{ `"name`": `"UninstallTest$PI
 & git clone -q $main "$main-w9"
 & git clone -q $main "$main-w8"
 Set-Content (Join-Path "$main-w8" 'draft.txt') 'not committed'
-Set-Content (Join-Path $main '.queue\worker-9.json') '{}'
+Set-Content (Join-Path $main '.queue/worker-9.json') '{}'
 New-Item -ItemType Directory -Force $PcDir | Out-Null
 Set-Content (Join-Path $PcDir 'settings.json') ('{ "accounts": { "main": { "uses": ["worker:9", "worker:1"] } }, ' +
     '"workers": { "9": { "enabled": true }, "1": { "enabled": true } } }') -Encoding utf8
@@ -32,7 +32,7 @@ try {
     $output = @(& (Join-Path $PSScriptRoot 'uninstall.ps1') -Project $main) -join "`n"
     Assert-Equal (Test-Path (Join-Path $main '.queue')) $false 'the queue folder goes'
     Assert-Equal (Test-Path "$main-w9") $false 'a clean copy goes'
-    Assert-Equal (Test-Path "$main-w8\draft.txt") $true 'a copy with work stays'
+    Assert-Equal (Test-Path (Join-Path "$main-w8" 'draft.txt')) $true 'a copy with work stays'
     Assert-Equal ($output -match 'Stays, it holds work .*App-w8') $true 'and uninstall names it'
     Assert-Equal @(Get-ChildItem $root -Directory -Filter '*.deleting-*').Count 0 'no half-deleted copy'
     Assert-Equal (Test-Path (Join-Path $main 'scriptorium.json')) $true 'the repo''s files stay without -Repo'
@@ -42,7 +42,7 @@ try {
 
     # Safe to run again.
     & (Join-Path $PSScriptRoot 'uninstall.ps1') -Project $main | Out-Null
-    Assert-Equal (Test-Path "$main-w8\draft.txt") $true 'a second run keeps the copy with work'
+    Assert-Equal (Test-Path (Join-Path "$main-w8" 'draft.txt')) $true 'a second run keeps the copy with work'
 } finally {
     Remove-Tree $root
 }

@@ -3,10 +3,10 @@
 # snapshots sends. Functions over their inputs (two read a run's log), dot-sourced by server.ps1, checked by
 # app.test.ps1.
 
-. (Join-Path $PSScriptRoot '..\followup.ps1')
-. (Join-Path $PSScriptRoot '..\areas.ps1')
-. (Join-Path $PSScriptRoot '..\limits.ps1')
-. (Join-Path $PSScriptRoot '..\project.ps1')
+. (Join-Path $PSScriptRoot '../followup.ps1')
+. (Join-Path $PSScriptRoot '../areas.ps1')
+. (Join-Path $PSScriptRoot '../limits.ps1')
+. (Join-Path $PSScriptRoot '../project.ps1')
 
 # A worker state older than this is a stopped script: idle ones refresh every poll (5 min), running ones every 30 s.
 $StaleSeconds = 900

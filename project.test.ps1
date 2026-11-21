@@ -1,7 +1,7 @@
 # Checks project.ps1: powershell -NoProfile -File project.test.ps1 (prints ok or throws).
 $ErrorActionPreference = 'Stop'
 # The PC's files of a test are in a folder of its own (pc.ps1): set before anything loads.
-$PcDir = Join-Path $env:TEMP "scriptorium-test-$PID"
+$PcDir = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-test-$PID"
 . (Join-Path $PSScriptRoot 'project.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
@@ -28,6 +28,10 @@ Assert-Equal (Test-ProjectProcess $longer 'worker.ps1' 'D:\Work\App') $false 'a 
 $old = 'powershell.exe -File "D:\Work\App\Tools\Queue\worker.ps1" -Id 2 -Clone "D:\Work\App-w2"'
 Assert-Equal (Test-ProjectProcess $old 'worker.ps1' 'D:\Work\App') $false 'a queue from before -Project'
 Assert-Equal (Test-ProjectProcess $null 'worker.ps1' 'D:\Work\App') $false 'no command line'
+# On macOS and Linux, ps shows the arguments without their quotes.
+$unix = '/usr/bin/pwsh -NoProfile -File /opt/S/worker.ps1 -Project /home/me/App -Id 2 -Clone /home/me/App-w2'
+Assert-Equal "$(Test-ProjectProcess $unix 'worker.ps1' '/home/me/App') $(Test-ProjectProcess $unix 'worker.ps1' '/home/me/Ap')" 'True False' 'a command line on macOS or Linux'
+Assert-Equal (Test-CopyProcess '/opt/Unity/Editor/Unity -projectPath /home/me/App-w1/Unity -batchmode' '/home/me/App-w1') $true 'an editor in a copy on macOS or Linux'
 Assert-Equal (Get-TaskName 'App' 'worker 3') 'Scriptorium App worker 3' 'a task name'
 # What runs from a worker's copy: its path in a command line, with either slash, any case, as a whole path.
 $editor = '"C:\Unity\Editor\Unity.exe" -projectPath "D:\Work\App-w1\Unity" -batchmode'
@@ -65,7 +69,7 @@ try {
 # reads this one list: the run's model and advisor, a follow-up's label, the page.
 . (Join-Path $PSScriptRoot 'followup.ps1')
 . (Join-Path $PSScriptRoot 'limits.ps1')
-. (Join-Path $PSScriptRoot 'app\state.ps1')
+. (Join-Path $PSScriptRoot 'app/state.ps1')
 $models = Read-Models
 $own = '{ "name": "App", "compactAt": 250000, "complexities": { "medium": { "models": ["claude-sonnet-5-5@high"] },
     "review": { "description": "A second look at a change", "models": ["claude-opus-5-5@high"], "advisor": true, "advisorFallback": "xhigh", "compactAt": 400000 },
@@ -284,11 +288,11 @@ $two = Join-Path $PcDir 'two'
 New-Item -ItemType Directory -Force (Join-Path $one '.queue'), (Join-Path $two '.queue') | Out-Null
 $PcDir = Join-Path $PcDir 'pc'
 Assert-Equal (Read-ProjectSettings $one) $null 'no settings anywhere'
-Set-Content (Join-Path $one '.queue\settings.json') $game -Encoding utf8
-Set-Content (Join-Path $two '.queue\settings.json') $app -Encoding utf8
+Set-Content (Join-Path $one '.queue/settings.json') $game -Encoding utf8
+Set-Content (Join-Path $two '.queue/settings.json') $app -Encoding utf8
 $read = Read-ProjectSettings $one
 Assert-Equal "$($read.ntfy.topic) $(@($read.accounts.main.uses).Count) $($read.workers.'3'.enabled)" 't 3 False' 'the settings of a project with the PC keys'
-Assert-Equal ((Get-Content (Join-Path $one '.queue\settings.json') -Raw | ConvertFrom-Json).PSObject.Properties.Name -join ',') 'ntfy' 'the project''s file keeps its own keys only'
+Assert-Equal ((Get-Content (Join-Path $one '.queue/settings.json') -Raw | ConvertFrom-Json).PSObject.Properties.Name -join ',') 'ntfy' 'the project''s file keeps its own keys only'
 Assert-Equal ((Read-PcSettings).PSObject.Properties.Name -join ',') 'accounts,keep,workers' 'the PC''s file has the PC keys'
 Initialize-Pc $two
 Initialize-Pc $two
@@ -299,7 +303,7 @@ $read.workers.'4'.enabled = $false
 Set-JsonProperty $read 'model' 'claude-opus-5-5'
 Save-ProjectSettings $two $read
 Assert-Equal "$((Read-ProjectSettings $one).workers.'4'.enabled) $((Read-ProjectSettings $one).model)" 'False ' 'a save of a PC key reaches the other project; a key of its own does not'
-Assert-Equal (Get-Content (Join-Path $two '.queue\settings.json') -Raw | ConvertFrom-Json).model 'claude-opus-5-5' 'the project''s own key is in its file'
+Assert-Equal (Get-Content (Join-Path $two '.queue/settings.json') -Raw | ConvertFrom-Json).model 'claude-opus-5-5' 'the project''s own key is in its file'
 # A file that does not parse is not an empty one.
 Set-Content (Join-Path $PcDir 'settings.json') '{ "accounts": ' -Encoding utf8
 $threw = $false
@@ -319,13 +323,13 @@ try {
 Assert-Equal $threw $true 'so does an empty one'
 
 # The accounts' records move too: the newer reading goes on, with the window that only the older one has.
-Set-Content (Join-Path $one '.queue\usage.json') '{"default":{"at":5,"five_hour":{"used":0.1},"fable":{"used":0.4}},"x":{"at":1}}' -Encoding utf8
+Set-Content (Join-Path $one '.queue/usage.json') '{"default":{"at":5,"five_hour":{"used":0.1},"fable":{"used":0.4}},"x":{"at":1}}' -Encoding utf8
 Set-Content (Join-Path $PcDir 'usage.json') '{"default":{"at":9,"five_hour":{"used":0.3}}}' -Encoding utf8
-Set-Content (Join-Path $one '.queue\out.json') 'not json' -Encoding utf8
+Set-Content (Join-Path $one '.queue/out.json') 'not json' -Encoding utf8
 Move-PcRecords $one
 $usage = Get-Content (Join-Path $PcDir 'usage.json') -Raw | ConvertFrom-Json
 Assert-Equal "$($usage.default.at) $($usage.default.five_hour.used) $($usage.default.fable.used) $($usage.x.at)" '9 0.3 0.4 1' 'the usage of two projects in one file'
-Assert-Equal "$(Test-Path (Join-Path $one '.queue\usage.json')) $(Test-Path (Join-Path $one '.queue\out.json')) $(Test-Path (Join-Path $PcDir 'out.json'))" 'False False False' 'the project keeps no record; one that does not parse is dropped'
+Assert-Equal "$(Test-Path (Join-Path $one '.queue/usage.json')) $(Test-Path (Join-Path $one '.queue/out.json')) $(Test-Path (Join-Path $PcDir 'out.json'))" 'False False False' 'the project keeps no record; one that does not parse is dropped'
 Remove-Item (Split-Path $PcDir) -Recurse -Force
 
 Write-Output 'ok'

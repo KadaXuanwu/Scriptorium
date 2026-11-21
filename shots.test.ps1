@@ -1,9 +1,18 @@
 # Checks Get-SmallShot in shots.ps1: powershell -NoProfile -File shots.test.ps1 (prints ok or throws).
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Drawing
 # shots.ps1 uploads when run, so only its function is loaded.
 $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'shots.ps1'), [ref]$null, [ref]$null)
 . ([scriptblock]::Create($ast.Find({ $args[0].Name -eq 'Get-SmallShot' }, $true).Extent.Text))
+$canShrink = $env:OS -eq 'Windows_NT'
+if (-not $canShrink) {
+    # System.Drawing draws on Windows only: elsewhere the original goes up.
+    if ((Get-SmallShot 'shots/banner.png' 'out') -ne 'shots/banner.png') {
+        throw 'off Windows the original goes up'
+    }
+    'ok'
+    exit 0
+}
+Add-Type -AssemblyName System.Drawing
 
 function Assert-Equal($actual, $expected, [string] $what) {
     if ("$actual" -ne "$expected") {

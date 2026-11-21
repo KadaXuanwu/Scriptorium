@@ -35,7 +35,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot 'tasks.ps1')
 # Set-WorkerEntry: the page's own removal of a worker from the settings.
-. (Join-Path $PSScriptRoot 'app\state.ps1')
+. (Join-Path $PSScriptRoot 'app/state.ps1')
 
 $main = Resolve-Project $Project
 $config = $null
@@ -47,24 +47,20 @@ try {
 
 # 1. The scripts. A task is the project's by the -Project of its arguments, so another project of the same name is
 # never touched. The page and the merger end first: the page could start a worker again.
-$tasks = @(Get-ScheduledTask -TaskName 'Scriptorium *' -ErrorAction SilentlyContinue |
-    Where-Object { (Get-TaskProject "$($_.Actions[0].Arguments)") -eq $main })
+$tasks = @(Get-QueueTasks | Where-Object { (Get-TaskProject $_.Arguments) -eq $main })
 $name = if ($config) { [string]$config.name } elseif ($tasks) { $tasks[0].TaskName.Split(' ')[1] } else { '' }
 $ids = @(@($tasks | ForEach-Object { if ($_.TaskName -match ' worker (\d+)$') { $Matches[1] } }) +
-    @(Get-ChildItem (Join-Path $main '.queue\worker-*.json') -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName.Substring(7) }) |
+    @(Get-ChildItem (Join-Path $main '.queue/worker-*.json') -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName.Substring(7) }) |
     Where-Object { $_ -match '^\d+$' } | Sort-Object { [int]$_ } -Unique)
 
 foreach ($task in $tasks | Where-Object { $_.TaskName -notmatch ' worker \d+$' }) {
-    Invoke-Step "Stop and remove the logon task $($task.TaskName)" {
-        Stop-ScheduledTask -TaskName $task.TaskName
-        Unregister-ScheduledTask -TaskName $task.TaskName -Confirm:$false
-    }
+    Invoke-Step "Stop and remove the logon task $($task.TaskName)" { Remove-QueueTask $task.TaskName }
 }
 Invoke-Step 'End the project''s page and merger scripts' {
     # Stopping a task ends only its console host (tasks.ps1, Uninstall-Worker).
-    Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+    Get-CommandLines -Shells |
         Where-Object { (Test-ProjectProcess $_.CommandLine 'merge.ps1' $main) -or (Test-ProjectProcess $_.CommandLine 'server.ps1' $main) } |
-        ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
+        ForEach-Object { Stop-ProcessTree $_.ProcessId }
 }
 foreach ($id in $ids) {
     Invoke-Step "End worker $id and its run, and remove its logon task" { Uninstall-Worker $main $name $id }
@@ -94,8 +90,8 @@ $parent = Split-Path $main -Parent
 $leaf = Split-Path $main -Leaf
 # The worker numbers of the PC's other projects: their `<main>-w<N>` is that worker's checkout of this repo, for a
 # ticket with a `repo:` label (worker.ps1), and stays.
-$others = @(Get-ScheduledTask -TaskName 'Scriptorium * worker *' -ErrorAction SilentlyContinue |
-    Where-Object { (Get-TaskProject "$($_.Actions[0].Arguments)") -ne $main } | ForEach-Object { $_.TaskName.Split(' ')[-1] })
+$others = @(Get-QueueTasks 'Scriptorium * worker *' |
+    Where-Object { (Get-TaskProject $_.Arguments) -ne $main } | ForEach-Object { $_.TaskName.Split(' ')[-1] })
 $copies = @(Get-ChildItem -LiteralPath $parent -Directory |
     ForEach-Object { if ($_.Name -match "^$([regex]::Escape($leaf))-w(\d+)$") { @{ main = $main; id = $Matches[1] } } })
 foreach ($other in @(if ($config) { $config.repos })) {
@@ -171,10 +167,10 @@ if ($Repo) {
     }
 
     $removed = @()
-    foreach ($path in @('scriptorium.json', '.claude\skills\ticket')) {
+    foreach ($path in @('scriptorium.json', '.claude/skills/ticket')) {
         if (Test-Path -LiteralPath (Join-Path $main $path)) {
             Invoke-Step "Delete $path" { Remove-Item -LiteralPath (Join-Path $main $path) -Recurse -Force }
-            $removed += $path.Replace('\', '/')
+            $removed += $path
         }
     }
     $ignore = Join-Path $main '.gitignore'

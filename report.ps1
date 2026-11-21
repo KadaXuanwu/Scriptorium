@@ -53,7 +53,7 @@ if ($Logs) {
 if (-not $Project) {
     throw 'report.ps1 takes -Project <main checkout> or -Logs <folder>'
 }
-$file = Join-Path $Project '.queue\history.jsonl'
+$file = Join-Path $Project '.queue/history.jsonl'
 $all = @(Get-Content $file -Encoding UTF8 | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } } |
     Where-Object { $null -ne $_.requests })
 

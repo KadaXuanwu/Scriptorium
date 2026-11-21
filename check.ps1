@@ -1,9 +1,11 @@
-# Parses every .ps1 of Scriptorium and runs every *.test.ps1 in Windows PowerShell, each in a process of its own.
-# Prints one line for each and exits 1 when one fails. CI runs it (.github/workflows/test.yml); run it before a PR:
+# Parses every .ps1 of Scriptorium and runs every *.test.ps1 in the PowerShell that runs this (Windows PowerShell 5.1,
+# or pwsh 7 on macOS and Linux), each in a process of its own. Prints one line for each and exits 1 when one fails. CI
+# runs it in both (.github/workflows/test.yml); run it before a PR:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File check.ps1
+#   pwsh -NoProfile -File check.ps1
 $ErrorActionPreference = 'Stop'
 $failed = 0
-$files = @(Get-ChildItem $PSScriptRoot -Recurse -Filter *.ps1 | Where-Object { $_.FullName -notmatch '\\(_source|plugins)\\' })
+$files = @(Get-ChildItem $PSScriptRoot -Recurse -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/](_source|plugins)[\\/]' })
 
 foreach ($file in $files) {
     $errors = $null
@@ -29,7 +31,7 @@ foreach ($file in $files) {
 }
 Write-Output "parsed $($files.Count) files"
 
-$powershell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+$powershell = (Get-Process -Id $PID).Path
 foreach ($test in $files | Where-Object { $_.Name -like '*.test.ps1' }) {
     $ErrorActionPreference = 'Continue'
     $output = & $powershell -NoProfile -ExecutionPolicy Bypass -File $test.FullName 2>&1 | ForEach-Object { "$_" }

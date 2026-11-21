@@ -25,17 +25,160 @@ function Invoke-Native([string] $exe, [string[]] $arguments) {
     return $output
 }
 
-# Logon tasks: hidden, one instance each, no time limit (a ticket can take hours). Through a headless console: with
-# Windows Terminal as the default terminal, powershell's -WindowStyle Hidden still opens a window, and closing it kills
-# the task.
+# The queue's logon tasks: each runs one script with $arguments (`-File "<script>" -Project "<main>" ...`) at the owner's
+# logon, one instance each, no time limit (a ticket can take hours). On Windows a scheduled task, through a headless
+# console: with Windows Terminal as the default terminal, powershell's -WindowStyle Hidden still opens a window, and
+# closing it kills the task. On macOS a launchd agent, on Linux a systemd user service: a file each in $UnitDir, which
+# names the task and its arguments in two comment lines (Get-UnitText), so Get-QueueTasks reads them back.
+$UnitDir = if ($OnMac) { Join-Path $HOME 'Library/LaunchAgents' } else { Join-Path $HOME '.config/systemd/user' }
+
 function Register-QueueTask([string] $name, [string] $arguments, [string] $main) {
-    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -MultipleInstances IgnoreNew -AllowStartIfOnBatteries `
-        -DontStopIfGoingOnBatteries
-    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-    $powershell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-    $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\conhost.exe" -WorkingDirectory $main `
-        -Argument "--headless `"$powershell`" -NoProfile -ExecutionPolicy Bypass $arguments"
-    Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -Settings $settings -Force -ErrorAction Stop | Out-Null
+    if ($OnWindows) {
+        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -MultipleInstances IgnoreNew -AllowStartIfOnBatteries `
+            -DontStopIfGoingOnBatteries
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+        $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\conhost.exe" -WorkingDirectory $main `
+            -Argument "--headless `"$(Get-ShellPath)`" -NoProfile -ExecutionPolicy Bypass $arguments"
+        Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -Settings $settings -Force -ErrorAction Stop | Out-Null
+        return
+    }
+    New-Item -ItemType Directory -Force $UnitDir | Out-Null
+    $file = Get-UnitFile $name
+    # No byte order mark: launchd and systemd read plain UTF-8.
+    [System.IO.File]::WriteAllText($file, (Get-UnitText $name $arguments $main (Get-ShellPath) $env:PATH $OnMac),
+        (New-Object System.Text.UTF8Encoding $false))
+    if (-not $OnMac) {
+        Invoke-Native 'systemctl' @('--user', 'daemon-reload') | Out-Null
+        Invoke-Native 'systemctl' @('--user', 'enable', (Split-Path $file -Leaf)) | Out-Null
+    }
+}
+
+# A task's file on macOS or Linux: `scriptorium-<name>-worker-3.plist` or `.service`.
+function Get-UnitFile([string] $name) {
+    $id = ($name -replace '[^A-Za-z0-9]+', '-').ToLowerInvariant()
+    return Join-Path $UnitDir "$id$(if ($OnMac) { '.plist' } else { '.service' })"
+}
+
+# The arguments of a task as a list: a quoted part is one argument without its quotes.
+function Split-Arguments([string] $arguments) {
+    return @([regex]::Matches($arguments, '"([^"]*)"|(\S+)') | ForEach-Object { "$($_.Groups[1].Value)$($_.Groups[2].Value)" })
+}
+
+# The text of a task's launchd agent ($mac) or systemd service, with the PATH of setup's shell: a service gets almost
+# none of its own, and git, gh and claude are often in Homebrew's or ~/.local/bin. The script starts again after a
+# restart on new code (restart.ps1, $RestartCode): launchd starts an agent again after any exit that is not 0, systemd
+# only after that code.
+function Get-UnitText([string] $name, [string] $arguments, [string] $main, [string] $shell, [string] $path, [bool] $mac) {
+    $all = @($shell, '-NoProfile') + @(Split-Arguments $arguments)
+    if ($mac) {
+        $escape = { param($text) [System.Security.SecurityElement]::Escape($text) }
+        $label = ($name -replace '[^A-Za-z0-9]+', '-').ToLowerInvariant()
+        return (@('<?xml version="1.0" encoding="UTF-8"?>',
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+            "<!-- Scriptorium-Task: $(& $escape $name) -->",
+            "<!-- Scriptorium-Arguments: $(& $escape $arguments) -->",
+            '<plist version="1.0">', '<dict>',
+            "  <key>Label</key><string>$label</string>",
+            '  <key>ProgramArguments</key>', '  <array>') +
+            @($all | ForEach-Object { "    <string>$(& $escape $_)</string>" }) +
+            @('  </array>',
+            "  <key>WorkingDirectory</key><string>$(& $escape $main)</string>",
+            "  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$(& $escape $path)</string></dict>",
+            '  <key>RunAtLoad</key><true/>',
+            '  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>',
+            '  <key>ThrottleInterval</key><integer>10</integer>',
+            '</dict>', '</plist>', '')) -join "`n"
+    }
+    # systemd reads % and $ in a value as its own: doubled, they stay themselves.
+    $escape = { param($text) $text.Replace('%', '%%').Replace('$', '$$') }
+    $exec = ($all | ForEach-Object { '"' + (& $escape $_).Replace('\', '\\').Replace('"', '\"') + '"' }) -join ' '
+    return (@("# Scriptorium-Task: $name",
+        "# Scriptorium-Arguments: $arguments",
+        '[Unit]', "Description=$name", '',
+        '[Service]',
+        "WorkingDirectory=$(& $escape $main)",
+        "Environment=`"PATH=$(& $escape $path)`"",
+        "ExecStart=$exec",
+        'Restart=no',
+        "RestartForceExitStatus=$RestartCode",
+        'RestartSec=10', '',
+        '[Install]', 'WantedBy=default.target', '')) -join "`n"
+}
+
+# The name and the arguments that a task's file names (Get-UnitText), or $null for a file of another kind.
+function Read-UnitText([string] $text) {
+    $name = [regex]::Match($text, '(?m)^(?:# |<!-- )Scriptorium-Task: (.*?)(?: -->)?\r?$')
+    $arguments = [regex]::Match($text, '(?m)^(?:# |<!-- )Scriptorium-Arguments: (.*?)(?: -->)?\r?$')
+    if (-not $name.Success) {
+        return $null
+    }
+    $xml = $text.StartsWith('<')
+    $decode = { param($value) if ($xml) { [System.Net.WebUtility]::HtmlDecode($value) } else { $value } }
+    return [pscustomobject]@{ TaskName = (& $decode $name.Groups[1].Value); Arguments = (& $decode $arguments.Groups[1].Value) }
+}
+
+# The queue's tasks on this PC whose name is like $pattern (`Scriptorium * worker *`), each with TaskName and the
+# Arguments it runs with.
+function Get-QueueTasks([string] $pattern = 'Scriptorium *') {
+    if ($OnWindows) {
+        return @(Get-ScheduledTask -TaskName $pattern -ErrorAction SilentlyContinue |
+            ForEach-Object { [pscustomobject]@{ TaskName = $_.TaskName; Arguments = "$($_.Actions[0].Arguments)" } })
+    }
+    return @(Get-ChildItem $UnitDir -Filter 'scriptorium-*' -ErrorAction SilentlyContinue |
+        ForEach-Object { Read-UnitText ([System.IO.File]::ReadAllText($_.FullName)) } |
+        Where-Object { $_ -and $_.TaskName -like $pattern })
+}
+
+# Starts a task now. Nothing when it runs already.
+function Start-QueueTask([string] $name) {
+    if ($OnWindows) {
+        Start-ScheduledTask -TaskName $name -ErrorAction Stop
+        return
+    }
+    $file = Get-UnitFile $name
+    if (-not $OnMac) {
+        Invoke-Native 'systemctl' @('--user', 'start', (Split-Path $file -Leaf)) | Out-Null
+        return
+    }
+    # A new agent loads at the next logon by itself; loaded now, it starts (RunAtLoad).
+    $domain = "gui/$(& id -u)"
+    $label = [IO.Path]::GetFileNameWithoutExtension($file)
+    $ErrorActionPreference = 'Continue'
+    & launchctl print "$domain/$label" *> $null
+    $loaded = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = 'Stop'
+    if ($loaded) {
+        Invoke-Native 'launchctl' @('kickstart', "$domain/$label") | Out-Null
+    } else {
+        Invoke-Native 'launchctl' @('bootstrap', $domain, $file) | Out-Null
+    }
+}
+
+# Stops a task and removes it. On Windows stopping ends only its console host (Uninstall-Worker); launchd and systemd
+# end the script too.
+function Remove-QueueTask([string] $name) {
+    if ($OnWindows) {
+        if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) {
+            Stop-ScheduledTask -TaskName $name
+            Unregister-ScheduledTask -TaskName $name -Confirm:$false
+        }
+        return
+    }
+    $file = Get-UnitFile $name
+    if (-not (Test-Path $file)) {
+        return
+    }
+    $ErrorActionPreference = 'Continue'
+    if ($OnMac) {
+        & launchctl bootout "gui/$(& id -u)/$([IO.Path]::GetFileNameWithoutExtension($file))" *> $null
+    } else {
+        & systemctl --user disable --now (Split-Path $file -Leaf) *> $null
+    }
+    Remove-Item $file
+    if (-not $OnMac) {
+        & systemctl --user daemon-reload *> $null
+    }
+    $ErrorActionPreference = 'Stop'
 }
 
 # The projects that Scriptorium runs on this PC, each with its name, its page's port and its main checkout (`main`):
@@ -43,9 +186,9 @@ function Register-QueueTask([string] $name, [string] $arguments, [string] $main)
 # few minutes. `main` stays on the server: the page gets the views (state.ps1, Get-ProjectViews).
 function Get-PcProjects {
     $found = @()
-    foreach ($task in @(Get-ScheduledTask -TaskName (Get-TaskName '*' 'app') -ErrorAction SilentlyContinue)) {
+    foreach ($task in Get-QueueTasks (Get-TaskName '*' 'app')) {
         try {
-            $main = Resolve-Project (Get-TaskProject "$($task.Actions[0].Arguments)")
+            $main = Resolve-Project (Get-TaskProject $task.Arguments)
             $project = Read-Project $main
             $found += [pscustomobject]@{ name = [string]$project.name; port = [int]$project.port; main = $main }
         } catch {
@@ -60,7 +203,7 @@ function Get-WorkerTaskName([string] $name, [string] $id) {
 }
 
 function Get-WorkerArguments([string] $main, [string] $id, [string] $clone) {
-    return "-File `"$PSScriptRoot\worker.ps1`" $(Get-ProjectArg $main) -Id $id -Clone `"$clone`""
+    return "-File `"$(Join-Path $PSScriptRoot 'worker.ps1')`" $(Get-ProjectArg $main) -Id $id -Clone `"$clone`""
 }
 
 # Makes a worker copy able to work (docs/PLUGINS.md, PrepareCopy): each plugin adds what git does not hold and its
@@ -92,24 +235,20 @@ function Install-Worker([string] $main, [string] $name, [string] $slug, [string]
         }
     }
     Register-QueueTask (Get-WorkerTaskName $name $id) (Get-WorkerArguments $main $id $clone) $main
-    Start-ScheduledTask -TaskName (Get-WorkerTaskName $name $id) -ErrorAction Stop
+    Start-QueueTask (Get-WorkerTaskName $name $id)
 }
 
 # A worker's task and loop end (the queue app's Remove and a worker's move to another project). Stopping a task ends
 # only its console host: the loop, and its run with it, end by its project and its `-Id`. Then every process that still
 # runs from its copy ends: its editor is not in the loop's process tree and stays open after the loop (measured).
 function Uninstall-Worker([string] $main, [string] $name, [string] $id) {
-    $task = Get-WorkerTaskName $name $id
-    if (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) {
-        Stop-ScheduledTask -TaskName $task
-        Unregister-ScheduledTask -TaskName $task -Confirm:$false
-    }
-    Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+    Remove-QueueTask (Get-WorkerTaskName $name $id)
+    Get-CommandLines -Shells |
         Where-Object { (Test-ProjectProcess $_.CommandLine 'worker.ps1' $main) -and $_.CommandLine -match "-Id $id\b" } |
-        ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
-    Get-CimInstance Win32_Process |
+        ForEach-Object { Stop-ProcessTree $_.ProcessId }
+    Get-CommandLines |
         Where-Object { $_.ProcessId -ne $PID -and (Test-CopyProcess $_.CommandLine "$main-w$id") } |
-        ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
+        ForEach-Object { Stop-ProcessTree $_.ProcessId }
 }
 
 # What a worker's copy holds that GitHub does not have, a phrase each for the owner (the queue app's dialogs that can
@@ -182,12 +321,16 @@ function Test-CopyToDelete([string] $main, [string] $name) {
     return $name -match "^$([regex]::Escape((Split-Path $main -Leaf)))-w\d+\.deleting-\d{14}$"
 }
 
-# The second half: the folder and all in it go for good, not to the recycle bin. `rd` and not Remove-Item: it takes a
-# path longer than 260 characters with the `\\?\` prefix, it deletes read-only files (git's packs), and it deletes a
-# link in the tree and never what the link points at (Windows PowerShell's Remove-Item empties the target). Throws
-# when a part is still there.
+# The second half: the folder and all in it go for good, not to the recycle bin. On Windows `rd` and not Remove-Item:
+# it takes a path longer than 260 characters with the `\\?\` prefix, it deletes read-only files (git's packs), and it
+# deletes a link in the tree and never what the link points at (Windows PowerShell's Remove-Item empties the target).
+# `rm -rf` does the same elsewhere. Throws when a part is still there.
 function Remove-Tree([string] $folder) {
-    & "$env:SystemRoot\System32\cmd.exe" /c "rd /s /q `"\\?\$folder`"" | Out-Null
+    if ($OnWindows) {
+        & "$env:SystemRoot\System32\cmd.exe" /c "rd /s /q `"\\?\$folder`"" | Out-Null
+    } else {
+        & /bin/rm -rf -- $folder
+    }
     if (Test-Path -LiteralPath $folder) {
         throw "a part of $folder is still there"
     }

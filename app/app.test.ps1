@@ -2,7 +2,7 @@
 # (prints ok or throws).
 $ErrorActionPreference = 'Stop'
 # The PC's files of a test are in a folder of its own (pc.ps1): set before anything loads.
-$PcDir = Join-Path $env:TEMP "scriptorium-test-$PID"
+$PcDir = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-test-$PID"
 . (Join-Path $PSScriptRoot 'state.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
@@ -366,7 +366,7 @@ Assert-Equal (Select-Forced $queue 6 @('area:api')).number 6 'force takes the ti
 Assert-Equal (Select-Forced $queue 99 @('area:api')).number 4 'else the first whose area is free'
 Assert-Equal (Select-Forced $queue 0 @('area:api', 'area:docs')).number 2 'else the first'
 # Now: a force file with `now` names the one ticket its worker takes, and only while that ticket is in the queue.
-$file = Join-Path $env:TEMP "scriptorium-now-$PID.json"
+$file = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-now-$PID.json"
 Set-Content $file '{"ticket":6,"now":true}' -Encoding utf8
 Assert-Equal (Read-Now $file) 6 'the ticket of a Now'
 Set-Content $file '{"ticket":6}' -Encoding utf8
@@ -499,7 +499,7 @@ $rows = Get-QueueRows $gh.issues @($free)
 Assert-Equal ($rows.queued.Count + $rows.parked.Count) 0 'questions, stuck and held tickets are not in the queue'
 
 # The stuck reason comes from the run's log: its error, else its last words, else its last step.
-$log = Join-Path $env:TEMP "queue-app-test-$PID.jsonl"
+$log = Join-Path ([IO.Path]::GetTempPath()) "queue-app-test-$PID.jsonl"
 # Written without a byte order mark, as a run writes its log.
 [System.IO.File]::WriteAllLines($log, [string[]]@('{"type":"assistant","message":{"content":[{"type":"text","text":"I stop here."}]}}', '{"type":"result","subtype":"error_max_turns","is_error":true,"result":"Reached the turn limit."}'))
 Assert-Equal (Get-StuckReason $log) 'The run failed (error_max_turns): Reached the turn limit.' 'a failed run'
@@ -619,7 +619,7 @@ Assert-Equal (@(Get-Events $old $new | ForEach-Object { $_.title }) -join ',') '
 # The same activity again pushes nothing: the workers test the account with a probe, so the card does not flicker.
 Assert-Equal @(Get-Events $new $new).Count 0 'no second push while the account stays out'
 # A refused request has the subtype 'success': the reason leaves it out.
-$log = Join-Path $env:TEMP "queue-app-test-$PID.jsonl"
+$log = Join-Path ([IO.Path]::GetTempPath()) "queue-app-test-$PID.jsonl"
 [System.IO.File]::WriteAllLines($log, [string[]]@('{"type":"result","subtype":"success","is_error":true,"result":"Not logged in"}'))
 Assert-Equal (Get-StuckReason $log) 'The run failed: Not logged in' 'a refused request'
 Remove-Item $log

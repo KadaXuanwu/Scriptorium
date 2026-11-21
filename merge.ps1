@@ -19,25 +19,25 @@ Start-CodeWatch @((Join-Path $Project 'scriptorium.json'))
 
 # One merger per project: stopping the task ends only its console host, so an older loop may still run, on old code.
 # End it.
-Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+Get-CommandLines -Shells |
     Where-Object { $_.ProcessId -ne $PID -and (Test-ProjectProcess $_.CommandLine 'merge.ps1' $Project) } |
-    ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
+    ForEach-Object { Stop-ProcessTree $_.ProcessId }
 
 Set-Location $Project
 $slug = (& gh repo view --json nameWithOwner -q .nameWithOwner)
 # A follow-up's `**Repo:**` line names this repo by its GitHub name or by the project's name.
 $thisRepo = @($slug.Split('/')[1], $config.name)
-$log = Join-Path $Project '.queue\merge.log'
+$log = Join-Path $Project '.queue/merge.log'
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 # A squash commit is its PR's title alone: the branch's own commit messages stay out of main.
-$emptyBody = Join-Path $Project '.queue\empty-body.txt'
+$emptyBody = Join-Path $Project '.queue/empty-body.txt'
 [System.IO.File]::WriteAllText($emptyBody, '')
 # Wakes (docs/QUEUE.md, Wakes): a worker writes the first when its run ends; this script writes the second after a
 # pass that changed a PR, for the idle workers.
 # The start of the merger's comment on a PR whose question has no banner; a PR that has it is not sent back again.
 $bannerNote = '**Merger:** a question has no banner picture:'
-$wakeMerger = Join-Path $Project '.queue\wake-merger'
-$wakeWorkers = Join-Path $Project '.queue\wake-workers'
+$wakeMerger = Join-Path $Project '.queue/wake-merger'
+$wakeWorkers = Join-Path $Project '.queue/wake-workers'
 
 # A merged PR's Follow-up section (PLAYBOOK.md, Ship) filed as draft tickets for the owner, one per
 # `### <title>`. One with no questions has nothing for the owner to decide, so it is queued (P1) at once; one with
@@ -58,7 +58,7 @@ function New-FollowUp($pr, [string] $where, [int] $ticket) {
     # The size and complexity are the original's work, not the follow-up's: never copied.
     $labels = @($issue.labels | ForEach-Object { $_.name } | Where-Object { $_ -match '^(area|repo):' })
     $known = @(((& gh label list --search area: --limit 1000 --json name -R $slug) -join "`n") | ConvertFrom-Json | ForEach-Object { $_.name })
-    $file = Join-Path $Project '.queue\follow-up.md'
+    $file = Join-Path $Project '.queue/follow-up.md'
     foreach ($item in $tickets) {
         [System.IO.File]::WriteAllText($file, "$($item.body)`n`n$generation`n`nFollow-up from $($pr.url) (ticket https://github.com/$slug/issues/$ticket).`n")
         $state = if ($item.state) { $item.state } elseif ((Get-FollowUpView $item.body).questions) { 'follow-up' } else { 'P1' }
@@ -84,7 +84,7 @@ function New-FollowUp($pr, [string] $where, [int] $ticket) {
 
 # Merges as the settings' `merger.ghConfigDir` bot when that is signed in (docs/QUEUE.md, Settings), else as the owner.
 function Set-GitHubIdentity {
-    $file = Join-Path $Project '.queue\settings.json'
+    $file = Join-Path $Project '.queue/settings.json'
     $dir = $null
     if (Test-Path $file) {
         $json = Get-Content $file -Raw | ConvertFrom-Json

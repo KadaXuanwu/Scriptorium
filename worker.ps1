@@ -33,9 +33,9 @@ Start-CodeWatch (@((Join-Path $Project 'scriptorium.json')) + @($plugins | ForEa
 
 # One loop per worker: stopping the task ends only its console host, so an older loop may still run, on old code.
 # End it with its run; the ticket resumes here (PLAYBOOK.md, Branch). Only this project's worker of this number.
-Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+Get-CommandLines -Shells |
     Where-Object { $_.ProcessId -ne $PID -and (Test-ProjectProcess $_.CommandLine 'worker.ps1' $Project) -and $_.CommandLine -match "-Id $Id\b" } |
-    ForEach-Object { & taskkill /T /F /PID $_.ProcessId | Out-Null }
+    ForEach-Object { Stop-ProcessTree $_.ProcessId }
 
 $me = "worker:$Id"
 $Clone = (Resolve-Path $Clone).Path
@@ -367,15 +367,11 @@ function Get-ConfigDir([string] $account) {
 
 # The login's plan size (budget.ps1), read from its credentials each time, so a plan change applies at once.
 function Get-AccountPlanSize([string] $account) {
-    $dir = Get-ConfigDir $account
-    if (-not $dir) {
-        $dir = Join-Path $HOME '.claude'
-    }
-    $file = Join-Path $dir '.credentials.json'
-    if (-not (Test-Path $file)) {
+    $credentials = Read-Credentials (Get-ConfigDir $account)
+    if (-not $credentials) {
         return 1.0
     }
-    return Get-PlanSize ([string](Get-Content $file -Raw | ConvertFrom-Json).claudeAiOauth.rateLimitTier)
+    return Get-PlanSize ([string]$credentials.claudeAiOauth.rateLimitTier)
 }
 
 # The login's email, from its profile file (as the queue app reads it); $null when signed out.
@@ -513,7 +509,7 @@ function Get-FreshUsage([string] $configDir) {
 # costs nothing. Returns its stream-json text.
 function Invoke-Probe([string] $configDir) {
     $ErrorActionPreference = 'Continue'
-    $dir = Join-Path $env:TEMP "scriptorium-$($config.name)-probe"
+    $dir = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-$($config.name)-probe"
     New-Item -ItemType Directory -Force $dir | Out-Null
     $previousConfigDir = $env:CLAUDE_CONFIG_DIR
     if ($configDir) {
@@ -541,12 +537,7 @@ function Read-Probe([string] $text) {
 
 # The login a folder holds now: when its credentials were last written, and its email. A sign-in changes it.
 function Get-LoginStamp([string] $account) {
-    $dir = Get-ConfigDir $account
-    if (-not $dir) {
-        $dir = Join-Path $HOME '.claude'
-    }
-    $file = Join-Path $dir '.credentials.json'
-    return "$(if (Test-Path $file) { (Get-Item $file).LastWriteTimeUtc.Ticks } else { 0 }) $(Get-LoginEmail $account)"
+    return "$(Get-CredentialsStamp (Get-ConfigDir $account)) $(Get-LoginEmail $account)"
 }
 
 # Accounts that are out (`out.json` in the PC's folder, shared by the workers and the queue app): an account that refused a run
@@ -1736,7 +1727,7 @@ while ($true) {
             }
         }
         if ($job) {
-            $log = Join-Path $queueDir "logs\$(Get-Date -Format yyyyMMdd-HHmmss)-t$($job.Ticket)-$($job.Kind).jsonl"
+            $log = Join-Path $queueDir "logs/$(Get-Date -Format yyyyMMdd-HHmmss)-t$($job.Ticket)-$($job.Kind).jsonl"
             $script:running = @{
                 account = Get-Account $runConfigDir; size = $job.Size; complexity = $job.Complexity
                 ticket = $job.Ticket; title = $job.Title; repo = Get-JobRepo $job; kind = $job.Kind; pr = $job.Pr
