@@ -561,6 +561,11 @@ function Invoke-Action($request) {
             Save-Settings (Set-WorkerName (Read-SettingsToEdit) $worker ([string]$request.name))
             return "worker $worker named '$(([string]$request.name).Trim())'"
         }
+        'order' {
+            # The owner's order of the worker or account cards (docs/APP.md, Order): the PC's, so every device shows it.
+            Save-Settings (Set-CardOrder (Read-SettingsToEdit) ([string]$request.kind) $request.list)
+            return "order: $($request.kind)"
+        }
         'rename-account' {
             # An account's name (docs/APP.md, Accounts): only its key in the register; its folder and records stay.
             $old = [string]$request.account

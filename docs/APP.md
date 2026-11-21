@@ -51,12 +51,13 @@ the working workers after it: "(1) Scriptorium · 2 working".
 
 **Names.** A double-click on a worker's name, or Enter while the name has focus, opens a field over it: Enter or a
 click elsewhere saves, Escape keeps the name. A worker's name is the page's only (`workers.<id>.name`, the PC's, so it
-stays with a move); an empty one gives back "Worker N". Comments, pushes and dialogs keep the number, which the card's
-square shows. An account's name changes the same way (Accounts).
+stays with a move); an empty one gives back "Worker N". Comments, pushes and dialogs keep the number. An account's name
+changes the same way (Accounts).
 
 **Order.** A press on a card's empty space (not on a control or on text) and a drag move the card among the others:
-with a mouse at once, on a touch screen after a short hold. The order is kept on the device, not in the settings; a
-new worker goes last, after the others in the order of their numbers. Account cards move the same way.
+with a mouse at once, on a touch screen after a short hold. The order is the PC's (`order.workers`, `order.accounts`
+in the settings), so every device shows the same; a new worker goes last, after the others in the order of their
+numbers. Account cards move the same way, and a renamed account keeps its place.
 
 **Worker status.** A worker has one of three statuses, on a switch that is always clickable:
 

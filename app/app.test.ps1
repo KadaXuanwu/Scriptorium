@@ -116,6 +116,19 @@ Assert-Equal ((Set-WorkerName $named '2' '').workers.'2' | ConvertTo-Json -Compr
 $threw = $false
 try { Set-WorkerName $named '2' ('x' * 31) | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'a name too long'
+# The cards' order: saved per kind as a list, kept through an account's rename; another kind or a long list throws.
+$ordered = Set-CardOrder ('{"accounts":{"a":{},"b":{}}}' | ConvertFrom-Json) 'accounts' @('b', 'a')
+$ordered = Set-CardOrder $ordered 'workers' @('P|2')
+$ordered = Rename-Account $ordered 'a' 'c'
+Assert-Equal ($ordered.order | ConvertTo-Json -Compress) '{"accounts":["b","c"],"workers":["P|2"]}' 'the order of both kinds, a renamed account in its place'
+foreach ($bad in @(@('cards', @('x')), @('workers', @(1..101)))) {
+    $threw = $false
+    try { Set-CardOrder $ordered $bad[0] $bad[1] | Out-Null } catch { $threw = $true }
+    Assert-Equal $threw $true "no order of $($bad[0]) with $(@($bad[1]).Count) cards"
+}
+$shown = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = $ordered }).order
+Assert-Equal "$($shown.accounts -join ',') $($shown.workers -join ',')" 'b,c P|2' 'the snapshot gives the page the order'
+Assert-Equal ((New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).order | ConvertTo-Json -Compress) '{"workers":[],"accounts":[]}' 'no order: empty lists'
 
 # Add a worker and Remove: the lowest free number; a fresh entry on its account; removal takes it off every account.
 Assert-Equal (Get-FreeWorkerId @('1', '3')) '2' 'a removed worker''s number comes back'

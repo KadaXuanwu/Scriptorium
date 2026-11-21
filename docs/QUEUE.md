@@ -216,8 +216,8 @@ the first ones.
 
 - **The PC's:** `settings.json` in the PC's Scriptorium folder (`%LOCALAPPDATA%\Scriptorium` on Windows, `~/Library/Application Support/Scriptorium` on macOS, `~/.local/share/Scriptorium` on Linux), one for every project that
   Scriptorium runs on the PC.
-  It holds `accounts`, `keep` and `workers`: the logins and their limits are the same for each project, and a worker's
-  number is the PC's.
+  It holds `accounts`, `keep`, `workers` and `order`: the logins and their limits are the same for each project, a
+  worker's number is the PC's, and the page's order of the cards is the same on every device.
 - **The project's own:** the main checkout's `.queue/settings.json`, with every other key.
 
 ```json

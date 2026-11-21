@@ -708,11 +708,13 @@ const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(va
 const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
 let shownOf = kept('scriptorium-queue') || '';
 
-// The owner's order of the worker and account cards (dragged on the page, kept on the device). A card not in it goes
-// after the others: workers in the order of their numbers, accounts in the settings' order.
-const order = kept('scriptorium-order') || {};
+// The owner's order of the worker and account cards (dragged on the page, kept in the PC's settings, so every device
+// shows it). A card not in it goes after the others: workers in the order of their numbers, accounts in the settings'
+// order. shortcut: a device's older order of its own shows until the first drag saves one; drop it once all have.
+const oldOrder = kept('scriptorium-order') || {};
+const orderOf = (kind) => (states[home]?.order?.[kind]?.length ? states[home].order[kind] : oldOrder[kind] || []);
 const placeIn = (kind, a, b) => {
-  const list = order[kind] || [];
+  const list = orderOf(kind);
   const [i, j] = [list.indexOf(a), list.indexOf(b)];
   return (i < 0) - (j < 0) || i - j;
 };
@@ -1512,15 +1514,7 @@ function endDrag(drop) {
   drag = null;
   if (!armed) return;
   document.documentElement.classList.remove('dragging-cards');
-  // The card glides into its place, then the list is drawn again in the kept order.
-  const from = card.style.transform;
-  card.style.transform = '';
-  card.animate([{ transform: from }, { transform: 'none' }], { duration: motionMs(), easing: 'ease-out' }).finished
-    .catch(() => {}).then(() => {
-      card.classList.remove('dragging');
-      drawn.delete(list);
-      render();
-    });
+  let save = null;
   if (drop) {
     const kind = list.id === 'worker-list' ? 'workers' : 'accounts';
     const full = kind === 'workers' ? workersInOrder().map(workerKey) : accountsInOrder().map((a) => a.name);
@@ -1528,9 +1522,23 @@ function endDrag(drop) {
     // The cards the project select hides keep their places: the shown ones fill the places the shown ones had.
     const shownKeys = new Set(moved);
     let i = 0;
-    order[kind] = full.map((k) => (shownKeys.has(k) ? moved[i++] : k));
-    keep('scriptorium-order', order);
+    const next = full.map((k) => (shownKeys.has(k) ? moved[i++] : k));
+    save = () => act(home, { action: 'order', kind, list: next }, {
+      keys: [`order:${kind}`],
+      apply: (s) => { s.order = { ...s.order, [kind]: next }; },
+      done: (s) => (s.order?.[kind] || []).join('\n') === next.join('\n'),
+    });
   }
+  // The card glides into its place, then the list is drawn again in the new order, which the PC's settings keep.
+  const from = card.style.transform;
+  card.style.transform = '';
+  card.animate([{ transform: from }, { transform: 'none' }], { duration: motionMs(), easing: 'ease-out' }).finished
+    .catch(() => {}).then(() => {
+      card.classList.remove('dragging');
+      drawn.delete(list);
+      if (save) save();
+      else render();
+    });
 }
 document.addEventListener('pointerdown', (e) => {
   if (hold || drag || e.button !== 0) return;

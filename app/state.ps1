@@ -118,6 +118,27 @@ function Rename-Account($settings, [string] $old, [string] $new) {
         Set-JsonProperty $accounts $(if ($property.Name -eq $old) { $new } else { $property.Name }) $property.Value
     }
     $settings.accounts = $accounts
+    # Its card keeps its place (Set-CardOrder).
+    if ($settings.order -and $settings.order.accounts) {
+        $settings.order.accounts = [object[]]@($settings.order.accounts | ForEach-Object { if ($_ -eq $old) { $new } else { $_ } })
+    }
+    return $settings
+}
+
+# The register with the owner's order of the worker or account cards (`order.workers`, `order.accounts`): the PC's,
+# so every device shows the same. A worker is "<project>|<id>", an account its name.
+function Set-CardOrder($settings, [string] $kind, $list) {
+    if (@('workers', 'accounts') -notcontains $kind) {
+        throw "no cards of kind $kind"
+    }
+    $list = @($list | ForEach-Object { [string]$_ })
+    if ($list.Count -gt 100 -or @($list | Where-Object { $_.Length -gt 100 -or $_ -match '[\x00-\x1f]' }).Count) {
+        throw 'an order holds at most 100 cards'
+    }
+    if (-not $settings.order) {
+        Set-JsonProperty $settings 'order' ([pscustomobject]@{})
+    }
+    Set-JsonProperty $settings.order $kind ([object[]]$list)
     return $settings
 }
 
@@ -1144,6 +1165,8 @@ function New-Snapshot($data) {
         now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; login = $data.login; github = [bool]$data.gh
         # This project's name and the PC's projects, for the page's project switch.
         name = [string]$data.name; projects = @($data.projects | Where-Object { $_ })
+        # The owner's order of the cards (Set-CardOrder), the same in every project's snapshot.
+        order = @{ workers = @($data.settings.order.workers | Where-Object { $_ }); accounts = @($data.settings.order.accounts | Where-Object { $_ }) }
         questions = @(); stuck = @(); held = @(); queued = @(); parked = @(); merged = @(); runs = @()
         left = @{ count = 0; seconds = 0; cost = 0.0 }
         # The advisor rule (docs/QUEUE.md, Models), with models.json's model as `base`, for the Details tab.
