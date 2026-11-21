@@ -24,3 +24,13 @@ jobs:
       - name: Parse every .ps1 and run every *.test.ps1 in ${{ matrix.shell }}
         shell: pwsh
         run: ${{ matrix.shell }} -NoProfile -ExecutionPolicy Bypass -File check.ps1
+      - name: Register, start and remove a logon task (launchd or systemd)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo loginctl enable-linger "$USER"
+            export XDG_RUNTIME_DIR=/run/user/$(id -u)
+            for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/bus" ] && break; sleep 1; done
+          fi
+          pwsh -NoProfile -File tasks.smoke.ps1

@@ -7,7 +7,8 @@
 # The folder, one for the PC's user: %LOCALAPPDATA% on Windows, ~/Library/Application Support on macOS, ~/.local/share
 # on Linux. A test sets another before it loads this file: a folder that is set stays.
 if (-not $PcDir) {
-    $PcDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Scriptorium'
+    # DoNotVerify: on Linux the folder may not be there yet, and without it the path comes back empty.
+    $PcDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData', 'DoNotVerify')) 'Scriptorium'
 }
 # The keys of the settings that are the PC's. Every other key is the project's own.
 $PcKeys = @('accounts', 'keep', 'workers')

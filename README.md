@@ -176,8 +176,9 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
 
 ## Limits
 
-- macOS and Linux are new. CI runs every test there, but no queue has run a ticket on them yet, and the macOS
-  keychain lookup of an account added on the page is untested. Tell us what breaks.
+- macOS and Linux are new. CI runs every test there and registers, starts and removes a logon task, but no queue has
+  run a ticket there yet: setup, the page, a run and the sign-in from the page are untested. On macOS the login is
+  read from the keychain, which may ask once for access. Tell us what breaks.
 - On macOS and Linux, the pictures of a question go up at full size: the small copy needs Windows.
 - Claude Code and GitHub only.
 - GitHub builds and tests nothing: a run's own checks are the gate.

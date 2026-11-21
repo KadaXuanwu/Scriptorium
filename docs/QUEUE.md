@@ -25,7 +25,7 @@ with. [uninstall.ps1](../uninstall.ps1) ends and removes all of that for one pro
 On Windows, stopping a task ends only its console host, not the loop inside. A script ends any older copy of itself for the same
 project (and that copy's run) when it starts, so a restart is `Start-ScheduledTask` after `Stop-ScheduledTask`. Each
 script restarts itself through its task (on macOS and Linux: it exits with code 75, and launchd or systemd starts it
-again) when Scriptorium, a loaded plugin or the project's `scriptorium.json` changes
+again; launchd also starts it again 10 seconds after any other exit that is not 0) when Scriptorium, a loaded plugin or the project's `scriptorium.json` changes
 ([restart.ps1](../restart.ps1)): a worker between jobs, so a run in progress finishes on the old code first; the merger
 between passes; the page's server not while a sign-in, a GitHub write, a worker's setup or a copy's delete runs. A paused run
 (`paused.json`) resumes as before. To stop the queue, disable the tasks and end the `powershell.exe` (`pwsh` on macOS

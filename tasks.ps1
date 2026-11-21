@@ -89,9 +89,9 @@ function Get-UnitText([string] $name, [string] $arguments, [string] $main, [stri
             '  <key>ThrottleInterval</key><integer>10</integer>',
             '</dict>', '</plist>', '')) -join "`n"
     }
-    # systemd reads % and $ in a value as its own: doubled, they stay themselves.
-    $escape = { param($text) $text.Replace('%', '%%').Replace('$', '$$') }
-    $exec = ($all | ForEach-Object { '"' + (& $escape $_).Replace('\', '\\').Replace('"', '\"') + '"' }) -join ' '
+    # systemd reads % in a value as its own, and $ too in ExecStart: doubled, they stay themselves.
+    $escape = { param($text) $text.Replace('%', '%%') }
+    $exec = ($all | ForEach-Object { '"' + (& $escape $_).Replace('$', '$$').Replace('\', '\\').Replace('"', '\"') + '"' }) -join ' '
     return (@("# Scriptorium-Task: $name",
         "# Scriptorium-Arguments: $arguments",
         '[Unit]', "Description=$name", '',

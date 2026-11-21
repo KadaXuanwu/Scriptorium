@@ -145,7 +145,6 @@ function Get-BannerlessQuestions([string] $prBody) {
     $items = @(Split-FollowUps $prBody 'Open question' 'Open questions') + @(Split-FollowUps $prBody 'Follow-up')
     return @($items | Where-Object {
             $asked = (Get-FollowUpView $_.body).questions
-            $asked -and $asked -notmatch '(?m)^[ 	]*!\[[^\]]*\]\([^)\s]+\)[ 	]*
-?$'
+            $asked -and $asked -notmatch '(?m)^[ 	]*!\[[^\]]*\]\([^)\s]+\)[ 	]*\r?$'
         } | ForEach-Object { $_.title })
 }
