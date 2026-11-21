@@ -15,14 +15,18 @@ Sets up Scriptorium for one project on this PC (README.md). Safe to run again.
 8. Makes a copy of the repo for each worker beside the main checkout, and runs each plugin's PrepareCopy in it.
 9. Makes the GitHub labels, the logon tasks, the ntfy topic and the Tailscale address of the page.
 
--WhatIf prints each step and changes nothing. Runs in Windows PowerShell 5.1.
+-WhatIf prints each step and changes nothing. -Check only checks step 1, says how to fix each part, and stops.
+Runs in Windows PowerShell 5.1.
+
+.EXAMPLE
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\Tools\Scriptorium\setup.ps1 -Check -Project D:\Work\MyGame
 
 .EXAMPLE
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\Tools\Scriptorium\setup.ps1 -Project D:\Work\MyGame -Commit
 #>
 param(
-    # The project's main checkout: a git repo whose origin is on GitHub.
-    [Parameter(Mandatory = $true)] [string] $Project,
+    # The project's main checkout: a git repo whose origin is on GitHub. -Check works without it.
+    [string] $Project,
     # The workers that the project has after the setup: the ones it has, and new ones up to this count. The page adds
     # more later.
     [int] $Workers = 1,
@@ -33,7 +37,9 @@ param(
     # Starts the logon tasks now, not only at the next logon.
     [switch] $Start,
     # Prints each step and changes nothing.
-    [switch] $WhatIf
+    [switch] $WhatIf,
+    # Only checks what the PC (and the project, when named) needs, says how to fix each part, and changes nothing.
+    [switch] $Check
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,60 +47,84 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot 'tasks.ps1')
 
-# Runs one change, or only names it under -WhatIf.
-function Invoke-Step([string] $what, [scriptblock] $do) {
-    if ($WhatIf) {
-        Write-Output "What if: $what"
-        return
-    }
-    Write-Output $what
-    & $do
-}
-
-# A native command that must succeed. Windows PowerShell turns a program's error text into a stop under 'Stop'.
-function Invoke-Native([string] $exe, [string[]] $arguments) {
-    $ErrorActionPreference = 'Continue'
-    $output = & $exe @arguments 2>&1 | ForEach-Object { "$_" }
-    if ($LASTEXITCODE -ne 0) {
-        throw "$exe $($arguments -join ' ') failed: $(($output | Select-Object -Last 3) -join ' ')"
-    }
-    return $output
-}
-
 function Stop-Setup([string[]] $lines) {
     Write-Output 'Setup stopped:'
     $lines | ForEach-Object { Write-Output "- $_" }
     exit 1
 }
 
-# 1. The tools and the repo.
-$main = Resolve-Project $Project
-$problems = @()
-foreach ($tool in @('git', 'gh', 'claude')) {
-    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        $problems += "$tool is not on the PATH: install it (README.md, What it needs)"
-    }
+# 1. The tools and the repo: each check with how to fix it. -Check prints them all and stops here.
+if (-not $Project -and -not $Check) {
+    Stop-Setup @('name the project: -Project <its folder>')
 }
-$slug = ''
-$url = ''
-if (-not $problems) {
+$checks = @()
+function Add-Check([bool] $ok, [string] $what, [string] $fix, [bool] $optional = $false) {
+    $script:checks += , [pscustomobject]@{ ok = $ok; what = $what; fix = $fix; optional = $optional }
+}
+Add-Check ([Environment]::OSVersion.Platform -eq 'Win32NT') 'Windows 10 or 11' 'Scriptorium runs on Windows only'
+$tools = [ordered]@{
+    git = 'install it: winget install --id Git.Git, then open a new terminal'
+    gh = 'install the GitHub CLI: winget install --id GitHub.cli, then open a new terminal'
+    claude = 'install Claude Code (https://claude.com/claude-code), then open a new terminal'
+}
+foreach ($tool in $tools.Keys) {
+    Add-Check ([bool](Get-Command $tool -ErrorAction SilentlyContinue)) "$tool on the PATH" $tools[$tool]
+}
+$ghReady = $false
+if (Get-Command gh -ErrorAction SilentlyContinue) {
     $ErrorActionPreference = 'Continue'
     & gh auth status *> $null
-    $signedIn = $LASTEXITCODE -eq 0
-    $top = (& git -C $main rev-parse --show-toplevel 2>$null)
-    $url = [string](& git -C $main remote get-url origin 2>$null)
+    $ghReady = $LASTEXITCODE -eq 0
     $ErrorActionPreference = 'Stop'
-    if (-not $signedIn) {
-        $problems += 'the GitHub CLI is not signed in: run gh auth login'
+    Add-Check $ghReady 'the GitHub CLI signed in' 'run: gh auth login'
+}
+if (Get-Command claude -ErrorAction SilentlyContinue) {
+    # The command-line login, the one setup gives the workers: signed in while it holds a refresh token.
+    $credentials = Join-Path $HOME '.claude\.credentials.json'
+    $claudeReady = (Test-Path $credentials) -and ((Get-Content $credentials -Raw) -match '"refreshToken"')
+    Add-Check $claudeReady 'Claude Code signed in' 'run claude, then /login with your Claude Pro or Max plan'
+}
+$main = ''
+$slug = ''
+$url = ''
+if ($Project) {
+    if (-not (Test-Path $Project -PathType Container)) {
+        Stop-Setup @("$Project is not a folder")
     }
-    if (-not $top -or (Resolve-Path $top).Path.TrimEnd('\') -ne $main) {
-        $problems += "$main is not the root of a git repo"
+    $main = Resolve-Project $Project
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        $ErrorActionPreference = 'Continue'
+        $top = (& git -C $main rev-parse --show-toplevel 2>$null)
+        $url = [string](& git -C $main remote get-url origin 2>$null)
+        $ErrorActionPreference = 'Stop'
+        Add-Check ($top -and (Resolve-Path $top).Path.TrimEnd('\') -eq $main) "$main is the root of a git repo" 'name the folder that holds .git, or run git init there'
+        $slug = [regex]::Match($url, 'github\.com[:/](.+?)(\.git)?$').Groups[1].Value
+        Add-Check ([bool]$slug) 'its origin is a GitHub repo' 'make a repo on GitHub, then run: git remote add origin <its URL>; git push -u origin HEAD'
     }
-    $slug = [regex]::Match($url, 'github\.com[:/](.+?)(\.git)?$').Groups[1].Value
-    if (-not $slug) {
-        $problems += "the origin of $main is not a GitHub repo"
+    if ($slug -and $ghReady) {
+        $ErrorActionPreference = 'Continue'
+        $permission = [string](& gh repo view $slug --json viewerPermission -q .viewerPermission 2>$null)
+        $ErrorActionPreference = 'Stop'
+        Add-Check (@('ADMIN', 'MAINTAIN', 'WRITE') -contains $permission) "write access to $slug" 'workers push branches and open pull requests: sign gh in to an account that can push there'
     }
 }
+Add-Check ($null -ne (Read-Serve)) 'Tailscale, for the page on your phone' 'optional: install Tailscale (https://tailscale.com/download) and sign in; without it the page is only on this PC' $true
+if ($Check) {
+    foreach ($item in $checks) {
+        $mark = if ($item.ok) { '[ok]      ' } elseif ($item.optional) { '[optional]' } else { '[MISSING] ' }
+        Write-Output "$mark $($item.what)$(if (-not $item.ok) { ": $($item.fix)" })"
+    }
+    if (-not $Project) {
+        Write-Output 'Add -Project <folder> to check the project too.'
+    }
+    if (@($checks | Where-Object { -not $_.ok -and -not $_.optional }).Count) {
+        Write-Output 'Fix each MISSING line, then run setup -Check again.'
+        exit 1
+    }
+    Write-Output 'Ready. Setup checks each plugin when it installs it. Run setup without -Check.'
+    exit 0
+}
+$problems = @($checks | Where-Object { -not $_.ok -and -not $_.optional } | ForEach-Object { "$($_.what): $($_.fix)" })
 if ($problems) {
     if (-not $WhatIf) {
         Stop-Setup $problems

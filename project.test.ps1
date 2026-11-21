@@ -230,6 +230,8 @@ Assert-Equal (Get-ServeCommand $one 8443) 'serve --bg --https=8444 8443' 'never 
 Assert-Equal (Get-ServeCommand $path 8770) 'serve --bg --https=8443 8770' 'port 443 with another use stays as it is'
 $forward = '{"TCP":{"443":{"TCPForward":"127.0.0.1:22"}}}' | ConvertFrom-Json
 Assert-Equal (Get-ServeCommand $forward 8770) 'serve --bg --https=8443 8770' 'also a forwarder at port 443'
+Assert-Equal "$(Get-ServeOffCommand $one 8770)|$(Get-ServeOffCommand $two 8771)" 'serve --https=443 off|serve --https=8443 off' 'uninstall takes off the address of its port'
+Assert-Equal "$(Get-ServeOffCommand $two 8772)|$(Get-ServeOffCommand $path 8770)|$(Get-ServeOffCommand $null 8770)" '||' 'and nothing else'
 
 # One app for every project of the PC: the projects with their addresses, the pages that may ask a server, and the
 # address a push opens.

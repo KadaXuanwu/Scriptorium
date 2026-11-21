@@ -18,7 +18,7 @@ their pull requests. The owner talks only to the front desk and to the page.
 (`Scriptorium <name> worker N`, `Scriptorium <name> merger`, `Scriptorium <name> app`). The tasks and one worker's setup
 are in [tasks.ps1](../tasks.ps1), which the page's Add a worker uses too. The tasks run through `conhost --headless`,
 so they have no window: with plain `powershell -WindowStyle Hidden`, Windows Terminal opens one, and closing it ends
-the task. Logs: `<checkout>/.queue/`, one stream-json file for each run.
+the task. [uninstall.ps1](../uninstall.ps1) ends and removes all of that for one project (README.md, Uninstall). Logs: `<checkout>/.queue/`, one stream-json file for each run.
 
 Stopping a task ends only its console host, not the loop inside. A script ends any older copy of itself for the same
 project (and that copy's run) when it starts, so a restart is `Start-ScheduledTask` after `Stop-ScheduledTask`. Each

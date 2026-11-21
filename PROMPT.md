@@ -9,16 +9,17 @@ only for a step that needs me, and say exactly what I must do. Its docs are at h
 
 ## Steps
 
-1. **Check the tools.** Run each and read its output:
-   - `git --version`
-   - `gh auth status`: the GitHub CLI must be signed in, with write access to this repo.
-   - `claude --version`
-   - `git remote get-url origin`: the origin must be on GitHub.
-   - `powershell -NoProfile -Command '$PSVersionTable.PSVersion'`: Windows PowerShell 5.1.
-
-   If one is missing or fails, stop and tell me which, and how to install or fix it.
-2. **Clone Scriptorium** into the folder above, if it is not there:
+1. **Clone Scriptorium** into the folder above, if it is not there:
    `git clone https://github.com/KadaXuanwu/Scriptorium "<Scriptorium folder>"`. If it is there, run `git pull` in it.
+   Scriptorium runs on Windows 10 or 11 only. If git is missing, stop and tell me to install it
+   (`winget install --id Git.Git`).
+2. **Check the PC and this repo.** Run, from this repo's root:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File "<Scriptorium folder>\setup.ps1" -Check -Project .
+   ```
+
+   If a line says MISSING, stop and tell me each one with the fix the line gives.
 3. **See what setup will do.** Run, from this repo's root:
 
    ```powershell

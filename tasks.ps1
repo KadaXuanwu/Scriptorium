@@ -1,9 +1,29 @@
 # The queue's logon tasks, the setup of one worker and the delete of its copy (docs/QUEUE.md; docs/APP.md, Add and
-# remove): shared by setup.ps1 and the queue app's Add a worker, Remove and move (app/server.ps1). Dot-sourced; nothing
+# remove): shared by setup.ps1, uninstall.ps1 and the queue app's Add a worker, Remove and move (app/server.ps1). Dot-sourced; nothing
 # runs on load.
 
 . (Join-Path $PSScriptRoot 'project.ps1')
 . (Join-Path $PSScriptRoot 'plugins.ps1')
+
+# Runs one change, or only names it when the calling script (setup.ps1, uninstall.ps1) runs with -WhatIf.
+function Invoke-Step([string] $what, [scriptblock] $do) {
+    if ($WhatIf) {
+        Write-Output "What if: $what"
+        return
+    }
+    Write-Output $what
+    & $do
+}
+
+# A native command that must succeed. Windows PowerShell turns a program's error text into a stop under 'Stop'.
+function Invoke-Native([string] $exe, [string[]] $arguments) {
+    $ErrorActionPreference = 'Continue'
+    $output = & $exe @arguments 2>&1 | ForEach-Object { "$_" }
+    if ($LASTEXITCODE -ne 0) {
+        throw "$exe $($arguments -join ' ') failed: $(($output | Select-Object -Last 3) -join ' ')"
+    }
+    return $output
+}
 
 # Logon tasks: hidden, one instance each, no time limit (a ticket can take hours). Through a headless console: with
 # Windows Terminal as the default terminal, powershell's -WindowStyle Hidden still opens a window, and closing it kills

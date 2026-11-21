@@ -251,6 +251,17 @@ function Get-ServeCommand($serve, [int] $port) {
     return "serve --bg --https=$at $port"
 }
 
+# What uninstall.ps1 runs to take the page of $port off Tailscale, as the arguments of `tailscale` in one string, or ''
+# when Tailscale serves no address of that port.
+function Get-ServeOffCommand($serve, [int] $port) {
+    $url = Get-ServeUrl $serve $port
+    if (-not $url) {
+        return ''
+    }
+    $at = if ($url -match ':(\d+)$') { $Matches[1] } else { '443' }
+    return "serve --https=$at off"
+}
+
 # The project of a logon task, from the task's arguments (Get-ProjectArg wrote them), or '' when they name none.
 function Get-TaskProject([string] $arguments) {
     if ($arguments -match '-Project (?:"([^"]+)"|(\S+))') {

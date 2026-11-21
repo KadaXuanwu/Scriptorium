@@ -4,7 +4,7 @@ A work queue for Claude Code. You write tickets as GitHub issues. Workers (headl
 build one ticket in their own copy of the repo and open a pull request. A merger merges them. One web page shows what
 runs, what waits, what it costs and what only you can decide.
 
-It works on any git repo on GitHub. Plugins add an environment, for example
+It runs on a Windows 10 or 11 PC and works on any git repo on GitHub. Plugins add an environment, for example
 [Scriptorium for Unity](https://github.com/KadaXuanwu/Scriptorium-Unity): one Unity editor for each worker.
 
 ## How it works
@@ -103,7 +103,7 @@ it.
 
 ## What it needs
 
-- Windows 10 or 11 (Windows PowerShell 5.1 is built in).
+- Windows 10 or 11 (Windows PowerShell 5.1 is built in). macOS and Linux are not supported.
 - [git](https://git-scm.com) and the [GitHub CLI](https://cli.github.com), signed in with write access to the repo.
 - [Claude Code](https://claude.com/claude-code), signed in with a Claude Pro or Max plan.
 - Optional: [Tailscale](https://tailscale.com) for the page on your phone, and [ntfy](https://ntfy.sh) for
@@ -111,13 +111,24 @@ it.
 
 ## Quick start
 
-```powershell
-git clone https://github.com/KadaXuanwu/Scriptorium D:\Work\Scriptorium
-```
+1. Get Scriptorium:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\setup.ps1 -Project D:\Work\MyApp -Commit -Start
-```
+   ```powershell
+   git clone https://github.com/KadaXuanwu/Scriptorium D:\Work\Scriptorium
+   ```
+
+2. Check that the PC and the project have what it needs. Each missing part comes with how to fix it, and nothing
+   changes:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\setup.ps1 -Check -Project D:\Work\MyApp
+   ```
+
+3. Set it up:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\setup.ps1 -Project D:\Work\MyApp -Commit -Start
+   ```
 
 Setup adds `scriptorium.json`, the ticket skill, the GitHub labels, one worker and the logon tasks, then prints the
 page address and the ntfy topic. Add `-WhatIf` to preview. It is safe to run again.
@@ -126,9 +137,28 @@ Or paste [PROMPT.md](PROMPT.md) into Claude Code in your project.
 
 Then open the page, add workers and accounts, and file your first ticket.
 
+## Uninstall
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\uninstall.ps1 -Project D:\Work\MyApp
+```
+
+It ends the project's page, merger and workers, removes their logon tasks, takes the workers out of the PC's settings,
+deletes the worker copies, takes the page off Tailscale and deletes the project's `.queue` folder. A worker copy that
+holds work GitHub does not have stays, and uninstall names it. Tickets, pull requests, branches and Claude accounts are
+never touched.
+
+- `-Repo` also deletes the queue's labels on GitHub (tickets lose their `P0`, `size:` and other labels),
+  `scriptorium.json`, the ticket skill and the `.queue/` line of `.gitignore`. Add `-Commit` to commit and push that.
+- `-KeepCopies` leaves the worker copies.
+- `-WhatIf` prints each step and changes nothing.
+
+When no project on the PC uses Scriptorium any more, it names what is left to delete by hand: the PC's settings
+folder, the login folders of accounts added on the page, and the Scriptorium folder.
+
 ## Limits
 
-- Windows only.
+- Windows 10 or 11 only: macOS and Linux are not supported.
 - Claude Code and GitHub only.
 - GitHub builds and tests nothing: a run's own checks are the gate.
 
