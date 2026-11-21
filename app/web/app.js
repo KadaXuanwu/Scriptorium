@@ -1484,21 +1484,43 @@ function cardToDrag(target) {
   // Text stays selectable: only a part with no text of its own starts a drag.
   return [...target.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim()) ? null : card;
 }
+const motionMs = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 150);
 function armDrag() {
-  if (!drag.card.isConnected) return endDrag(false);
+  const { card } = drag;
+  if (!card.isConnected) return endDrag(false);
   drag.armed = true;
   getSelection().removeAllRanges();
-  drag.card.classList.add('dragging');
+  // The card keeps the point it was taken by under the pointer, and shrinks toward it.
+  const r = card.getBoundingClientRect();
+  [drag.gx, drag.gy] = [drag.x - r.left, drag.y - r.top];
+  card.style.transformOrigin = `${drag.gx}px ${drag.gy}px`;
+  card.classList.add('dragging');
   document.documentElement.classList.add('dragging-cards');
+  followDrag(drag.x, drag.y);
   if (drag.touch) navigator.vibrate?.(10);
+}
+// The card under the pointer, from its place in the list (the transform left out).
+function followDrag(x, y) {
+  const { card } = drag;
+  card.style.transform = '';
+  const r = card.getBoundingClientRect();
+  card.style.transform = `translate(${x - drag.gx - r.left}px, ${y - drag.gy - r.top}px) scale(0.95)`;
 }
 function endDrag(drop) {
   clearTimeout(drag.timer);
   const { card, list, armed } = drag;
   drag = null;
   if (!armed) return;
-  card.classList.remove('dragging');
   document.documentElement.classList.remove('dragging-cards');
+  // The card glides into its place, then the list is drawn again in the kept order.
+  const from = card.style.transform;
+  card.style.transform = '';
+  card.animate([{ transform: from }, { transform: 'none' }], { duration: motionMs(), easing: 'ease-out' }).finished
+    .catch(() => {}).then(() => {
+      card.classList.remove('dragging');
+      drawn.delete(list);
+      render();
+    });
   if (drop) {
     const kind = list.id === 'worker-list' ? 'workers' : 'accounts';
     const full = kind === 'workers' ? workersInOrder().map(workerKey) : accountsInOrder().map((a) => a.name);
@@ -1509,8 +1531,6 @@ function endDrag(drop) {
     order[kind] = full.map((k) => (shownKeys.has(k) ? moved[i++] : k));
     keep('scriptorium-order', order);
   }
-  drawn.delete(list);
-  render();
 }
 document.addEventListener('pointerdown', (e) => {
   if (hold || drag || e.button !== 0) return;
@@ -1528,10 +1548,22 @@ document.addEventListener('pointermove', (e) => {
     armDrag();
     if (!drag) return;
   }
-  const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-card]');
-  if (!over || over === drag.card || over.parentElement !== drag.list) return;
-  if (drag.card.compareDocumentPosition(over) & Node.DOCUMENT_POSITION_FOLLOWING) over.after(drag.card);
-  else over.before(drag.card);
+  // The card under the pointer, past the moved one; one still sliding waits, so two cards never swap back and forth.
+  const over = document.elementsFromPoint(e.clientX, e.clientY).map((el) => el.closest('[data-card]'))
+    .find((c) => c && c !== drag.card && c.parentElement === drag.list);
+  if (over && !over.getAnimations().length) {
+    const others = [...drag.list.children].filter((c) => c !== drag.card);
+    const before = others.map((c) => c.getBoundingClientRect());
+    if (drag.card.compareDocumentPosition(over) & Node.DOCUMENT_POSITION_FOLLOWING) over.after(drag.card);
+    else over.before(drag.card);
+    // The others slide from their old places to their new ones.
+    others.forEach((c, i) => {
+      const after = c.getBoundingClientRect();
+      const [dx, dy] = [before[i].left - after.left, before[i].top - after.top];
+      if (dx || dy) c.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: motionMs(), easing: 'ease-out' });
+    });
+  }
+  followDrag(e.clientX, e.clientY);
 });
 // Pull down to refresh, as in a phone app: with the list at its top, a drag down brings a mark from the top edge, and
 // letting go past the line loads the page again (new code and a fresh state). The page itself never scrolls (its
