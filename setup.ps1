@@ -79,10 +79,11 @@ if (Get-Command gh -ErrorAction SilentlyContinue) {
     Add-Check $ghReady 'the GitHub CLI signed in' 'run: gh auth login'
 }
 if (Get-Command claude -ErrorAction SilentlyContinue) {
-    # The command-line login, the one setup gives the workers: signed in while it holds a refresh token.
+    # The command-line login, the one setup gives a new worker: signed in while it holds a refresh token. Only -Check
+    # stops on it: a PC whose workers all run on accounts added on the page may leave it signed out.
     $credentials = Join-Path $HOME '.claude\.credentials.json'
     $claudeReady = (Test-Path $credentials) -and ((Get-Content $credentials -Raw) -match '"refreshToken"')
-    Add-Check $claudeReady 'Claude Code signed in' 'run claude, then /login with your Claude Pro or Max plan'
+    Add-Check $claudeReady 'Claude Code signed in' 'run claude, then /login with your Claude Pro or Max plan' (-not $Check)
 }
 $main = ''
 $slug = ''

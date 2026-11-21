@@ -37,8 +37,8 @@ It runs on a Windows 10 or 11 PC and works on any git repo on GitHub. Plugins ad
 - A run asks you only product decisions (rules, looks, what a user sees) and builds a default for the rest.
 - A blocking question holds the work; an open one merges on its default, which you can change later.
 - Every question comes with a screenshot of what it is about; one about a look, with a screenshot of each choice.
-- Comment on a ticket or pull request and the run reads it at its next checkpoint. Only comments from people with
-  write access count, so strangers on a public repo cannot steer a run.
+- Comment on a ticket or pull request and the run reads it at its next checkpoint. Only comments from the repo's
+  owner, its collaborators and members of its organization count, so strangers on a public repo cannot steer a run.
 
 ### The page
 
@@ -145,10 +145,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\uninstal
 
 It ends the project's page, merger and workers, removes their logon tasks, takes the workers out of the PC's settings,
 deletes the worker copies, takes the page off Tailscale and deletes the project's `.queue` folder. A worker copy that
-holds work GitHub does not have stays, and uninstall names it. Tickets, pull requests, branches and Claude accounts are
+holds work GitHub does not have stays, and uninstall names it: an editor often leaves changed files in a copy, so
+expect to delete some copies by hand. Tickets, pull requests, branches and Claude accounts are
 never touched.
 
-- `-Repo` also deletes the queue's labels on GitHub (tickets lose their `P0`, `size:` and other labels),
+- `-Repo` also deletes the labels setup made on GitHub (tickets lose their `P0`, `size:S` and other labels),
   `scriptorium.json`, the ticket skill and the `.queue/` line of `.gitignore`. Add `-Commit` to commit and push that.
 - `-KeepCopies` leaves the worker copies.
 - `-WhatIf` prints each step and changes nothing.

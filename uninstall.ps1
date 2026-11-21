@@ -22,8 +22,8 @@ param(
     [Parameter(Mandatory = $true)] [string] $Project,
     # Leaves every worker copy on the PC.
     [switch] $KeepCopies,
-    # Also deletes the queue's labels on GitHub (P0, P1, P2, size:*, worker:* and the others: tickets lose them) and the
-    # files setup added to the repo.
+    # Also deletes the labels setup made on GitHub (P0, P1, P2, size:S and the others: tickets lose them) and the files
+    # setup added to the repo.
     [switch] $Repo,
     # With -Repo: commits and pushes the files' removal.
     [switch] $Commit,
@@ -92,6 +92,10 @@ if ($ids.Count) {
 # workers' copies of the `repo:` repos. A copy with work that GitHub does not have stays.
 $parent = Split-Path $main -Parent
 $leaf = Split-Path $main -Leaf
+# The worker numbers of the PC's other projects: their `<main>-w<N>` is that worker's checkout of this repo, for a
+# ticket with a `repo:` label (worker.ps1), and stays.
+$others = @(Get-ScheduledTask -TaskName 'Scriptorium * worker *' -ErrorAction SilentlyContinue |
+    Where-Object { (Get-TaskProject "$($_.Actions[0].Arguments)") -ne $main } | ForEach-Object { $_.TaskName.Split(' ')[-1] })
 $copies = @(Get-ChildItem -LiteralPath $parent -Directory |
     ForEach-Object { if ($_.Name -match "^$([regex]::Escape($leaf))-w(\d+)$") { @{ main = $main; id = $Matches[1] } } })
 foreach ($other in @(if ($config) { $config.repos })) {
@@ -102,6 +106,10 @@ foreach ($copy in $copies) {
     $folder = "$($copy.main)-w$($copy.id)"
     if ($KeepCopies) {
         Write-Output "Stays (-KeepCopies): $folder"
+        continue
+    }
+    if ($copy.main -eq $main -and $others -contains $copy.id) {
+        Write-Output "Stays, worker $($copy.id) of another project uses it: $folder"
         continue
     }
     $work = @(Get-CopyWork $folder)
@@ -140,11 +148,16 @@ if (Test-Path -LiteralPath $queue) {
 if ($Repo) {
     $url = [string](& git -C $main remote get-url origin)
     $slug = [regex]::Match($url, 'github\.com[:/](.+?)(\.git)?$').Groups[1].Value
-    $fixed = @('P0', 'P1', 'P2', 'needs-owner', 'needs-rebase', 'answered', 'follow-up', 'open-question')
-    # The other repos got only the PR labels (setup.ps1, step 9).
-    $targets = @(@{ repo = $slug; match = { param($label) $fixed -contains $label -or $label -match '^(size|complexity|worker|repo):' } })
+    # The labels that setup.ps1 makes (step 9), and a `worker:N` of every worker the page added.
+    $ours = @('P0', 'P1', 'P2', 'needs-owner', 'needs-rebase', 'answered', 'follow-up', 'open-question', 'size:S', 'size:M', 'size:L')
+    if ($config) {
+        $ours += @(Get-Complexities (Read-Models) $config | ForEach-Object { "complexity:$($_.name)" })
+        $ours += @($config.repos | ForEach-Object { "repo:$_" })
+    }
+    # The other repos got only the PR labels.
+    $targets = @(@{ repo = $slug; match = { param($label) $ours -contains $label -or $label -match '^worker:\d+$' } })
     foreach ($other in @(if ($config) { $config.repos })) {
-        $targets += @{ repo = "$($slug.Split('/')[0])/$other"; match = { param($label) @('needs-owner', 'needs-rebase', 'answered') -contains $label -or $label -match '^worker:' } }
+        $targets += @{ repo = "$($slug.Split('/')[0])/$other"; match = { param($label) @('needs-owner', 'needs-rebase', 'answered') -contains $label -or $label -match '^worker:\d+$' } }
     }
     foreach ($target in $targets) {
         $labels = @(& gh label list -R $target.repo --limit 500 --json name -q '.[].name' | Where-Object { & $target.match $_ })
