@@ -1,4 +1,4 @@
-// The queue app's page (docs/APP.md): renders every project's /api/state every 10 s while visible, posts the owner's
+// The queue app's page (docs/APP.md): renders every project's /api/state every 5 s while visible, posts the owner's
 // actions.
 'use strict';
 
@@ -34,7 +34,7 @@ const complexityOf = (s, name) => (s.complexities || []).find((c) => c.name === 
 const rowOf = (s, number) => [...s.queued, ...s.parked].find((row) => row.number === number);
 
 // Redraws a list only when it changed and holds no field in use, so typing, the phone keyboard and open folds
-// survive the 10 s refresh.
+// survive the 5 s refresh.
 const drawn = new WeakMap();
 function put(el, html) {
   const active = document.activeElement;
@@ -893,7 +893,7 @@ function draw(animate) {
     }
     render();
   };
-  // A change the owner made moves smoothly from the old state to the new one; the 10 s refresh does not animate.
+  // A change the owner made moves smoothly from the old state to the new one; the 5 s refresh does not animate.
   if (animate && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(paint);
   else paint();
 }
@@ -1169,7 +1169,7 @@ const setColor = (project, value) => act(project, { action: 'color', value }, {
 });
 
 // Renames in place (docs/APP.md): a field over the name. Enter or a click elsewhere saves, Escape keeps the name. The
-// 10 s redraw waits while the field has focus (put). A worker's empty name gives back "Worker <id>".
+// 5 s redraw waits while the field has focus (put). A worker's empty name gives back "Worker <id>".
 function rename(label) {
   if (label.querySelector('input')) return;
   const { rename: kind, id, name } = label.dataset;
@@ -1434,7 +1434,7 @@ document.addEventListener('pointerdown', (e) => {
     if (!hold.input.isConnected) return release();
     hold.armed = true;
     hold.input.classList.add('held');
-    // The focus keeps the 10 s refresh from a redraw under the finger (put).
+    // The focus keeps the 5 s refresh from a redraw under the finger (put).
     hold.input.focus({ preventScroll: true });
     navigator.vibrate?.(10);
   }, holdMs);
@@ -1620,7 +1620,7 @@ document.addEventListener('change', async (e) => {
 });
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
-setInterval(() => { if (!document.hidden) refresh(); }, 10000);
+setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 try {
   localStorage.removeItem('scriptorium-project');
   localStorage.removeItem('scriptorium-projects');

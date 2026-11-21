@@ -23,7 +23,7 @@ and the page show the mark alone, with no background: `mark-on-light.png` in the
 | ---- | ---- | ------------ |
 | GitHub | The record of the work: tickets, questions and answers, PRs | no |
 | Queue files | The live state in `.queue/` (main checkout and copies), written by the scripts and the runs (Data) | no |
-| Server | Reads both, serves the page and one snapshot (`/api/state`), does the owner's actions (`/api/action`), shows a run's steps (`/api/log?worker=N`) and what a worker's copy holds (`/api/copy?worker=N`), sends pushes. It listens on localhost only. It reads GitHub once a minute in a background job and the local files every 10 s. A ticket that a worker's state names as in work counts as claimed before GitHub's reading shows its label, so it leaves the queue within 10 s. An action's GitHub writes also run in a background job, so a slow GitHub delays only that action's answer, never the page | no |
+| Server | Reads both, serves the page and one snapshot (`/api/state`), does the owner's actions (`/api/action`), shows a run's steps (`/api/log?worker=N`) and what a worker's copy holds (`/api/copy?worker=N`), sends pushes. It listens on localhost only. It reads GitHub once a minute in a background job and the local files every 5 s. A ticket that a worker's state names as in work counts as claimed before GitHub's reading shows its label, so it leaves the queue within 5 s. An action's GitHub writes also run in a background job, so a slow GitHub delays only that action's answer, never the page | no |
 | Tailscale | Tailscale Serve puts the server on the owner's devices with a certificate, at an address of its own for each project (Setup); nothing is open to the internet | no |
 | ntfy | Pushes to the phone; a tap opens the page on that project and tab | no |
 
@@ -295,7 +295,7 @@ size on any model (`Get-Typical`): its wall time, and its cost in dollars at the
 
 **An action shows at once.** The page changes the card as soon as the owner acts. The card then shows a turning ring
 and its controls are greyed until a snapshot from the server confirms the action. If the server refuses, the page takes
-the change back and says why. The 10 s refresh redraws a list only when its content changed and no box or menu in it has
+the change back and says why. The 5 s refresh redraws a list only when its content changed and no box or menu in it has
 focus.
 
 **With the PC off** (or Tailscale disconnected) the page still opens: it is kept on the device (`web/sw.js`), with the

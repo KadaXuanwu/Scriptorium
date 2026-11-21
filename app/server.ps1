@@ -123,12 +123,20 @@ function Get-Clone([string] $id, $state) {
     return "$Main-w$id"
 }
 
+# Read again only when the file changed: parsing its last 300 lines was the snapshot's second biggest cost.
+$script:runs = @()
+$script:runsStamp = ''
 function Read-Runs {
-    $file = Join-Path $mainQueue 'history.jsonl'
-    if (-not (Test-Path $file)) {
+    $file = Get-Item (Join-Path $mainQueue 'history.jsonl') -ErrorAction SilentlyContinue
+    if (-not $file) {
         return @()
     }
-    return @(Get-Content $file -Tail 300 -Encoding UTF8 | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } })
+    $stamp = "$($file.LastWriteTimeUtc.Ticks) $($file.Length)"
+    if ($stamp -ne $script:runsStamp) {
+        $script:runs = @(Get-Content $file.FullName -Tail 300 -Encoding UTF8 | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } })
+        $script:runsStamp = $stamp
+    }
+    return $script:runs
 }
 
 # A login's state from its files, no process started: signed in (a refresh token), its plan and its email.
@@ -1242,7 +1250,7 @@ while ($true) {
                 }
             }
             Update-Snapshot
-            $script:nextLocal = $now + 10
+            $script:nextLocal = $now + 5
             # Not while a sign-in waits for the owner, a GitHub write, a worker's setup or a copy's delete runs: the
             # restart would end it.
             if (-not ($script:login -and -not $script:login.process.HasExited) -and $script:writes.Count -eq 0 -and $script:setups.Count -eq 0 -and $script:deletes.Count -eq 0 -and (Test-CodeChanged)) {

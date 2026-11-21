@@ -4,9 +4,16 @@
 # Of $areas, those that clash with an area in $busy: the same one, or one inside the other (area:api holds
 # area:api/auth, so the two clash; area:api/auth and area:api/search do not).
 function Get-Clashes($areas, $busy) {
-    return @($areas | Where-Object {
-        $area = [string]$_
-        @($busy | Where-Object { $area -eq $_ -or $area.StartsWith("$_/") -or ([string]$_).StartsWith("$area/") }).Count -gt 0
+    # foreach, not a pipeline: the page's snapshot calls this for every queued ticket every few seconds.
+    return @(foreach ($item in $areas) {
+        $area = [string]$item
+        foreach ($held in $busy) {
+            $other = [string]$held
+            if ($area -eq $other -or $area.StartsWith("$other/") -or $other.StartsWith("$area/")) {
+                $item
+                break
+            }
+        }
     })
 }
 
@@ -28,9 +35,14 @@ function Select-Forced($queue, [int] $wanted, $busy) {
 
 # The open tickets that block this one (its `Blocked by` lines).
 function Get-Blockers($issue, $open) {
-    return @(([string]$issue.body -split "`n") | Where-Object { $_ -match '^\s*blocked by' } |
-        ForEach-Object { [regex]::Matches($_, '#(\d+)') } | ForEach-Object { [int]$_.Groups[1].Value } |
-        Where-Object { $open -contains $_ })
+    return @(foreach ($line in [string]$issue.body -split "`n") {
+        if ($line -match '^\s*blocked by') {
+            foreach ($match in [regex]::Matches($line, '#(\d+)')) {
+                $number = [int]$match.Groups[1].Value
+                if ($open -contains $number) { $number }
+            }
+        }
+    })
 }
 
 # Now (docs/QUEUE.md, Now): the ticket that a worker's force file names with `now`, 0 without one. That worker takes

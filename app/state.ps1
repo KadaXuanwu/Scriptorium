@@ -22,8 +22,10 @@ function Read-Json([string] $path) {
     }
 }
 
+# The helpers below loop with foreach, not a pipeline: the page's snapshot calls them thousands of times every few
+# seconds, and a pipeline costs ten times as much in Windows PowerShell.
 function Get-Names($item) {
-    return @($item.labels | ForEach-Object { $_.name })
+    return @(foreach ($label in $item.labels) { $label.name })
 }
 
 # A login's plan as the page names it, from its .credentials.json.
@@ -448,11 +450,14 @@ function Get-StuckReason([string] $log) {
 # without the wall flag hold the last turn only: left out.
 function Get-Typical($runs, [string] $size, [string] $model, [string] $field = 'duration') {
     foreach ($sameModel in @($true, $false)) {
-        $values = @($runs | Where-Object {
-            $_.wall -and $_.kind -eq 'ticket' -and -not $_.partial -and [double]$_.$field -gt 0 -and $_.size -eq $size -and
-                (-not $sameModel -or $_.model -eq $model)
-        } | ForEach-Object { [double]$_.$field } | Sort-Object)
+        $values = @(foreach ($run in $runs) {
+            if ($run.wall -and $run.kind -eq 'ticket' -and -not $run.partial -and [double]$run.$field -gt 0 -and $run.size -eq $size -and
+                (-not $sameModel -or $run.model -eq $model)) {
+                [double]$run.$field
+            }
+        })
         if ($values.Count -gt 0) {
+            [array]::Sort($values)
             return $values[[int][math]::Floor(($values.Count - 1) / 2)]
         }
     }
@@ -479,10 +484,13 @@ function Get-Decision([string] $body) {
     return ''
 }
 
-# A label's value, '' without one: an empty pipeline would reach the page as {}.
+# A label's value, $null without one (the page reads null).
 function Get-Label($item, [string] $prefix) {
-    return [string](Get-Names $item | Where-Object { $_ -like "$prefix*" } | Sort-Object | Select-Object -First 1 |
-        ForEach-Object { $_.Substring($prefix.Length) })
+    $found = @(foreach ($name in Get-Names $item) { if ($name -like "$prefix*") { $name } })
+    if ($found.Count -eq 0) {
+        return $null
+    }
+    return [string](@($found | Sort-Object)[0]).Substring($prefix.Length)
 }
 
 # A ticket's size; M without the label, as for the workers.
@@ -493,19 +501,30 @@ function Get-Size($item) {
 
 # A ticket's areas without the prefix (api/search), as an array even when empty.
 function Get-Areas($item) {
-    return ,@(Get-Names $item | Where-Object { $_ -like 'area:*' } | Sort-Object | ForEach-Object { $_.Substring(5) })
+    $found = @(foreach ($name in Get-Names $item) { if ($name -like 'area:*') { $name } })
+    if ($found.Count -gt 1) {
+        $found = @($found | Sort-Object)
+    }
+    return ,@(foreach ($name in $found) { $name.Substring(5) })
 }
 
 function Get-Priority($item) {
-    return [string](Get-Names $item | Where-Object { $_ -match '^P[0-2]$' } | Sort-Object | Select-Object -First 1)
+    $found = @(foreach ($name in Get-Names $item) { if ($name -match '^P[0-2]$') { $name } })
+    if ($found.Count -eq 0) {
+        return $null
+    }
+    return [string]@($found | Sort-Object)[0]
 }
 
 # The areas and repos that tickets in flight hold: claimed by a worker and not waiting on the owner.
 function Get-BusyAreas($issues, [int] $except = 0) {
-    return @($issues | Where-Object {
-        $n = Get-Names $_
-        $_.number -ne $except -and ($n | Where-Object { $_ -like 'worker:*' }) -and $n -notcontains 'needs-owner'
-    } | ForEach-Object { Get-Names $_ } | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
+    return @(foreach ($issue in $issues) {
+        # Get-Names inline: this runs for every ticket, once per queued row.
+        $n = @(foreach ($label in $issue.labels) { $label.name })
+        if ($issue.number -ne $except -and ($n -like 'worker:*') -and $n -notcontains 'needs-owner') {
+            foreach ($name in $n) { if ($name -like 'area:*' -or $name -like 'repo:*') { $name } }
+        }
+    })
 }
 
 # Whether a GitHub reading offers the workers work that the reading before it did not: a ticket that entered the queue
@@ -617,6 +636,11 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
 # it at once or why none can (Select-NowWorker).
 function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $null, $accounts = @()) {
     $open = @($issues | ForEach-Object { $_.number })
+    # Each ticket's open blockers, read once: the parked rows ask every ticket whether it waits on them.
+    $blockedBy = @{}
+    foreach ($issue in $issues) {
+        $blockedBy[[int]$issue.number] = @(Get-Blockers $issue $open)
+    }
     $nows = @{}
     foreach ($view in $workerViews | Where-Object { $_.now }) {
         $nows[[int]$view.now] = [string]$view.id
@@ -640,11 +664,11 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
         }
         if (-not $row.priority) {
             # The open tickets that a Blocked by line holds on it: a drop frees them (docs/APP.md, Queue).
-            $row.blocks = @($issues | Where-Object { @(Get-Blockers $_ @($issue.number)).Count } | ForEach-Object { $_.number })
+            $row.blocks = @(foreach ($other in $issues) { if ($blockedBy[[int]$other.number] -contains $issue.number) { $other.number } })
             $parked += $row
             continue
         }
-        $blockers = @(Get-Blockers $issue $open)
+        $blockers = @($blockedBy[[int]$issue.number])
         # The workers that have the ticket's complexity on (limits.ps1).
         $takers = @($enabled | Where-Object { -not (Test-ComplexityOff $row.complexity $settings ([string]$_.id)) })
         $areas = Get-Clashes @($names | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' }) $busy
@@ -1197,10 +1221,15 @@ function New-Snapshot($data) {
             }
         }
         # What is left: each queued ticket's typical time and cost by its size, and their sums.
+        $typical = @{}
         foreach ($row in $rows.queued) {
             $size = if ($row.size) { $row.size } else { 'M' }
-            $row.seconds = Get-Typical $data.runs $size ''
-            $row.cost = Get-Typical $data.runs $size '' 'cost'
+            # Once per size: the rows share a handful.
+            if (-not $typical.ContainsKey($size)) {
+                $typical[$size] = @{ seconds = Get-Typical $data.runs $size ''; cost = Get-Typical $data.runs $size '' 'cost' }
+            }
+            $row.seconds = $typical[$size].seconds
+            $row.cost = $typical[$size].cost
             $snapshot.left.seconds += [double]$row.seconds
             $snapshot.left.cost += [double]$row.cost
         }
