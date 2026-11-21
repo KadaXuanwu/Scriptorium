@@ -12,7 +12,7 @@ Takes Scriptorium off one project on this PC (README.md, Uninstall). Safe to run
    and the `.queue/` line of .gitignore. -Commit commits and pushes that change.
 
 It never touches tickets, pull requests, branches or the Claude accounts. -WhatIf prints each step and changes nothing.
-Runs in Windows PowerShell 5.1.
+Runs in Windows PowerShell 5.1, and in PowerShell 7.4 or later (pwsh) on macOS and Linux.
 
 .EXAMPLE
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\Tools\Scriptorium\uninstall.ps1 -Project D:\Work\MyGame -WhatIf

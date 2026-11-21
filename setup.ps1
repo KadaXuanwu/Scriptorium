@@ -16,7 +16,7 @@ Sets up Scriptorium for one project on this PC (README.md). Safe to run again.
 9. Makes the GitHub labels, the logon tasks, the ntfy topic and the Tailscale address of the page.
 
 -WhatIf prints each step and changes nothing. -Check only checks step 1, says how to fix each part, and stops.
-Runs in Windows PowerShell 5.1.
+Runs in Windows PowerShell 5.1, and in PowerShell 7.4 or later (pwsh) on macOS and Linux.
 
 .EXAMPLE
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\Tools\Scriptorium\setup.ps1 -Check -Project D:\Work\MyGame
