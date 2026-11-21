@@ -296,7 +296,7 @@ function workerCard(worker) {
 
   const card = `worker:${worker.id}`;
   return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}" data-card="${esc(`${scope}|${worker.id}`)}"${busyAttr(card)}>
-    <div class="worker-head"><span class="avatar">${id}</span><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}</strong>
+    <div class="worker-head"><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}</strong>
       <span class="doing ${tone}">${icon(glyph)}${words}</span></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
