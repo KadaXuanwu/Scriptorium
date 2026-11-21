@@ -10,7 +10,11 @@ Thank you for the help. Read this before you open a pull request.
 3. Every change to a queue rule has a test (`*.test.ps1`) and the change to its doc in the same pull request:
    [docs/QUEUE.md](docs/QUEUE.md), [docs/APP.md](docs/APP.md), [PLAYBOOK.md](PLAYBOOK.md) or the info text on the
    page's Details tab.
-4. Windows PowerShell 5.1 syntax only: no `&&`, `||`, `?:` or `??`. Keep a new `.ps1` file in ASCII.
+4. The code runs in Windows PowerShell 5.1 on Windows and in PowerShell 7 on macOS and Linux:
+   - 5.1 syntax only: no `&&`, `||`, `?:` or `??`. Keep a new `.ps1` file in ASCII.
+   - What differs between the systems goes in [platform.ps1](platform.ps1) or the logon tasks of
+     [tasks.ps1](tasks.ps1), behind `$OnWindows` and `$OnMac`.
+   - A path in `Join-Path` takes `/`: Windows reads it as `\`.
 5. No new dependency. The page stays plain HTML, CSS and JS, with no build step.
 6. A change to the plugin contract (a hook or a context field that goes away or changes its meaning) needs an issue
    first. It makes contract version 2.
@@ -21,7 +25,8 @@ Thank you for the help. Read this before you open a pull request.
    powershell -NoProfile -ExecutionPolicy Bypass -File check.ps1
    ```
 
-   It parses every `.ps1` and runs every `*.test.ps1`. The same runs on each pull request.
+   It parses every `.ps1` and runs every `*.test.ps1`. On macOS or Linux, `pwsh -NoProfile -File check.ps1`. Each
+   pull request runs it on Windows (in both PowerShells), Ubuntu and macOS.
 
 ## A pull request that lists a plugin
 

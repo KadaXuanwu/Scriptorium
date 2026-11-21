@@ -81,9 +81,10 @@ function Get-Word { 'two' }
     $message = ''
     try { Import-Plugin (Join-Path $root 'none') 'none' $null | Out-Null } catch { $message = "$_" }
     Assert-Equal ($message -like 'plugin none: no plugin.json and plugin.ps1 in *') $true 'a plugin not installed'
-    Assert-Equal (Get-PluginDir 'C:\S' 'unity' ('{ "source": "https://github.com/x/y" }' | ConvertFrom-Json)) 'C:\S\plugins\unity' 'a git source lives in the install'
-    Assert-Equal (Get-PluginDir 'C:\S' 'unity' $null) 'C:\S\plugins\unity' 'a listed plugin lives in the install'
-    Assert-Equal (Get-PluginDir 'C:\S' 'one' ('{ "source": "' + $one.Replace('\', '/') + '" }' | ConvertFrom-Json)) $one 'a folder source stays where it is'
+    $plugins = Join-Path (Join-Path $root 'S') 'plugins'
+    Assert-Equal (Get-PluginDir (Join-Path $root 'S') 'unity' ('{ "source": "https://github.com/x/y" }' | ConvertFrom-Json)) (Join-Path $plugins 'unity') 'a git source lives in the install'
+    Assert-Equal (Get-PluginDir (Join-Path $root 'S') 'unity' $null) (Join-Path $plugins 'unity') 'a listed plugin lives in the install'
+    Assert-Equal (Get-PluginDir (Join-Path $root 'S') 'one' ('{ "source": "' + $one.Replace('\', '/') + '" }' | ConvertFrom-Json)) $one 'a folder source stays where it is'
 
     # A plugin loaded inside Start-Job works as in the script.
     $job = Start-Job -ArgumentList $PSScriptRoot, $one -ScriptBlock {

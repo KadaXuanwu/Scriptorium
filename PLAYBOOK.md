@@ -83,7 +83,7 @@ the script resumes the same session after the reset.
 
 **One shell.** You have one shell, Bash. Run a PowerShell command through it as
 `powershell -NoProfile -Command '<one line>'`; more than one line goes in a `.ps1` file in the queue folder, run with
-`-File`.
+`-File`. On macOS and Linux the command is `pwsh`, here and in every playbook.
 
 ## The steps
 

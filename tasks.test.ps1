@@ -84,11 +84,14 @@ Assert-Equal (@(Get-CopyWork $root) -join ' | ') 'it is no git checkout, so noth
 # The rename: only a worker's copy, and never while a program uses a file in it.
 Assert-Equal (Rename-CopyToDelete $main '2') '' 'a worker with no copy'
 Assert-Equal (Rename-CopyToDelete $main '1\..\App') '' 'a number only: nothing else becomes a path'
-$open = [System.IO.File]::Open((Join-Path $copy 'a.txt'), 'Open', 'Read', 'None')
-try {
-    Assert-Equal (Rename-CopyToDelete $main '1' 1) '' 'a copy that a program uses stays'
-} finally {
-    $open.Close()
+# Only Windows refuses to rename a folder while a program has a file in it open.
+if ($OnWindows) {
+    $open = [System.IO.File]::Open((Join-Path $copy 'a.txt'), 'Open', 'Read', 'None')
+    try {
+        Assert-Equal (Rename-CopyToDelete $main '1' 1) '' 'a copy that a program uses stays'
+    } finally {
+        $open.Close()
+    }
 }
 Assert-Equal (Test-Path -LiteralPath $copy) $true 'the used copy has its name still'
 $trash = Rename-CopyToDelete $main '1'

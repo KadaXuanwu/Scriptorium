@@ -11,8 +11,9 @@ only for a step that needs me, and say exactly what I must do. Its docs are at h
 
 1. **Clone Scriptorium** into the folder above, if it is not there:
    `git clone https://github.com/KadaXuanwu/Scriptorium "<Scriptorium folder>"`. If it is there, run `git pull` in it.
-   Scriptorium runs on Windows 10 or 11 only. If git is missing, stop and tell me to install it
-   (`winget install --id Git.Git`).
+   Scriptorium runs on Windows, and on macOS or Linux with PowerShell 7.4 or later (`pwsh`). If git is missing, stop
+   and tell me to install it. On macOS or Linux, run the commands below with `pwsh -NoProfile -File` in place of
+   `powershell -NoProfile -ExecutionPolicy Bypass -File`, and `/` in place of `\`.
 2. **Check the PC and this repo.** Run, from this repo's root:
 
    ```powershell

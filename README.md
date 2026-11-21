@@ -4,8 +4,9 @@ A work queue for Claude Code. You write tickets as GitHub issues. Workers (headl
 build one ticket in their own copy of the repo and open a pull request. A merger merges them. One web page shows what
 runs, what waits, what it costs and what only you can decide.
 
-It runs on a Windows 10 or 11 PC and works on any git repo on GitHub. Plugins add an environment, for example
-[Scriptorium for Unity](https://github.com/KadaXuanwu/Scriptorium-Unity): one Unity editor for each worker.
+It runs on Windows, macOS and Linux and works on any git repo on GitHub. Plugins add an environment, for example
+[Scriptorium for Unity](https://github.com/KadaXuanwu/Scriptorium-Unity): one Unity editor for each worker (Windows
+only).
 
 ## How it works
 
@@ -89,7 +90,8 @@ in `models.json`. `report.ps1` prints each run's cost and token numbers ([docs/Q
 
 ## In the background
 
-Scripts run as hidden Windows tasks that start at logon and need nothing from you.
+Scripts run as hidden logon tasks that start when you log in and need nothing from you: Task Scheduler tasks on
+Windows, launchd agents on macOS, systemd user services on Linux.
 
 - **A worker script** for each worker picks the next ticket (never one another worker has), prepares the environment,
   watches the account's usage, passes your comments to the run, and holds or resumes runs at limits. A run that ends
@@ -103,7 +105,8 @@ it.
 
 ## What it needs
 
-- Windows 10 or 11 (Windows PowerShell 5.1 is built in). macOS and Linux are not supported.
+- Windows 10 or 11 (Windows PowerShell 5.1 is built in), or macOS or Linux with
+  [PowerShell 7.4 or later](https://aka.ms/powershell) (`pwsh`). Linux needs systemd.
 - [git](https://git-scm.com) and the [GitHub CLI](https://cli.github.com), signed in with write access to the repo.
 - [Claude Code](https://claude.com/claude-code), signed in with a Claude Pro or Max plan.
 - Optional: [Tailscale](https://tailscale.com) for the page on your phone, and [ntfy](https://ntfy.sh) for
@@ -124,10 +127,22 @@ it.
    powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\setup.ps1 -Check -Project D:\Work\MyApp
    ```
 
+   On macOS or Linux:
+
+   ```sh
+   pwsh -NoProfile -File ~/Work/Scriptorium/setup.ps1 -Check -Project ~/Work/MyApp
+   ```
+
 3. Set it up:
 
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\setup.ps1 -Project D:\Work\MyApp -Commit -Start
+   ```
+
+   On macOS or Linux:
+
+   ```sh
+   pwsh -NoProfile -File ~/Work/Scriptorium/setup.ps1 -Project ~/Work/MyApp -Commit -Start
    ```
 
 Setup adds `scriptorium.json`, the ticket skill, the GitHub labels, one worker and the logon tasks, then prints the
@@ -142,6 +157,8 @@ Then open the page, add workers and accounts, and file your first ticket.
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\uninstall.ps1 -Project D:\Work\MyApp
 ```
+
+On macOS or Linux: `pwsh -NoProfile -File ~/Work/Scriptorium/uninstall.ps1 -Project ~/Work/MyApp`.
 
 It ends the project's page, merger and workers, removes their logon tasks, takes the workers out of the PC's settings,
 deletes the worker copies, takes the page off Tailscale and deletes the project's `.queue` folder. A worker copy that
@@ -159,7 +176,9 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
 
 ## Limits
 
-- Windows 10 or 11 only: macOS and Linux are not supported.
+- macOS and Linux are new. CI runs every test there, but no queue has run a ticket on them yet, and the macOS
+  keychain lookup of an account added on the page is untested. Tell us what breaks.
+- On macOS and Linux, the pictures of a question go up at full size: the small copy needs Windows.
 - Claude Code and GitHub only.
 - GitHub builds and tests nothing: a run's own checks are the gate.
 

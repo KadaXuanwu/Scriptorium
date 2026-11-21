@@ -101,7 +101,7 @@ what it does not hold:
   (a draft that waits for the owner's answer).
 - **Queued:** by priority, then size, then age; say which wait on a blocker or a busy area.
 - **Paused for the usage limit:** a `**Worker N:** paused…` comment says when it resumes, by itself. Each account's
-  usage is in `%LOCALAPPDATA%\Scriptorium\usage.json` (the PC's, for every project), and which worker got which
+  usage is in `usage.json` in the PC's Scriptorium folder (`%LOCALAPPDATA%\Scriptorium` on Windows, `~/Library/Application Support/Scriptorium` on macOS, `~/.local/share/Scriptorium` on Linux) (for every project), and which worker got which
   ticket and why in the workers' `worker.log` (`assigned #N…`).
 - **Stuck runs:** a `**Worker N:** stopped without…` comment names its log. Read its end and say what went wrong, in
   one line.
@@ -124,8 +124,8 @@ what it does not hold:
   through you, do the gap check of Filing a ticket on it first, then edit its title and body, then queue it as they say.
 - **Reprioritise:** swap the `P*` label (no effect once a worker claimed it). **Cancel:** close the issue with a comment.
 - **Accounts:** whenever the owner says they use a login somewhere new, or wants a worker on another account, move that
-  use in the account register (`accounts` in `%LOCALAPPDATA%\Scriptorium\settings.json`, the PC's, for every
-  project). The budget keeps room only where they work, so a stale entry either starves the workers or locks the
+  use in the account register (`accounts` in `settings.json` in the PC's Scriptorium folder (`%LOCALAPPDATA%\Scriptorium` on Windows, `~/Library/Application Support/Scriptorium` on macOS, `~/.local/share/Scriptorium` on Linux), for
+  every project). The budget keeps room only where they work, so a stale entry either starves the workers or locks the
   owner out.
 - **Models:** keep the `complexities` of `scriptorium.json` current for this project (Scriptorium's `docs/CONFIG.md`):
   a new model, a plan change, or the owner's verdict on PRs by model (each PR names its model and effort). Commit and

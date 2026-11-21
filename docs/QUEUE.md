@@ -16,17 +16,20 @@ their pull requests. The owner talks only to the front desk and to the page.
 
 [setup.ps1](../setup.ps1) makes the copies, runs the plugins' setup, makes the labels and the logon tasks
 (`Scriptorium <name> worker N`, `Scriptorium <name> merger`, `Scriptorium <name> app`). The tasks and one worker's setup
-are in [tasks.ps1](../tasks.ps1), which the page's Add a worker uses too. The tasks run through `conhost --headless`,
-so they have no window: with plain `powershell -WindowStyle Hidden`, Windows Terminal opens one, and closing it ends
-the task. [uninstall.ps1](../uninstall.ps1) ends and removes all of that for one project (README.md, Uninstall). Logs: `<checkout>/.queue/`, one stream-json file for each run.
+are in [tasks.ps1](../tasks.ps1), which the page's Add a worker uses too. On Windows they are Task Scheduler tasks that
+run through `conhost --headless`, so they have no window: with plain `powershell -WindowStyle Hidden`, Windows Terminal
+opens one, and closing it ends the task. On macOS each is a launchd agent in `~/Library/LaunchAgents`, on Linux a
+systemd user service in `~/.config/systemd/user` (`scriptorium-<name>-worker-<N>`), with the PATH that setup ran
+with. [uninstall.ps1](../uninstall.ps1) ends and removes all of that for one project (README.md, Uninstall). Logs: `<checkout>/.queue/`, one stream-json file for each run.
 
-Stopping a task ends only its console host, not the loop inside. A script ends any older copy of itself for the same
+On Windows, stopping a task ends only its console host, not the loop inside. A script ends any older copy of itself for the same
 project (and that copy's run) when it starts, so a restart is `Start-ScheduledTask` after `Stop-ScheduledTask`. Each
-script restarts itself through its task when Scriptorium, a loaded plugin or the project's `scriptorium.json` changes
+script restarts itself through its task (on macOS and Linux: it exits with code 75, and launchd or systemd starts it
+again) when Scriptorium, a loaded plugin or the project's `scriptorium.json` changes
 ([restart.ps1](../restart.ps1)): a worker between jobs, so a run in progress finishes on the old code first; the merger
 between passes; the page's server not while a sign-in, a GitHub write, a worker's setup or a copy's delete runs. A paused run
-(`paused.json`) resumes as before. To stop the queue, disable the tasks and end the `powershell.exe` processes that run
-the scripts with `-Project "<main>"`.
+(`paused.json`) resumes as before. To stop the queue, disable the tasks and end the `powershell.exe` (`pwsh` on macOS
+and Linux) processes that run the scripts with `-Project "<main>"`.
 
 GitHub builds nothing. A run's own checks are the gate, and a run that finds main broken fixes it in its PR.
 
@@ -211,7 +214,8 @@ The run costs by model are in `.queue/history.jsonl`. Change `updated` with it.
 Two files, neither in git, are read before every decision and run, so a change applies from the next. Setup writes
 the first ones.
 
-- **The PC's:** `%LOCALAPPDATA%\Scriptorium\settings.json`, one for every project that Scriptorium runs on the PC.
+- **The PC's:** `settings.json` in the PC's Scriptorium folder (`%LOCALAPPDATA%\Scriptorium` on Windows, `~/Library/Application Support/Scriptorium` on macOS, `~/.local/share/Scriptorium` on Linux), one for every project that
+  Scriptorium runs on the PC.
   It holds `accounts`, `keep` and `workers`: the logins and their limits are the same for each project, and a worker's
   number is the PC's.
 - **The project's own:** the main checkout's `.queue/settings.json`, with every other key.

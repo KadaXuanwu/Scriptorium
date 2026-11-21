@@ -10,8 +10,12 @@ function Test-NoneText([string] $text) {
 }
 
 # A text as one argument to a program: Windows PowerShell 5.1 passes a double quote inside an argument unescaped, so the
-# program splits the text there. A title with quotes made gh refuse the issue, and a follow-up was lost.
+# program splits the text there. A title with quotes made gh refuse the issue, and a follow-up was lost. PowerShell 7.3
+# and later escape it themselves ($PSNativeCommandArgumentPassing), so the text goes as it is.
 function ConvertTo-NativeArg([string] $text) {
+    if ($PSNativeCommandArgumentPassing -and $PSNativeCommandArgumentPassing -ne 'Legacy') {
+        return $text
+    }
     return $text -replace '"', '\"'
 }
 
@@ -141,6 +145,7 @@ function Get-BannerlessQuestions([string] $prBody) {
     $items = @(Split-FollowUps $prBody 'Open question' 'Open questions') + @(Split-FollowUps $prBody 'Follow-up')
     return @($items | Where-Object {
             $asked = (Get-FollowUpView $_.body).questions
-            $asked -and $asked -notmatch '(?m)^[ 	]*!\[[^\]]*\]\([^)\s]+\)[ 	]*?$'
+            $asked -and $asked -notmatch '(?m)^[ 	]*!\[[^\]]*\]\([^)\s]+\)[ 	]*
+?$'
         } | ForEach-Object { $_.title })
 }
