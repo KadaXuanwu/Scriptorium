@@ -45,7 +45,7 @@ $pausedFile = Join-Path $queueDir 'paused.json'
 $warnFile = Join-Path $queueDir 'limit.md'
 $stopFile = Join-Path $queueDir 'stop.md'
 $commentsFile = Join-Path $queueDir 'comments.md'
-# There while the owner is away (docs/QUEUE.md, Away; away.ps1).
+# There while the owner is away (docs/QUEUE.md, No blocking; away.ps1).
 $awayFile = Join-Path $queueDir 'away.md'
 # Written by a run that hands its ticket on at the Fable limit (docs/QUEUE.md, The Fable limit).
 $handoffFile = Join-Path $queueDir 'handoff.md'
@@ -1297,7 +1297,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
                     Remove-Item $stopFile
                     Write-Log "stop note withdrawn for #$($job.Ticket)"
                 }
-                # The owner may leave or come back during a run (docs/QUEUE.md, Away).
+                # The owner may leave or come back during a run (docs/QUEUE.md, No blocking).
                 Write-AwayNote $awayFile ([bool](Read-Settings).away)
                 # The owner's unread comments on the ticket and the job's PR, every 2 minutes (PLAYBOOK.md, Comments).
                 if ((Get-Now) - $commentsCheckedAt -ge 120) {

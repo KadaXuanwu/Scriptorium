@@ -379,13 +379,13 @@ function settingsBlock() {
     for every run: the models and efforts above are not in use.</p>` : '';
   // The project's page on GitHub, from its snapshot's slug (owner/repo); none in an older snapshot.
   const repo = state.slug ? `<p class="repo-link"><a href="https://github.com/${esc(state.slug)}" target="_blank" rel="noopener">${esc(state.slug)} on GitHub</a></p>` : '';
-  return `<section class="settings">${head}${repo}
+  return `<section class="settings">${head}
     <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide">Effort</span><span>Compacts near</span></div>
     ${(state.complexities || []).map(complexityRow).join('')}
     <div class="config-row${busyClass('advisor-model')}"${busyAttr('advisor-model')}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
       <select data-advisor-model aria-label="Model of the advisor">${pickList(state.models || [], advisor.model, modelName)}</select>
       ${base && base !== advisor.model ? `<small>Default: ${esc(modelName(base))}</small>` : ''}</div>
-    ${override}</section>`;
+    ${override}${repo}</section>`;
 }
 
 // ---- Questions
@@ -612,12 +612,12 @@ function info(s) {
         A blocking question holds its PR or ticket until you answer (${blocking} now); answer the others when you like.
         Accept default takes the worker's proposal. Every question has a picture of what it is about. A new look comes
         as three candidates with a picture each, the first built in; tap a picture to step through them.`,
-      `${setting('Away', 'questions')} (the switch on Questions, ${s.away ? 'on' : 'off'} now) is for the days you are
+      `${setting('No blocking', 'workers')} (the switch on Workers, ${s.away ? 'on' : 'off'} now) is for the days you are
         not there, for every project on this PC. While it is on, no question holds a PR or a ticket: a worker builds its
         own default, and the question waits under Not blocking for you to keep or change. What already waits goes on
         the same way, and a stuck run gets one more try. Switch it off when you are back.`,
       `${setting('Stuck', 'queue')} runs (Queue) ended with no PR and no question. Nothing retries by itself, but for
-        one try while Away is on: read the reason, then Retry (${s.stuck.length} now).`,
+        one try while No blocking is on: read the reason, then Retry (${s.stuck.length} now).`,
       `${setting('Accounts', 'accounts')} that are signed out or refuse runs: their workers wait until you sign in or
         give them another account.`,
       'Your phone gets a push for a blocking question, a stuck run, a limit, an account that is out and a merge.',
@@ -670,7 +670,7 @@ function info(s) {
       when you log on and need nothing from you.</p>
       ${items([
         `<b>A worker script</b> for each worker has its plugins make its environment ready${plugins.length ? '' : ' (none here)'}, chooses its next job, starts the run and checks how it ended. A free worker looks for a job every few minutes, and at once on Force.`,
-        '<b>The merger</b> looks at the open PRs every few minutes and merges, oldest first, each worker PR that GitHub can merge and no question holds. A PR that conflicts with main, or has a comment of yours its run did not read, goes back to its worker. While Away is on, it also hands back what waits on you.',
+        '<b>The merger</b> looks at the open PRs every few minutes and merges, oldest first, each worker PR that GitHub can merge and no question holds. A PR that conflicts with main, or has a comment of yours its run did not read, goes back to its worker. While No blocking is on, it also hands back what waits on you.',
         '<b>This page\'s server</b> reads GitHub once a minute and the workers\' files every few seconds, sends the pushes and does what you click. Tailscale puts it on your phone; nothing is open to the internet. With the PC off, the page shows its last state, greyed out.',
         'Only the runs use a model, with two small exceptions: a worker with no run for a while reads an account\'s usage with a one-word request, and Ping starts an account\'s 5-hour window.',
         'A change to the queue\'s scripts loads by itself: a worker restarts on the new code between jobs, never in a run.',
@@ -689,9 +689,9 @@ function info(s) {
         answer on this page goes to GitHub as a comment, and the page sets the labels. GitHub builds and tests nothing:
         the run's own tests are the check.</p>`),
     section('The tabs', items([
-      `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account${per.length > 1 ? ', project' : ''} and Config. The last tile adds a worker; a card's cross removes a disabled worker, and its copy of the project stays on the PC unless you tick Delete in the dialog.`,
+      `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account${per.length > 1 ? ', project' : ''} and Config, and the No blocking switch. The last tile adds a worker; a card's cross removes a disabled worker, and its copy of the project stays on the PC unless you tick Delete in the dialog.`,
       `${setting('Accounts', 'accounts')}: usage and the limits above; drag a handle to move one. The last tile adds an account and signs it in; a card's cross removes an account that nothing uses.`,
-      `${setting('Questions', 'questions')}: decisions for you, blocking first, and the Away switch.`,
+      `${setting('Questions', 'questions')}: decisions for you, blocking first.`,
       `${setting('Queue', 'queue')}: Up next with why each ticket waits, Stuck, On hold and Parked.`,
       `${setting('History', 'history')}: merged PRs, and each run with its model, time and cost.`,
       `${setting('Details', 'details')}: each project's settings for all its workers${per.length > 1 ? ' and its colour' : ''}, then this text.`,
@@ -763,15 +763,15 @@ function render() {
   put($('details-projects'), projectPick('The project of the details'));
 
   const workersShown = workers.filter(shown);
+  // No blocking (docs/APP.md, Workers): the PC's switch, so this address's own project gives and saves it.
+  const noBlocking = within(home, () => `<button class="take no-blocking${s.away ? ' on' : ''}${busyClass('away')}"${busyAttr('away')} data-away aria-pressed="${Boolean(s.away)}"
+    title="${s.away ? 'No question stops work' : 'A question can stop work'}">${icon(s.away ? 'check' : 'lock')}No blocking</button>`);
   put($('all-buttons'), `<button data-status="active" data-worker="all">${icon('play')}All active</button>
-    <button data-status="paused" data-worker="all">${icon('pause')}Pause all</button>`);
+    <button data-status="paused" data-worker="all">${icon('pause')}Pause all</button>${noBlocking}`);
   put($('worker-list'), (drawEach(workersShown, workerCard) || quiet('No worker has reported yet.')) + addTile('worker', 'Add a worker'));
   if ($('config').open) drawConfig();
 
   put($('questions-projects'), projectPick('The project of the questions', questions));
-  // Away (docs/APP.md, Questions): the PC's switch, so this address's own project gives and saves it.
-  within(home, () => put($('away'), `<button class="take${s.away ? ' on' : ''}${busyClass('away')}"${busyAttr('away')} data-away aria-pressed="${Boolean(s.away)}">
-    ${icon(s.away ? 'check' : 'lock')}<span><b>Away</b><small>${s.away ? 'No question stops work' : 'A question can stop work'}</small></span></button>`));
   const blockingShown = blocking.filter(shown);
   const openShown = open.filter(shown);
 
@@ -1311,7 +1311,7 @@ document.addEventListener('click', async (e) => {
     const blocking = all('questions').filter(({ item }) => item.blocking).length;
     const stuck = all('stuck').length;
     const waits = inWords([counted(blocking, 'blocking question'), counted(stuck, 'stuck run')].filter(Boolean));
-    if (on && waits && !await ask('Go away', `${waits} wait${blocking + stuck === 1 ? 's' : ''} now. A question goes on with the worker's default and comes back under Not blocking; a stuck run gets one more try. This is for every project on this PC.`, 'Go away')) return;
+    if (on && waits && !await ask('No blocking', `${waits} wait${blocking + stuck === 1 ? 's' : ''} now. A question goes on with the worker's default and comes back under Not blocking; a stuck run gets one more try. This is for every project on this PC.`, 'Switch on')) return;
     await act(home, { action: 'away', on }, {
       keys: ['away'],
       apply: (s) => { s.away = on; },

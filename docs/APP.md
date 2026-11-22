@@ -59,6 +59,13 @@ with a mouse at once, on a touch screen after a short hold. The order is the PC'
 in the settings), so every device shows the same; a new worker goes last, after the others in the order of their
 numbers. Account cards move the same way, and a renamed account keeps its place.
 
+**No blocking** is a switch in the tab's head, beside All active and Pause all, for the days when the owner is not
+there ([QUEUE.md](QUEUE.md), No blocking). It is amber while it is on. It is the PC's (`away`), so it shows the same
+for every project, and the page's own project saves it. While it is on, no question holds a PR or a ticket: each goes
+on with the worker's default and waits under Not blocking on Questions, and a stuck run gets one more try. When a
+blocking question or a stuck run waits at the click, the page asks first: what waits goes on at once, and that cannot
+be taken back.
+
 **Worker status.** A worker has one of three statuses, on a switch that is always clickable:
 
 | Status | Means |
@@ -180,12 +187,6 @@ One list of questions about the product, in two groups ([PLAYBOOK.md](../PLAYBOO
   comment).
 - **Not blocking:** an open question (its default is built already) and a follow-up that asks.
 
-**Away** is a switch in the tab's head, for the days when the owner is not there ([QUEUE.md](QUEUE.md), Away). It is
-the PC's (`away`), so it shows the same for every project, and the page's own project saves it. While it is on, no
-question holds a PR or a ticket: each goes on with the worker's default and waits under Not blocking, and a stuck run
-gets one more try. When a blocking question or a stuck run waits at the click, the page asks first: what waits goes on
-at once, and that cannot be taken back.
-
 Every question has one answer box and two buttons: **Accept default** and **Send answer**. The server decides what the
 queue does (`Get-AnswerRoute`), and the answer goes on GitHub as the owner's comment:
 
@@ -277,7 +278,6 @@ from the next run. A run in progress or on hold keeps its model, its effort and 
 
 - **The head:** the project's mark and its colour (`color`). The colour field picks one; Default colour goes back to
   the colour from the project's name. The mark, a worker's project choice and the Queue's select, set to the project, show this colour.
-- **The GitHub link:** the project's repository on GitHub (`owner/repo on GitHub`), in a new tab.
 - **A row for each complexity,** with its name and an (i) button that shows its description:
   - **Model and effort** are two lists: the models and the efforts of [models.json](../models.json)
     (`complexities.<name>.model`; [QUEUE.md](QUEUE.md), Models, The owner's pick). A pick that is not the base's shows
@@ -292,6 +292,7 @@ from the next run. A run in progress or on hold keeps its model, its effort and 
 - **The advisor's model** (`advisor.model`): a list of the models of `models.json`, with the default under it when the
   pick differs.
 - **A line when the settings set `model`:** that model goes over every pick of the block, for every run.
+- **The GitHub link:** the project's repository on GitHub (`owner/repo on GitHub`), in a new tab, last in the block.
 
 On a phone a complexity has three lines: its name and compact size, its model and effort, then its advisor.
 

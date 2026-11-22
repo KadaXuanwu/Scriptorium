@@ -131,7 +131,7 @@ while ($true) {
             $prs += @((((& gh pr list --state open --limit 200 --json number,title,body,url,headRefName,labels,mergeable,createdAt -R $where) -join "`n") |
                 ConvertFrom-Json) | ForEach-Object { $_ | Add-Member -NotePropertyName Repo -NotePropertyValue $where -PassThru })
         }
-        # Away (docs/QUEUE.md, Away): while the owner is away, what waits on the owner goes on without an answer. A
+        # No blocking (docs/QUEUE.md, No blocking): while the owner is away, what waits on the owner goes on without an answer. A
         # ticket goes back to its worker, once: with a question, to take its default; stuck, for one more try.
         # Settings that do not parse count as not away: the merges go on.
         $away = $false

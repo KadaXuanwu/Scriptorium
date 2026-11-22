@@ -761,7 +761,7 @@ function Invoke-Action($request) {
             return "advisor model: $($request.model)"
         }
         'away' {
-            # The owner is away (docs/QUEUE.md, Away): the PC's switch, so it counts for every project. Left out when off.
+            # The owner is away (docs/QUEUE.md, No blocking): the PC's switch, so it counts for every project. Left out when off.
             $settings = Read-SettingsToEdit
             $settings.PSObject.Properties.Remove('away')
             if ($request.on) {

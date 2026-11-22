@@ -31,9 +31,9 @@ one of two kinds:
 - **Blocking question:** a wrong answer is expensive to undo after the merge (a rule other work builds on, a data shape,
   much rework), and the choice is not easy. List it under Held questions and hold the PR (Hold or merge). If nothing
   can be built without the answer: push the branch, comment the question on the ticket (the options and what each
-  changes), run `gh issue edit <N> --add-label needs-owner`, and stop. Never while the owner is away (Away).
+  changes), run `gh issue edit <N> --add-label needs-owner`, and stop. Never while the owner is away (No blocking).
 
-**Away.** `away.md` in the queue folder means the owner is away, and no question may stop the work. No question is
+**No blocking.** `away.md` in the queue folder means the owner is away, and no question may stop the work. No question is
 blocking then, wherever a playbook says to hold, to ask a held question or to add `needs-owner` for one. Build the
 answer that you recommend so that it is easy to change, and write it where the project keeps its decisions. Put the
 question under the PR's Open questions, with a `**Size:**` line (S, M or L) for the work to change it. If a step
@@ -114,7 +114,7 @@ the script resumes the same session after the reset.
    A file that `.gitattributes` merges by union keeps both sides' lines: `git diff origin/main -- <file>` must show only
    your change. A line that both sides rewrote shows twice, and a line main deleted can come back. Fix it.
 6. **Hold or merge.** Only a blocking question holds the PR (What to ask), and none does while the owner is away
-   (Away); open questions merge on their defaults. A
+   (No blocking); open questions merge on their defaults. A
    hold keeps the ticket's areas busy until it is answered: weigh what waits on them (`gh issue list --label
    area:<x>`). **Done not reached** never holds. The ticket's Done line and Scope are the gate: work toward them while
    the plan has usage. If you cannot reach them (the approach runs out), merge the part. Say in the PR where it stands
@@ -123,7 +123,7 @@ the script resumes the same session after the reset.
    by What to ask.
 7. **Ship.** Commit (a one-line message), rebase (5), run the whole check (3), and read `git diff origin/main --stat`:
    nothing you did not mean.
-   Read What to ask, Away, Hold or merge and this step again before you write the body: the rules can change during a
+   Read What to ask, No blocking, Hold or merge and this step again before you write the body: the rules can change during a
    long run. Run `git push --force-with-lease -u origin t<N>`, then
    `gh pr create --base main --head t<N> --title "<the ticket's title>" --label worker:<id> --body-file <file>`, with
    `--label needs-owner` when you hold it. The body:

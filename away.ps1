@@ -1,4 +1,4 @@
-# Away (docs/QUEUE.md, Away): while the owner is away, nothing that waits on the owner stops the work. What the merger
+# No blocking (docs/QUEUE.md, No blocking): while the owner is away, nothing that waits on the owner stops the work. What the merger
 # does with a PR or a ticket that waits on the owner, and the note that tells a run. Pure functions but the note,
 # dot-sourced by merge.ps1 (with followup.ps1, which Get-HeldTicket needs) and worker.ps1 (the note only), checked by
 # away.test.ps1.
@@ -10,7 +10,7 @@ $AwayNote = '**Merger:** the owner is away'
 # The rest of that comment, for each step (Get-AwayPrStep, Get-AwayTicketStep).
 $AwayText = @{
     default = ". Take your default: build the answer that you recommend so that it is easy to change, and put the " +
-        "question under the PR's Open questions (PLAYBOOK.md, Away)."
+        "question under the PR's Open questions (PLAYBOOK.md, No blocking)."
     retry = ', so this run gets one more try.'
 }
 
@@ -79,7 +79,7 @@ function Write-AwayNote([string] $file, [bool] $away) {
     if (Test-Path $file) {
         return
     }
-    Set-Content $file ('The owner is away, and no question may stop the work (PLAYBOOK.md, Away). Ask no blocking ' +
+    Set-Content $file ('The owner is away, and no question may stop the work (PLAYBOOK.md, No blocking). Ask no blocking ' +
         'question: build the answer that you recommend so that it is easy to change, write it where the project keeps ' +
         'its decisions, and put the question under the PR''s Open questions, with a **Size:** line (S, M or L) for the ' +
         'work to change it. Never hold a PR, and never add needs-owner for a question.') -Encoding utf8

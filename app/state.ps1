@@ -1155,7 +1155,7 @@ function New-Snapshot($data) {
         models = @($models.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($models.efforts)
         # The project's colour on the page (`color`): only a valid one, as a hand edit of the file skips the action.
         color = $(if ($color -match '^#[0-9a-fA-F]{6}\z') { $color.ToLowerInvariant() } else { '' })
-        # The owner is away (docs/QUEUE.md, Away): the PC's switch, the same in every project's snapshot.
+        # The owner is away (docs/QUEUE.md, No blocking): the PC's switch, the same in every project's snapshot.
         away = [bool]$(if ($data.settings) { $data.settings.away })
         # The settings' `model`, which goes over every pick of Details for every run; '' without one.
         settingsModel = $(if ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { '' })

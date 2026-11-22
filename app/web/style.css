@@ -455,12 +455,13 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .compact { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
 .compact input[type="number"] { width: 4.5em; text-align: right; }
 .take { justify-content: flex-start; text-align: left; padding: 5px 12px; }
-/* The Away switch in the Questions head: a phone centres the text of a head's buttons. */
-.view > header .buttons .take { text-align: left; }
 .take b { display: block; text-transform: capitalize; }
 .take small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); white-space: nowrap; }
 .take.on .i { color: var(--accent); }
 .take:not(.on) { border-style: dashed; background: transparent; color: var(--muted); }
+/* The No blocking switch in the Workers head: a state (amber), not an action as the two buttons beside it. */
+.no-blocking.on { border-color: var(--warn); color: var(--warn); }
+.no-blocking.on .i { color: var(--warn); }
 .stats { display: flex; gap: 8px; flex-wrap: wrap; }
 .stats span { padding: 5px 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .stats b { color: var(--ink); font-size: 15px; }
@@ -775,7 +776,8 @@ body.offline .view button, body.offline .view select, body.offline .view textare
   .view > header .buttons, .view > header .stats { flex: 1 0 100%; margin-left: 0; order: 1; }
   .view > header .buttons button, .stats span { flex: 1; text-align: center; }
   /* As high as the stats: the line under the title takes little room. */
-  .view > header .buttons button { min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
+  /* Three buttons stand in the Workers head: each keeps one line, as wide as its text needs. */
+  .view > header .buttons button { min-height: 34px; padding: 4px 8px; flex-basis: auto; white-space: nowrap; }
   :is(.stats, .buttons) + .projects { margin-left: auto; }
 }
 
