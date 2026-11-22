@@ -292,7 +292,6 @@ from the next run. A run in progress or on hold keeps its model, its effort and 
 - **The advisor's model** (`advisor.model`): a list of the models of `models.json`, with the default under it when the
   pick differs.
 - **A line when the settings set `model`:** that model goes over every pick of the block, for every run.
-- **The GitHub link:** the project's repository on GitHub (`owner/repo on GitHub`), in a new tab, last in the block.
 
 On a phone a complexity has three lines: its name and compact size, its model and effort, then its advisor.
 
@@ -302,6 +301,9 @@ and description, or "None: a plain git repo"), Limits, In the background, GitHub
 links to the tab that sets it. Every setting and reading comes from the snapshot; none is typed into the text, and no
 environment is named in it. **A change to a queue rule changes this text in the same pull request.** The settings and
 the text are drawn last, each on its own, and a fault in one shows one line, not a broken page.
+
+**The GitHub links:** the last line of the page links to each shown project's repository on GitHub (`owner/repo on
+GitHub`), in a new tab.
 
 **Estimates.** A typical run is the median of the finished whole-ticket runs of that size on that model, else of that
 size on any model (`Get-Typical`): its wall time, and its cost in dollars at the API's price.

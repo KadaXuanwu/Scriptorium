@@ -377,15 +377,13 @@ function settingsBlock() {
   const [model, effort] = (state.settingsModel || '').split('@');
   const override = model ? `<p class="settings-note">settings.json sets ${esc(modelName(model))}${effort ? ` · ${esc(effort)}` : ''}
     for every run: the models and efforts above are not in use.</p>` : '';
-  // The project's page on GitHub, from its snapshot's slug (owner/repo); none in an older snapshot.
-  const repo = state.slug ? `<p class="repo-link"><a href="https://github.com/${esc(state.slug)}" target="_blank" rel="noopener">${esc(state.slug)} on GitHub</a></p>` : '';
   return `<section class="settings">${head}
     <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide">Effort</span><span>Compacts near</span></div>
     ${(state.complexities || []).map(complexityRow).join('')}
     <div class="config-row${busyClass('advisor-model')}"${busyAttr('advisor-model')}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
       <select data-advisor-model aria-label="Model of the advisor">${pickList(state.models || [], advisor.model, modelName)}</select>
       ${base && base !== advisor.model ? `<small>Default: ${esc(modelName(base))}</small>` : ''}</div>
-    ${override}${repo}</section>`;
+    ${override}</section>`;
 }
 
 // ---- Questions
@@ -843,7 +841,10 @@ function render() {
   } catch (e) {
     text = quiet('The info could not be drawn from this state. Pull down or reload to fetch a new one.');
   }
-  put($('info-body'), text);
+  // Last on the page: each shown project's page on GitHub, from its snapshot's slug (owner/repo); none in an older snapshot.
+  const repos = names.filter((p) => (!shownOf || p === shownOf) && states[p].slug)
+    .map((p) => `<a href="https://github.com/${esc(states[p].slug)}" target="_blank" rel="noopener">${esc(states[p].slug)} on GitHub</a>`);
+  put($('info-body'), text + (repos.length ? `<p class="repo-link">${repos.join(' · ')}</p>` : ''));
 }
 
 // Tabs: each hash shows its view. Older links and notifications name a section that a view now holds.
