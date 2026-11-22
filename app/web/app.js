@@ -377,7 +377,9 @@ function settingsBlock() {
   const [model, effort] = (state.settingsModel || '').split('@');
   const override = model ? `<p class="settings-note">settings.json sets ${esc(modelName(model))}${effort ? ` · ${esc(effort)}` : ''}
     for every run: the models and efforts above are not in use.</p>` : '';
-  return `<section class="settings">${head}
+  // The project's page on GitHub, from its snapshot's slug (owner/repo); none in an older snapshot.
+  const repo = state.slug ? `<p class="repo-link"><a href="https://github.com/${esc(state.slug)}" target="_blank" rel="noopener">${esc(state.slug)} on GitHub</a></p>` : '';
+  return `<section class="settings">${head}${repo}
     <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide">Effort</span><span>Compacts near</span></div>
     ${(state.complexities || []).map(complexityRow).join('')}
     <div class="config-row${busyClass('advisor-model')}"${busyAttr('advisor-model')}><span class="config-name"><b>Advisor</b><small>Its model</small></span>

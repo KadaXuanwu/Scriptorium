@@ -271,6 +271,7 @@ from the next run. A run in progress or on hold keeps its model, its effort and 
 
 - **The head:** the project's mark and its colour (`color`). The colour field picks one; Default colour goes back to
   the colour from the project's name. The mark, a worker's project choice and the Queue's select, set to the project, show this colour.
+- **The GitHub link:** the project's repository on GitHub (`owner/repo on GitHub`), in a new tab.
 - **A row for each complexity,** with its name and an (i) button that shows its description:
   - **Model and effort** are two lists: the models and the efforts of [models.json](../models.json)
     (`complexities.<name>.model`; [QUEUE.md](QUEUE.md), Models, The owner's pick). A pick that is not the base's shows
