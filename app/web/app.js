@@ -703,6 +703,7 @@ function info(s) {
 function count(id, n, hot) {
   $(id).textContent = String(n);
   $(id).classList.toggle('hot', hot);
+  $(id).classList.toggle('zero', !n);
 }
 
 const quiet = (text) => `<div class="quiet">${text}</div>`;
