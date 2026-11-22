@@ -191,7 +191,7 @@ queue does (`Get-AnswerRoute`), and the answer goes on GitHub as the owner's com
 | Follow-up | Queued `P1`, or closed if its "Do this?" default is no | Queued `P1` with the answer; a bare "no" closes it |
 
 **Pictures:** every question has a banner, a screenshot of what it is about: its first picture that stands alone on a
-line. The card shows it on top, cut to 3:1 around its middle, square-cornered inside four crop marks (blue, red on a blocking question). A question about a look also carries a
+line. The card shows it on top, cut to 3:1 around its middle, square-cornered under two crop marks at its top (blue, red on a blocking question); its foot fades fast into the card, and the card's head sits on the faded part. A question about a look also carries a
 screenshot of each choice: list lines that stand together and hold a picture show as rows, the picture whole (16:9) on
 most of the row and the text beside it, or under it in a narrow card. The page lays this out for every count of
 pictures; the question's text says nothing about layout (`PLAYBOOK-pictures.md`). A tap on a picture opens the viewer:

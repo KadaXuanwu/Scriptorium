@@ -355,10 +355,12 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 /* A picture in running text; a tap opens it in the viewer. */
 .text .shot { display: inline-block; vertical-align: top; max-width: 100%; margin: 6px 6px 6px 0; }
 .text .shot img { display: block; max-width: 100%; max-height: 260px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); }
-/* A question's banner: wide and low at the top of its card, cut to 3:1 around its middle, square-cornered inside four
-   crop marks in the accent colour (red on a blocking question). */
+/* A question's banner: wide and low at the top of its card, cut to 3:1 around its middle, square-cornered under two
+   crop marks in the accent colour (red on a blocking question). Its foot fades fast into the card, and the head sits
+   on the faded part. */
 .question { container-type: inline-size; }
-.question > .banner { position: relative; display: block; margin: -6px -6px 14px; padding: 6px; }
+.question > .banner { position: relative; display: block; margin: -6px -6px 0; padding: 6px 6px 0; }
+.question > .banner + .question-head { position: relative; margin-top: -30px; }
 .question > .banner::before {
   --c: var(--accent);
   --l: 18px;
@@ -369,13 +371,12 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
   pointer-events: none;
   background:
     linear-gradient(var(--c) 0 0) top left / var(--l) var(--w), linear-gradient(var(--c) 0 0) top left / var(--w) var(--l),
-    linear-gradient(var(--c) 0 0) top right / var(--l) var(--w), linear-gradient(var(--c) 0 0) top right / var(--w) var(--l),
-    linear-gradient(var(--c) 0 0) bottom left / var(--l) var(--w), linear-gradient(var(--c) 0 0) bottom left / var(--w) var(--l),
-    linear-gradient(var(--c) 0 0) bottom right / var(--l) var(--w), linear-gradient(var(--c) 0 0) bottom right / var(--w) var(--l);
+    linear-gradient(var(--c) 0 0) top right / var(--l) var(--w), linear-gradient(var(--c) 0 0) top right / var(--w) var(--l);
   background-repeat: no-repeat;
 }
 .question.blocking > .banner::before { --c: var(--bad); }
-.banner img { display: block; width: 100%; aspect-ratio: 3 / 1; object-fit: cover; box-shadow: 0 0 0 1px var(--line); }
+.banner img { display: block; width: 100%; aspect-ratio: 3 / 1; object-fit: cover; }
+.question > .banner img { mask-image: linear-gradient(#000 calc(100% - 70px), transparent calc(100% - 22px)); }
 /* A question's choices: one row each, the picture whole (16:9, never cut) on most of the row and the text beside it;
    in a narrow card the picture has the full width and the text stands under it. The same for every count. */
 .choices { display: grid; gap: 10px; margin: 10px 0; }
