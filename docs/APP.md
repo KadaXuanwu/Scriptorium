@@ -302,8 +302,8 @@ links to the tab that sets it. Every setting and reading comes from the snapshot
 environment is named in it. **A change to a queue rule changes this text in the same pull request.** The settings and
 the text are drawn last, each on its own, and a fault in one shows one line, not a broken page.
 
-**The GitHub links:** the last line of the page links to each shown project's repository on GitHub (`owner/repo on
-GitHub`), in a new tab.
+**The GitHub link:** the last line of the page links to Scriptorium's own repository on GitHub (`Scriptorium on
+GitHub`), in a new tab. It is not a project's.
 
 **Estimates.** A typical run is the median of the finished whole-ticket runs of that size on that model, else of that
 size on any model (`Get-Typical`): its wall time, and its cost in dollars at the API's price.

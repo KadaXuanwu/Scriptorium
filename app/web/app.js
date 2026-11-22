@@ -841,10 +841,8 @@ function render() {
   } catch (e) {
     text = quiet('The info could not be drawn from this state. Pull down or reload to fetch a new one.');
   }
-  // Last on the page: each shown project's page on GitHub, from its snapshot's slug (owner/repo); none in an older snapshot.
-  const repos = names.filter((p) => (!shownOf || p === shownOf) && states[p].slug)
-    .map((p) => `<a href="https://github.com/${esc(states[p].slug)}" target="_blank" rel="noopener">${esc(states[p].slug)} on GitHub</a>`);
-  put($('info-body'), text + (repos.length ? `<p class="repo-link">${repos.join(' · ')}</p>` : ''));
+  // Last on the page: Scriptorium's own page on GitHub (the address of README.md), not a project's.
+  put($('info-body'), `${text}<p class="repo-link"><a href="https://github.com/KadaXuanwu/Scriptorium" target="_blank" rel="noopener">Scriptorium on GitHub</a></p>`);
 }
 
 // Tabs: each hash shows its view. Older links and notifications name a section that a view now holds.
