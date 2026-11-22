@@ -57,6 +57,9 @@ $view = Get-FollowUpView $body
 Assert-Equal $view.summary 'The search answers fast while the cache is warm.' 'summary line'
 Assert-Equal ($view.questions -split "`n")[0] '1. Should the cache hold old results? Default: no.' 'questions stop at the next label'
 Assert-Equal $view.details "**Now:** 840 queries take 26 ms each.`n**Done when:** the slowest query is under 4 ms.`n`nFollow-up from u (ticket #3)." 'details leave out the summary and questions'
+$view = Get-FollowUpView "**Summary:** The bot goes for the bed. It also says `"the enemy does not`nknow where the bed is`". As built, it knows.`n`n**Questions:**`n1. Keep? Default: yes."
+Assert-Equal $view.summary 'The bot goes for the bed. It also says "the enemy does not know where the bed is". As built, it knows.' 'a wrapped summary is read whole'
+Assert-Equal $view.details '' 'a wrapped summary leaves nothing in the details'
 $view = Get-FollowUpView "The log keeps errors per request. The report doesn't print them.`n`nFollow-up from u (ticket #4)."
 Assert-Equal $view.summary 'The log keeps errors per request.' 'first sentence without a Summary line'
 Assert-Equal $view.details "The report doesn't print them.`n`nFollow-up from u (ticket #4)." 'details leave out the first sentence'

@@ -102,22 +102,23 @@ function Get-FollowUpLabels([string[]] $ticketLabels, [string] $body, [string[]]
     return $labels
 }
 
-# What the queue app shows of a draft ticket: its one-line summary (the `**Summary:**` line, else the body's first
-# sentence), its open questions (the `**Questions:**` part, '' for none) and the details the page folds away: the
-# body without those two, so nothing shows twice.
+# What the queue app shows of a draft ticket: its summary (the `**Summary:**` paragraph, its wrapped lines joined,
+# else the body's first sentence), its open questions (the `**Questions:**` part, '' for none) and the details the
+# page folds away: the body without those two, so nothing shows twice.
 function Get-FollowUpView([string] $body) {
     $summary = ''
-    $summaryMatch = [regex]::Match($body, '(?m)^\*\*Summary:?\*\*:?[ \t]*(.+)$')
+    # The paragraph ends at a blank line, the next label or a heading: workers wrap their text at about 120 characters.
+    $summaryMatch = [regex]::Match($body, '(?ms)^\*\*Summary:?\*\*:?[ \t]*(.+?)[ \t]*(?=\r?\n[ \t]*(?:\r?\n|\*\*[^*\r\n]+\*\*|#)|\z)')
     if ($summaryMatch.Success) {
-        $summary = $summaryMatch.Groups[1].Value.Trim()
+        $summary = ($summaryMatch.Groups[1].Value -replace '\s*\r?\n\s*', ' ').Trim()
     } else {
         $plain = (($body -split "\r?\n") | Where-Object { $_.Trim() -and $_ -notmatch '^\s*#' } | Select-Object -First 3) -join ' '
         $plain = ($plain -replace '\*\*[^*]+:\*\*', '' -replace '\s+', ' ').Trim()
         $sentence = [regex]::Match($plain, '^.+?[.!?](?=\s|$)')
         $summary = if ($sentence.Success) { $sentence.Value } else { $plain }
-    }
-    if ($summary.Length -gt 240) {
-        $summary = $summary.Substring(0, 237) + '...'
+        if ($summary.Length -gt 240) {
+            $summary = $summary.Substring(0, 237) + '...'
+        }
     }
     $questions = ''
     $questionsMatch = [regex]::Match($body, '(?ms)^\*\*Questions:?\*\*:?[ \t]*(.*?)(?=^\*\*[^*\r\n]+:\*\*|^\*\*[^*\r\n]+\*\*:|^#{1,6}\s|^Follow-up from |\z)')
