@@ -263,8 +263,9 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
   .worker:not(.open) :is(.checkpoint, .slot.next) { display: none; }
 }
 /* A card whose action the server has not confirmed yet: a turning ring at the right end of its head line (of a row:
-   in the place of its control), inside the card, and its controls greyed. */
-.card.busy > :first-child::after, .row.busy::after, .settings-head.busy::after, .config-row.busy > .config-name:first-child::after {
+   in the place of its control), inside the card, and its controls greyed. A question's banner is no head line: on it
+   the ring fell in at the foot of the picture, over the first tag. */
+.card.busy > :first-child:not(.banner)::after, .card.busy > .banner + *::after, .row.busy::after, .settings-head.busy::after, .config-row.busy > .config-name:first-child::after {
   content: "";
   width: 20px;
   height: 20px;
