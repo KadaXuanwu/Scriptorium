@@ -355,10 +355,27 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 /* A picture in running text; a tap opens it in the viewer. */
 .text .shot { display: inline-block; vertical-align: top; max-width: 100%; margin: 6px 6px 6px 0; }
 .text .shot img { display: block; max-width: 100%; max-height: 260px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); }
-/* A question's banner: wide and low, from edge to edge at the top of its card, cut to 3:1 around its middle. */
+/* A question's banner: wide and low at the top of its card, cut to 3:1 around its middle, square-cornered inside four
+   crop marks in the accent colour (red on a blocking question). */
 .question { container-type: inline-size; }
-.question > .banner { display: block; margin: -18px -18px 14px; }
-.banner img { display: block; width: 100%; aspect-ratio: 3 / 1; object-fit: cover; border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; }
+.question > .banner { position: relative; display: block; margin: -6px -6px 14px; padding: 6px; }
+.question > .banner::before {
+  --c: var(--accent);
+  --l: 18px;
+  --w: 2px;
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--c) 0 0) top left / var(--l) var(--w), linear-gradient(var(--c) 0 0) top left / var(--w) var(--l),
+    linear-gradient(var(--c) 0 0) top right / var(--l) var(--w), linear-gradient(var(--c) 0 0) top right / var(--w) var(--l),
+    linear-gradient(var(--c) 0 0) bottom left / var(--l) var(--w), linear-gradient(var(--c) 0 0) bottom left / var(--w) var(--l),
+    linear-gradient(var(--c) 0 0) bottom right / var(--l) var(--w), linear-gradient(var(--c) 0 0) bottom right / var(--w) var(--l);
+  background-repeat: no-repeat;
+}
+.question.blocking > .banner::before { --c: var(--bad); }
+.banner img { display: block; width: 100%; aspect-ratio: 3 / 1; object-fit: cover; box-shadow: 0 0 0 1px var(--line); }
 /* A question's choices: one row each, the picture whole (16:9, never cut) on most of the row and the text beside it;
    in a narrow card the picture has the full width and the text stands under it. The same for every count. */
 .choices { display: grid; gap: 10px; margin: 10px 0; }
