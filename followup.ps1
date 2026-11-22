@@ -124,7 +124,8 @@ function Get-FollowUpView([string] $body) {
     $questionsMatch = [regex]::Match($body, '(?ms)^\*\*Questions:?\*\*:?[ \t]*(.*?)(?=^\*\*[^*\r\n]+:\*\*|^\*\*[^*\r\n]+\*\*:|^#{1,6}\s|^Follow-up from |\z)')
     if ($questionsMatch.Success) {
         $questions = $questionsMatch.Groups[1].Value.Trim()
-        if (Test-NoneText $questions) {
+        # A banner above "None." still asks nothing: the ticket queues, and the card never shows.
+        if (Test-NoneText ($questions -replace '(?m)^[ \t]*!\[[^\]]*\]\([^)\s]+\)[ \t]*\r?$', '').Trim()) {
             $questions = ''
         }
     }

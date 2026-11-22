@@ -66,6 +66,7 @@ Assert-Equal $view.details "The report doesn't print them.`n`nFollow-up from u (
 Assert-Equal $view.questions '' 'no questions'
 Assert-Equal (Get-FollowUpView "**Summary:** x`n**Questions:** None.").questions '' 'questions: none'
 Assert-Equal (Get-FollowUpView "**Summary:** x`n**Questions:** None (Ask or queue).").questions '' 'questions: none with a note'
+Assert-Equal (Get-FollowUpView "**Summary:** x`n**Questions:**`n![b](https://x/b.png?raw=true)`nNone.").questions '' 'questions: none under a banner'
 Assert-Equal (Get-FollowUpView "**Summary:** x`n**Questions:**`n1. Keep? Default: yes.`n`n$(Get-GenerationLine 3)`n`nFollow-up from u").questions '1. Keep? Default: yes.' 'questions stop at the generation line'
 
 # Generation: the ticket's plus one; a front-desk ticket is 0; an old follow-up without the line counts as 1.
