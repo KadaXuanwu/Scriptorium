@@ -1,6 +1,6 @@
 /* One colour, one meaning. Blue (accent): an action, and the share used. Yellow (yours) and rose (desk): the room a
-   guard keeps for the owner's own use and for the front desk, on the meter and on the guard's slider. Green, amber, red (good, warn, bad): a state, always with an icon and a word. Grey: off, free, or what the
-   workers leave. */
+   guard keeps for the owner's own use and for the front desk, on the meter and on the guard's slider. Green, amber, red (good, warn, bad): a state, always with an icon and a word. Violet (unblock): the
+   No blocking switch while it is on. Grey: off, free, or what the workers leave. */
 :root {
   --bg: #f3f2ee;
   --card: #ffffff;
@@ -14,6 +14,7 @@
   --bad: #c03636;
   --yours: #b58200;
   --desk: #c2417a;
+  --unblock: #7446c9;
   --track: #e6e2da;
   --on-accent: #ffffff;
   --shadow: 0 1px 2px rgba(20, 22, 26, 0.06), 0 6px 20px rgba(20, 22, 26, 0.05);
@@ -36,6 +37,7 @@
     --bad: #f37878;
     --yours: #e8bf45;
     --desk: #f07fa8;
+    --unblock: #b497ff;
     --track: #2a2f37;
     --on-accent: #0f1114;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
@@ -459,9 +461,10 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .take small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); white-space: nowrap; }
 .take.on .i { color: var(--accent); }
 .take:not(.on) { border-style: dashed; background: transparent; color: var(--muted); }
-/* The No blocking switch in the Workers head: a state (amber), not an action as the two buttons beside it. */
-.no-blocking.on { border-color: var(--warn); color: var(--warn); }
-.no-blocking.on .i { color: var(--warn); }
+/* The No blocking switch in the Workers head: its own colour, not an action's as the two buttons beside it, and not
+   amber, which is a pause. */
+.no-blocking.on { border-color: var(--unblock); color: var(--unblock); }
+.no-blocking.on .i { color: var(--unblock); }
 .stats { display: flex; gap: 8px; flex-wrap: wrap; }
 .stats span { padding: 5px 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .stats b { color: var(--ink); font-size: 15px; }
