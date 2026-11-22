@@ -356,27 +356,32 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 .text .shot { display: inline-block; vertical-align: top; max-width: 100%; margin: 6px 6px 6px 0; }
 .text .shot img { display: block; max-width: 100%; max-height: 260px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); }
 /* A question's banner: wide and low at the top of its card, cut to 3:1 around its middle, square-cornered under two
-   crop marks in the accent colour (red on a blocking question). Its foot fades fast into the card, and the head sits
+   long crop marks that fade out, in the accent colour (red on a blocking question). Its foot fades fast into the card, and the head sits
    on the faded part. */
 .question { container-type: inline-size; }
 .question > .banner { position: relative; display: block; margin: -6px -6px 0; padding: 6px 6px 0; }
 .question > .banner + .question-head { position: relative; margin-top: -30px; }
 .question > .banner::before {
   --c: var(--accent);
-  --l: 18px;
+  --l: 64px;
   --w: 2px;
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
+  /* Each arm fades out away from its corner. */
   background:
-    linear-gradient(var(--c) 0 0) top left / var(--l) var(--w), linear-gradient(var(--c) 0 0) top left / var(--w) var(--l),
-    linear-gradient(var(--c) 0 0) top right / var(--l) var(--w), linear-gradient(var(--c) 0 0) top right / var(--w) var(--l);
+    linear-gradient(to right, var(--c), transparent) top left / var(--l) var(--w),
+    linear-gradient(var(--c), transparent) top left / var(--w) calc(var(--l) * 0.75),
+    linear-gradient(to left, var(--c), transparent) top right / var(--l) var(--w),
+    linear-gradient(var(--c), transparent) top right / var(--w) calc(var(--l) * 0.75);
   background-repeat: no-repeat;
 }
 .question.blocking > .banner::before { --c: var(--bad); }
 .banner img { display: block; width: 100%; aspect-ratio: 3 / 1; object-fit: cover; }
-.question > .banner img { mask-image: linear-gradient(#000 calc(100% - 70px), transparent calc(100% - 22px)); }
+/* object-view-box cuts 16 of the picture's own pixels off each edge: a capture of a whole window brings its rounded
+   corners along. shortcut: Chromium only (Firefox and Safari show the corners), upgrade by cropping in shots.ps1. */
+.question > .banner img { object-view-box: inset(16px); mask-image: linear-gradient(#000 calc(100% - 70px), transparent calc(100% - 22px)); }
 /* A question's choices: one row each, the picture whole (16:9, never cut) on most of the row and the text beside it;
    in a narrow card the picture has the full width and the text stands under it. The same for every count. */
 .choices { display: grid; gap: 10px; margin: 10px 0; }
