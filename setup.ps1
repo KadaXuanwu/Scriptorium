@@ -7,7 +7,8 @@ Sets up Scriptorium for one project on this PC (README.md). Safe to run again.
 2. Writes a first scriptorium.json when the project has none (docs/CONFIG.md): the name from the folder, and each plugin
    of plugins.json whose detect patterns match a file in the project (or -Plugins).
 3. Installs the plugins (clones a git source into plugins\<name>, or pulls it) and checks what each requires.
-4. Adds .queue/ to the project's .gitignore, and the ticket skill when the project has none.
+4. Adds .queue/ to the project's .gitignore, and the ticket skill. It replaces a ticket skill that is not the current
+   one when PROJECT.md is beside it: that file holds the project's own rules for tickets, and setup never changes it.
 5. Writes the settings: the project's .queue/settings.json (a push topic), and the PC's part (the workers of the
    project on the command-line login, each with a number that no other project of the PC has).
 6. Runs each plugin's Setup.
@@ -234,13 +235,35 @@ if (-not ((Test-Path $ignore) -and (Select-String -Path $ignore -Pattern '^/?\.q
     Invoke-Step 'Add .queue/ to .gitignore' { Add-Content $ignore $line -Encoding utf8 }
     $added += '.gitignore'
 }
-$skill = Join-Path $main '.claude/skills/ticket/SKILL.md'
+# SKILL.md is Scriptorium's: setup replaces a copy that differs. The project's own rules are in PROJECT.md beside it,
+# which setup writes once and never changes. A skill with no PROJECT.md is from an older setup and may hold the
+# project's rules, so it stays.
+$skillDir = Join-Path $main '.claude/skills/ticket'
+$skill = Join-Path $skillDir 'SKILL.md'
+$rules = Join-Path $skillDir 'PROJECT.md'
+$template = Join-Path $PSScriptRoot 'templates/skills/ticket'
+# Without the line ends: git writes them as the PC wants them.
+$read = { param($file) (Get-Content -LiteralPath $file -Raw -Encoding UTF8) -replace "`r", '' }
 if (-not (Test-Path $skill)) {
-    Invoke-Step 'Add the ticket skill: .claude/skills/ticket/SKILL.md' {
-        New-Item -ItemType Directory -Force (Split-Path $skill) | Out-Null
-        Copy-Item (Join-Path $PSScriptRoot 'templates/skills/ticket/SKILL.md') $skill
+    Invoke-Step 'Add the ticket skill: .claude/skills/ticket (SKILL.md, and PROJECT.md for the rules of this project)' {
+        New-Item -ItemType Directory -Force $skillDir | Out-Null
+        Copy-Item (Join-Path $template 'SKILL.md') $skill
+        if (-not (Test-Path $rules)) {
+            Copy-Item (Join-Path $template 'PROJECT.md') $rules
+        }
     }
-    $added += '.claude/skills/ticket/SKILL.md'
+    $added += '.claude/skills/ticket/SKILL.md', '.claude/skills/ticket/PROJECT.md'
+} elseif ((& $read $skill) -ne (& $read (Join-Path $template 'SKILL.md'))) {
+    if (Test-Path $rules) {
+        Invoke-Step 'Replace the ticket skill with the current one: .claude/skills/ticket/SKILL.md' {
+            Copy-Item (Join-Path $template 'SKILL.md') $skill -Force
+        }
+        $added += '.claude/skills/ticket/SKILL.md'
+    } else {
+        Write-Output ("The ticket skill is not the current one, and it stays: it has no PROJECT.md beside it, so it may hold rules of " +
+            "this project. To take the current one, move those rules to .claude/skills/ticket/PROJECT.md (copy " +
+            "$(Join-Path $template 'PROJECT.md') when the project has none) and run setup again.")
+    }
 }
 
 # 5. The settings (docs/QUEUE.md, Settings). The project's own: a private ntfy topic. The PC's (pc.ps1): the workers of

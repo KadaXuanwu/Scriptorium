@@ -31,7 +31,7 @@ Decide size and complexity again for this work by the ticket skill's rules (Fili
 ticket's labels. The merger gives the follow-up those labels; without a line, M and medium.
 **Area:** the `area:*` names of the files it changes (ticket skill, Areas), also when they are this ticket's. The
 merger makes a new one. Without this line, the follow-up keeps this ticket's areas.
-**Cause:** what you found: the files (linked), the mechanism, what you ruled out. The next run starts here.
+**Start here:** what you found: the files (linked), the mechanism, what you ruled out. The next run starts here.
 **Scope:** what it includes and what it leaves out.
 **Done when:** a check the next run can do itself, with numbers.
 **Decisions:** this ticket's rules that still apply, or None.

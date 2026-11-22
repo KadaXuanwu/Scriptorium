@@ -148,6 +148,10 @@ it.
 Setup adds `scriptorium.json`, the ticket skill, the GitHub labels, one worker and the logon tasks, then prints the
 page address and the ntfy topic. Add `-WhatIf` to preview. It is safe to run again.
 
+Run it again after you update Scriptorium: it replaces the project's ticket skill (`.claude/skills/ticket/SKILL.md`)
+with the current one. The project's own rules for tickets go in `PROJECT.md` beside it, which setup never changes. A
+skill with no `PROJECT.md` stays as it is, and setup says how to move its rules.
+
 To add another project, run step 3 with its folder; it joins the same page. Only setup and uninstall add or remove a
 project, not the page.
 
