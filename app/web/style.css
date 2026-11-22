@@ -461,6 +461,8 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .take small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); white-space: nowrap; }
 .take.on .i { color: var(--accent); }
 .take:not(.on) { border-style: dashed; background: transparent; color: var(--muted); }
+/* The effort without the advisor counts only with the advisor on, so it looks as off as the switch. */
+.take:not(.on) + select:disabled { border-style: dashed; background: transparent; color: var(--muted); }
 /* The No blocking switch in the Workers head: its own colour, not an action's as the two buttons beside it, and not
    amber, which is a pause. */
 .no-blocking.on { border-color: var(--unblock); color: var(--unblock); }
