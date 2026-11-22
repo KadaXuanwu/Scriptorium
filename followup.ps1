@@ -1,6 +1,6 @@
 # Follow-ups (PLAYBOOK.md, Ship): a merged PR's Follow-up section split into draft tickets for the
-# merger, and a draft ticket's summary and questions for the queue app. Pure functions, dot-sourced by merge.ps1 and
-# app/state.ps1, checked by followup.test.ps1.
+# merger, a draft ticket's summary and questions for the queue app, and a held PR's questions for both. Pure
+# functions, dot-sourced by merge.ps1 and app/state.ps1, checked by followup.test.ps1 and app/app.test.ps1.
 
 # Whether a section's text says there is nothing: "None" or "Nothing" alone or with a note after it ("None. The rest
 # waits for step 9.", "None: the parser is a later ticket.", "None (Generation 2 soft cap)."), but not "None of the tests
@@ -138,6 +138,26 @@ function Get-FollowUpView([string] $body) {
         $details = $details.Substring($summary.Length).Trim()
     }
     return @{ summary = $summary; questions = $questions; details = $details }
+}
+
+# A held PR's questions: its body's Held questions section, a heading or a bold label (PLAYBOOK.md, Ship), up to the
+# next heading or bold label; '' for none.
+function Get-HeldQuestions([string] $body) {
+    $match = [regex]::Match([string]$body, '(?ms)^(?:##\s*Held questions\s*$|\*\*Held questions:?\*\*:?)(.*?)(?=^##\s|^\*\*[^*\n]+:\*\*|\z)')
+    $text = if ($match.Success) { $match.Groups[1].Value.Trim() } else { '' }
+    if (Test-NoneText $text) {
+        return ''
+    }
+    return $text
+}
+
+# A held PR's Decision line: the owner's choice in one sentence, '' without one.
+function Get-Decision([string] $body) {
+    $match = [regex]::Match([string]$body, '(?m)^\*\*Decision:\*\*[ \t]*(.+?)\s*$')
+    if ($match.Success) {
+        return $match.Groups[1].Value
+    }
+    return ''
 }
 
 # The titles of the questions a PR body files for the owner (its Open questions, and its Follow-ups that ask) whose

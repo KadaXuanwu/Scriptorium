@@ -760,6 +760,18 @@ function Invoke-Action($request) {
             Save-Settings (Set-AdvisorModel (Read-SettingsToEdit) (Read-Models) ([string]$request.model))
             return "advisor model: $($request.model)"
         }
+        'away' {
+            # The owner is away (docs/QUEUE.md, Away): the PC's switch, so it counts for every project. Left out when off.
+            $settings = Read-SettingsToEdit
+            $settings.PSObject.Properties.Remove('away')
+            if ($request.on) {
+                Set-JsonProperty $settings 'away' $true
+            }
+            Save-Settings $settings
+            # The merger hands back what waits on the owner at its next pass: now.
+            Send-Wake (Join-Path $mainQueue 'wake-merger')
+            return "away: $(if ($request.on) { 'on' } else { 'off' })"
+        }
         'color' {
             # The project's colour on the page (state.ps1, Set-ProjectColor).
             Save-Settings (Set-ProjectColor (Read-SettingsToEdit) ([string]$request.value))

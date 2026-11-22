@@ -223,6 +223,9 @@ foreach ($bad in 'red', '#abc', "#a0b1c2`nx", '') {
 }
 $plain = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }
 Assert-Equal "'$($plain.color)' '$($plain.settingsModel)' $($plain.advisor.model)" "'' '' claude-fable-5-2" 'no settings'
+# The PC's Away switch (docs/QUEUE.md, Away).
+$gone = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = ('{"away":true}' | ConvertFrom-Json) }
+Assert-Equal "$($plain.away) $($gone.away)" 'False True' 'the Away switch'
 # The plugins and the complexities, for the Details tab: none for a plain git repo; models.json's four without a config.
 $info = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @()
     plugins = @(@{ Name = 'unity'; Title = 'Scriptorium for Unity'; Version = '1.0.0'; Description = 'One editor each.'; Hooks = @{} }) }

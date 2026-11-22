@@ -12,7 +12,7 @@ their pull requests. The owner talks only to the front desk and to the page.
 | Worker script | [worker.ps1](../worker.ps1), one for each worker. It has the plugins make the environment ready (Start), dispatches (Dispatching; the scripts share a lock, so never the same ticket twice), starts a run, and checks that it ended in a PR, a question or a pause. However a run ends, the plugins leave the environment clean (EndRun) | no |
 | Run | One headless Claude Code session that does one job in a worker's copy, with what the plugins give it (GetRun); fresh for each job. Each turn reads the whole context again, so the cost of a turn grows with the context. Claude Code compacts it at the compact size of the ticket's complexity: at 250k with the default of `models.json` ([CONFIG.md](CONFIG.md), The compact size). A run never hands off to a fresh session: that read 24 turns again, a compaction 7. The tools no run uses are blocked (`$UnusedTools` in the worker script): 4,750 tokens less on every turn, 1,977 for `Workflow`, 275 for `Glob`, and 3,800 for `PowerShell` (a trial: the run's one shell is Bash, and PowerShell goes through it, [PLAYBOOK.md](../PLAYBOOK.md), One shell). The run's settings file (`.queue/run-settings.json`, the same for the run and for the compaction of its session) turns off Claude Code's own skills and the claude.ai account's (`disableBundledSkills`, `syncClaudeAiSkills`): 6,077 tokens less on every turn. The project's and the plugins' skills stay | yes |
 | Page | [APP.md](APP.md): one web page on the owner's PC and phone with each worker's status and tickets, the questions for the owner, the queue with what is left, and the accounts with their stop lines; ntfy pushes | no |
-| Merger | [merge.ps1](../merge.ps1): squash-merges every worker PR that GitHub can merge, oldest first. It labels a conflicting one `needs-rebase`, and one with an owner's comment that its run never marked read `answered`, for its worker ([comments.ps1](../comments.ps1)). It sends a PR whose open question or asking follow-up has no banner picture back the same way, once, with a comment; the second time it merges. It files a merged PR's follow-ups and open questions, each with its generation, a soft cap from 2 ([followup.ps1](../followup.ps1)) | no |
+| Merger | [merge.ps1](../merge.ps1): squash-merges every worker PR that GitHub can merge, oldest first. It labels a conflicting one `needs-rebase`, and one with an owner's comment that its run never marked read `answered`, for its worker ([comments.ps1](../comments.ps1)). It sends a PR whose open question or asking follow-up has no banner picture back the same way, once, with a comment; the second time it merges. It files a merged PR's follow-ups and open questions, each with its generation, a soft cap from 2 ([followup.ps1](../followup.ps1)). While the owner is away, it hands back what waits on the owner (Away) | no |
 
 [setup.ps1](../setup.ps1) makes the copies, runs the plugins' setup, makes the labels and the logon tasks
 (`Scriptorium <name> worker N`, `Scriptorium <name> merger`, `Scriptorium <name> app`). The tasks and one worker's setup
@@ -66,7 +66,7 @@ involved.
 | `complexity:*` | How hard it is to get right, the front desk's call (a follow-up's: the run that writes it, never its ticket's). It picks the model (Models). None counts as medium. Independent of size: a one-line core rule can be high and S, a rename across fifty files low and L |
 | `repo:<Name>` | The work happens in the owner's repo `<Name>` ([PLAYBOOK-repo.md](../PLAYBOOK-repo.md)); it counts as an area |
 | `worker:N` | Claimed by that worker, until its PR merges and closes the ticket |
-| `needs-owner` | Waits on the owner. On a ticket: a worker's question (nothing could be built), or a stuck run; removing it hands it back. On a PR: held for questions, or a run that could not finish. Never a way to keep a ticket for later: park it (no priority) or give it a `Blocked by` line |
+| `needs-owner` | Waits on the owner. On a ticket: a worker's question (nothing could be built), or a stuck run; removing it hands it back. On a PR: held for questions, or a run that could not finish. Never a way to keep a ticket for later: park it (no priority) or give it a `Blocked by` line. While the owner is away, the merger takes it off again (Away) |
 | `answered` | On a PR: the owner answered a held PR, or the merger found an owner's comment without 👀 or a question without a banner picture. Its worker applies them, then it merges |
 | `needs-rebase` | On a PR: it conflicts with main; its worker rebases it |
 | `follow-up` | A draft ticket that the merger filed from a merged PR's Follow-up section (one for each `###`), with questions for the owner. No worker takes it until the owner answers it (the page, Questions). One without questions is filed `P1` instead |
@@ -136,8 +136,10 @@ More rules:
   system prompt, about 900 tokens, the same as the page's Ping (`$BareRequestArgs` in [limits.ps1](../limits.ps1)).
   That reading is the account's, so the front desk's and the owner's own use
   count too. Each reading keeps the login's email; when a login folder is signed in to another account, its reading
-  counts as none. A save keeps each window from the stored reading where that one is further on (a later reset, or the
-  same reset and a higher share): a run that waits on a long task has only an old event in its log.
+  counts as none. A save keeps a window from the stored reading where that one has a later reset. A share can fall
+  before its reset (a limit that was reset early), so a lower reading of the same window replaces the stored one; only
+  a used-up Fable window stays until its reset. A run that waits on a long task has only an old event in its log: its
+  worker saves a reading only when the log has a new event (`Get-ReadingKey` in [budget.ps1](../budget.ps1)).
 - **Idle:** each worker script writes its state to `.queue/worker-<N>.json` (a running one also its account, ticket size
   and the usage it started from). An idle state older than two polls is a stopped script, left out. A worker whose
   account is out is not idle and gets no ticket (An account that is out).
@@ -216,8 +218,9 @@ the first ones.
 
 - **The PC's:** `settings.json` in the PC's Scriptorium folder (`%LOCALAPPDATA%\Scriptorium` on Windows, `~/Library/Application Support/Scriptorium` on macOS, `~/.local/share/Scriptorium` on Linux), one for every project that
   Scriptorium runs on the PC.
-  It holds `accounts`, `keep`, `workers` and `order`: the logins and their limits are the same for each project, a
-  worker's number is the PC's, and the page's order of the cards is the same on every device.
+  It holds `accounts`, `keep`, `workers`, `order` and `away`: the logins and their limits are the same for each
+  project, a worker's number is the PC's, the page's order of the cards is the same on every device, and the owner is
+  away from the whole PC.
 - **The project's own:** the main checkout's `.queue/settings.json`, with every other key.
 
 ```json
@@ -264,6 +267,8 @@ between runs.
 - `keep` (the PC's): the share of a whole week that each human use's usage guard holds on its account, for example
   `{ "frontdesk": 0.1, "personal": 0.15 }` (the defaults). The guard keeps the part of it for the time left; 0 keeps
   nothing. The page's guard sliders set it.
+- `away` (the PC's): `true` while the owner is away: nothing that waits on the owner stops the work (Away). Left out:
+  not away. The switch on the page's Questions tab sets it.
 - `complexities.<name>.compactAt`: the compact size of a complexity's runs in the project, for example
   `{ "design": { "compactAt": 250000 } }`, over `scriptorium.json`'s ([CONFIG.md](CONFIG.md), The compact size). It is
   the same for every worker. Details sets it.
@@ -390,6 +395,39 @@ that ended with an error, for a disabled worker, or for a run that a Now ended (
 its handoff comment. A run held at a
 checkpoint (a pause or a stop line) also starts fresh if the owner moved the worker to another account meanwhile
 (`Get-Hold` in [limits.ps1](../limits.ps1)).
+
+## Away
+
+**Away** on the page's Questions tab is for the days when the owner is not there (Settings, `away`). It is one switch
+for the PC: it counts for every project. While it is on, nothing that waits on the owner stops the work. A question
+still reaches the owner: it waits under the page's Questions and blocks nothing. The rules are in
+[away.ps1](../away.ps1). No model is involved but the runs.
+
+- **A run** asks no blocking question. The worker script keeps the note `away.md` in the run's queue folder while the
+  switch is on, also for a run that started before it. The run builds the answer that it recommends and files the
+  question as an open question, with a `**Size:**` line for the work to change it ([PLAYBOOK.md](../PLAYBOOK.md),
+  Away). The note carries the whole rule.
+- **A held PR** (`needs-owner`, from before the switch or from a run that held all the same) has its default built.
+  The merger takes the label off, files the PR's Decision line and Held questions as one `open-question` ticket of
+  `size:M`, and merges the PR in the same pass.
+- **A ticket's question** (`needs-owner`, the worker's last comment asks): the merger comments that the owner is away
+  and takes the label off. The same worker takes the ticket again and builds its default.
+- **A stuck run** (a ticket without a PR or a question; a PR whose answers or rebase did not finish) gets one more
+  try: the merger comments and takes the label off.
+- **Once:** the merger's comment starts `**Merger:** the owner is away`. A ticket or a stuck PR that has it is not
+  handed back again, so a ticket that fails twice, or asks twice, waits for the owner.
+
+What still waits for the owner:
+
+- A follow-up that asks ("Do this?") and an open question. Each blocks nothing but its own work.
+- A run that reached the cap for one run (`runCap`), and a second failure. A ticket `Blocked by` one of them waits
+  with it.
+- A ticket that the owner holds with `needs-owner` and no worker comment, and a parked ticket: a stub of the front
+  desk too (the ticket skill, More than one ticket). The front desk writes no stub while the switch is on.
+- An account that is signed out or refuses runs, and a script that is down.
+
+The merger of a project looks at its next pass, at most 5 minutes later; the server wakes its own project's merger at
+the click.
 
 ## Now
 

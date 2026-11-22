@@ -1,5 +1,6 @@
 # The queue's merger (docs/QUEUE.md): squash-merges every worker PR GitHub can merge, oldest first, and labels a
-# conflicting one needs-rebase for its worker. Never resolves anything itself. Loops until stopped.
+# conflicting one needs-rebase for its worker. Never resolves anything itself. While the owner is away (away.ps1), it
+# hands back what waits on the owner. Loops until stopped.
 param(
     [Parameter(Mandatory = $true)] [string] $Project,
     [int] $PollSeconds = 300
@@ -9,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'project.ps1')
 . (Join-Path $PSScriptRoot 'followup.ps1')
 . (Join-Path $PSScriptRoot 'comments.ps1')
+. (Join-Path $PSScriptRoot 'away.ps1')
 . (Join-Path $PSScriptRoot 'restart.ps1')
 # gh writes UTF-8; Windows PowerShell would read it in the console's old code page and garble titles.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -46,10 +48,16 @@ $wakeWorkers = Join-Path $Project '.queue/wake-workers'
 # without a line it has no size or complexity label (M, medium) and keeps the original ticket's areas and repo.
 # The Open questions section is filed the same way, each labelled open-question: the PR built its default, so the
 # ticket waits in the queue app's Q&A until the owner keeps the default (closed) or changes it (queued).
-function New-FollowUp($pr, [string] $where, [int] $ticket) {
-    $tickets = @(Split-FollowUps ([string]$pr.body) "Follow-up: $($pr.title)" | ForEach-Object { $_.state = $null; $_ })
-    $tickets += @(Split-FollowUps ([string]$pr.body) "Open question: $($pr.title)" 'Open questions' |
-        ForEach-Object { $_.state = 'open-question'; $_ })
+# $held: the one ticket to file in place of the body's sections, for a held PR that merges while the owner is away
+# (away.ps1, Get-HeldTicket).
+function New-FollowUp($pr, [string] $where, [int] $ticket, $held = $null) {
+    if ($held) {
+        $tickets = @($held)
+    } else {
+        $tickets = @(Split-FollowUps ([string]$pr.body) "Follow-up: $($pr.title)" | ForEach-Object { $_.state = $null; $_ })
+        $tickets += @(Split-FollowUps ([string]$pr.body) "Open question: $($pr.title)" 'Open questions' |
+            ForEach-Object { $_.state = 'open-question'; $_ })
+    }
     if ($tickets.Count -eq 0) {
         return
     }
@@ -123,10 +131,53 @@ while ($true) {
             $prs += @((((& gh pr list --state open --limit 200 --json number,title,body,url,headRefName,labels,mergeable,createdAt -R $where) -join "`n") |
                 ConvertFrom-Json) | ForEach-Object { $_ | Add-Member -NotePropertyName Repo -NotePropertyValue $where -PassThru })
         }
+        # Away (docs/QUEUE.md, Away): while the owner is away, what waits on the owner goes on without an answer. A
+        # ticket goes back to its worker, once: with a question, to take its default; stuck, for one more try.
+        # Settings that do not parse count as not away: the merges go on.
+        $away = $false
+        try {
+            $away = [bool](Read-ProjectSettings $Project).away
+        } catch {
+            Add-Content $log "$(Get-Date -Format s) settings: $_" -Encoding utf8
+        }
+        if ($away) {
+            $waiting = ((& gh issue list --state open --label needs-owner --limit 100 --json number,comments -R $slug) -join "`n") | ConvertFrom-Json
+            foreach ($issue in $waiting) {
+                $step = Get-AwayTicketStep @($issue.comments | ForEach-Object { [string]$_.body })
+                if ($step) {
+                    & gh issue comment $issue.number --body (ConvertTo-NativeArg "$AwayNote$($AwayText[$step])") -R $slug | Out-Null
+                    & gh issue edit $issue.number --remove-label needs-owner -R $slug | Out-Null
+                    Add-Content $log "$(Get-Date -Format s) away: #$($issue.number) back to its worker ($step)" -Encoding utf8
+                    $changed = $true
+                }
+            }
+        }
         foreach ($pr in ($prs | Sort-Object createdAt)) {
             $where = $pr.Repo
             $ticket = [int]$pr.headRefName.Substring(1)
             $names = @($pr.labels | ForEach-Object { $_.name })
+            $step = if ($away) { Get-AwayPrStep $names } else { '' }
+            if ($step -eq 'release') {
+                # A held PR has its default built: it merges in this pass, and its questions wait as an open question.
+                # The label first: a ticket filed before a label that stays would be filed again each pass.
+                & gh pr edit $pr.number --remove-label needs-owner -R $where | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    $names = @($names | Where-Object { $_ -ne 'needs-owner' })
+                    Add-Content $log "$(Get-Date -Format s) away: released $where#$($pr.number)" -Encoding utf8
+                    $changed = $true
+                    $held = Get-HeldTicket $pr
+                    if ($held) {
+                        New-FollowUp $pr $where $ticket $held
+                    }
+                }
+            } elseif ($step -eq 'retry' -and
+                -not (Test-AwayNoted @((((& gh pr view $pr.number --json comments -R $where) -join "`n") | ConvertFrom-Json).comments | ForEach-Object { [string]$_.body }))) {
+                # A PR that its run could not finish goes back to its worker, once: the comment marks it.
+                & gh pr comment $pr.number --body (ConvertTo-NativeArg "$AwayNote$($AwayText.retry)") -R $where | Out-Null
+                & gh pr edit $pr.number --remove-label needs-owner -R $where | Out-Null
+                Add-Content $log "$(Get-Date -Format s) away: $where#$($pr.number) back to its worker (retry)" -Encoding utf8
+                $changed = $true
+            }
             if (-not ($names | Where-Object { $_ -like 'worker:*' }) -or
                 ($names | Where-Object { @('needs-rebase', 'needs-owner', 'answered') -contains $_ })) {
                 continue

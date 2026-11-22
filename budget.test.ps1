@@ -100,9 +100,17 @@ function New-Reading([string] $email, [double] $five, [long] $fiveReset, [double
     return @{ email = $email; five_hour = @{ used = $five; resetsAt = $fiveReset }; seven_day = @{ used = $week; resetsAt = $weekReset } }
 }
 $stored = (New-Reading 'a@x' 0.15 1000 0.58 9000) | ConvertTo-Json | ConvertFrom-Json
-$merged = Merge-Usage $stored (New-Reading 'a@x' 0.04 1000 0.57 9000)
-Assert-Near $merged.five_hour.used 0.15 'an older, lower reading of the same window does not replace the stored one'
-Assert-Near $merged.seven_day.used 0.58 'the same for the week'
+$merged = Merge-Usage $stored (New-Reading 'a@x' 0.04 1000 0.05 9000)
+Assert-Near $merged.five_hour.used 0.04 'a lower reading of the same window replaces the stored one: the limit was reset early'
+Assert-Near $merged.seven_day.used 0.05 'the same for the week'
+# The same event read again has the same key; a new event, or the same after a refusal, has another.
+$event = New-Reading 'a@x' 0.04 1000 0.05 9000
+$again = New-Reading 'a@x' 0.04 1000 0.05 9000
+$again.at = 77
+Assert-Same (Get-ReadingKey $event) (Get-ReadingKey $again) 'the same event read later has the same key'
+Assert-Same ((Get-ReadingKey $event) -eq (Get-ReadingKey (New-Reading 'a@x' 0.05 1000 0.05 9000))) $false 'a new event has another key'
+$again.refused = $true
+Assert-Same ((Get-ReadingKey $event) -eq (Get-ReadingKey $again)) $false 'a refusal has another key'
 Assert-Near (Merge-Usage $stored (New-Reading 'a@x' 0.17 1000 0.58 9000)).five_hour.used 0.17 'a higher reading replaces the stored one'
 $merged = Merge-Usage $stored (New-Reading 'a@x' 0.01 2000 0.59 9000)
 Assert-Near $merged.five_hour.used 0.01 'a reading of a later window replaces the stored one'
@@ -138,18 +146,21 @@ $own = '{"stopAt":{"seven_day_overage_included":0.85}}' | ConvertFrom-Json
 Assert-Same "$((Get-FableLines $own.stopAt $null).design)" '0.85' 'a stop line under the design line takes it down'
 Assert-Same ((@((Get-PickUp $null 'five_hour').Keys) | Sort-Object) -join ',') 'L,M,S' 'the 5-hour window keeps its three sizes'
 
-# Each window has its own read time, which the queue app shows. A kept window takes the new reading's time: a reading
-# of the same Fable window a little lower (whole per cent) read it all the same.
+# Each window has its own read time, which the queue app shows. A Fable window that is used up stays until its reset
+# and takes the new reading's time: it was read again. One that is not used up takes a lower reading, as the others do.
 $reading = New-Reading 'a@x' 0.1 1000 0.5 9000
 $reading.at = 100
-$reading[$FableWindow] = @{ used = 0.5; resetsAt = 9000; at = 100 }
+$reading[$FableWindow] = @{ used = 1.0; resetsAt = 9000; at = 100 }
 $stored = $reading | ConvertTo-Json | ConvertFrom-Json
 $new = New-Reading 'a@x' 0.2 1000 0.5 9000
 $new.at = 5000
-$new[$FableWindow] = @{ used = 0.49; resetsAt = 9000; at = 5000 }
+$new[$FableWindow] = @{ used = 0.97; resetsAt = 9000; at = 5000 }
 $merged = Merge-Usage $stored $new
-Assert-Near $merged[$FableWindow].used 0.5 'a lower reading of the same Fable window keeps the share'
+Assert-Near $merged[$FableWindow].used 1.0 'a used-up Fable window keeps its share before its reset'
 Assert-Same ([long]$merged[$FableWindow].at) 5000 'and takes the new read time'
+$stored.$FableWindow.used = 0.71
+$new[$FableWindow] = @{ used = 0.05; resetsAt = 9000; at = 5000 }
+Assert-Near (Merge-Usage $stored $new)[$FableWindow].used 0.05 'a Fable window that was reset early takes the lower reading'
 $new = New-Reading 'a@x' 0.2 1000 0.5 9000
 $new.at = 5000
 Assert-Same ([long](Merge-Usage $stored $new)[$FableWindow].at) 100 'a reading without the Fable window keeps its old read time'

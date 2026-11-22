@@ -11,7 +11,7 @@ if (-not $PcDir) {
     $PcDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData', 'DoNotVerify')) 'Scriptorium'
 }
 # The keys of the settings that are the PC's. Every other key is the project's own.
-$PcKeys = @('accounts', 'keep', 'workers', 'order')
+$PcKeys = @('accounts', 'keep', 'workers', 'order', 'away')
 # The accounts' records, which the workers of every project write.
 $PcRecords = @('usage.json', 'out.json', 'access.json')
 

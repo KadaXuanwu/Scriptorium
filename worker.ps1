@@ -20,6 +20,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'restart.ps1')
 . (Join-Path $PSScriptRoot 'areas.ps1')
 . (Join-Path $PSScriptRoot 'comments.ps1')
+. (Join-Path $PSScriptRoot 'away.ps1')
 . (Join-Path $PSScriptRoot 'usage.ps1')
 
 $Project = Resolve-Project $Project
@@ -44,6 +45,8 @@ $pausedFile = Join-Path $queueDir 'paused.json'
 $warnFile = Join-Path $queueDir 'limit.md'
 $stopFile = Join-Path $queueDir 'stop.md'
 $commentsFile = Join-Path $queueDir 'comments.md'
+# There while the owner is away (docs/QUEUE.md, Away; away.ps1).
+$awayFile = Join-Path $queueDir 'away.md'
 # Written by a run that hands its ticket on at the Fable limit (docs/QUEUE.md, The Fable limit).
 $handoffFile = Join-Path $queueDir 'handoff.md'
 $progressFile = Join-Path $queueDir 'progress.json'
@@ -1027,6 +1030,19 @@ function Test-OverBudget([string] $configDir) {
     return $false
 }
 
+# Saves a run's reading when its log has a new event, and returns the account's newest reading. The same event as at
+# the last look is no new reading (budget.ps1, Get-ReadingKey): the stored one counts then.
+function Save-RunUsage([string] $log, [string] $account, $usage) {
+    $key = "$log|$(Get-ReadingKey $usage)"
+    $stored = (Read-AllUsage)[$account]
+    if ($key -eq $script:readingKey -and $stored -and $stored.email -eq (Get-LoginEmail $account)) {
+        return $stored
+    }
+    $script:readingKey = $key
+    Save-Usage $account $usage
+    return $usage
+}
+
 # While the run works: record usage. At the workers' limit, leave the run the note that ends it at its next
 # checkpoint; withdraw the note if the account has room again before then (a window reset, a
 # moved stop line). The note carries the whole instruction, so a run that read an older playbook follows it too.
@@ -1035,7 +1051,7 @@ function Update-Usage([string] $log, [string] $account) {
     if (-not $usage) {
         return
     }
-    Save-Usage $account $usage
+    $usage = Save-RunUsage $log $account $usage
     $budget = Get-Budget $account $usage
     Save-Budget $budget
     # A forced run ignores the workers' limit; only the plan's own limit pauses it.
@@ -1177,8 +1193,8 @@ function Invoke-Worker($job, [string] $log, $paused) {
         $resumeArgs = @()
     }
     $prompt += " You run on $model at $effort effort: name both in the PR body. Your queue folder is " +
-        "$($queueDir.Replace('\', '/')): at each checkpoint write progress.json there and look for limit.md, stop.md " +
-        "and comments.md there (PLAYBOOK.md, Checkpoints). The Scriptorium folder is $($PSScriptRoot.Replace('\', '/')): " +
+        "$($queueDir.Replace('\', '/')): at each checkpoint write progress.json there and look for limit.md, stop.md, " +
+        "comments.md and away.md there (PLAYBOOK.md, Checkpoints). The Scriptorium folder is $($PSScriptRoot.Replace('\', '/')): " +
         "run a script of it where a playbook says so, and change no file in it."
     # The rest of a Fable job (docs/QUEUE.md, The Fable limit). The note carries the whole
     # instruction, so a run that read an older playbook follows it too.
@@ -1230,6 +1246,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     }
 
     Remove-Item $warnFile, $stopFile, $commentsFile, $handoffFile -ErrorAction SilentlyContinue
+    Write-AwayNote $awayFile ([bool](Read-Settings).away)
     if (-not $paused) {
         Remove-Item $progressFile -ErrorAction SilentlyContinue
     }
@@ -1280,6 +1297,8 @@ function Invoke-Worker($job, [string] $log, $paused) {
                     Remove-Item $stopFile
                     Write-Log "stop note withdrawn for #$($job.Ticket)"
                 }
+                # The owner may leave or come back during a run (docs/QUEUE.md, Away).
+                Write-AwayNote $awayFile ([bool](Read-Settings).away)
                 # The owner's unread comments on the ticket and the job's PR, every 2 minutes (PLAYBOOK.md, Comments).
                 if ((Get-Now) - $commentsCheckedAt -ge 120) {
                     $commentsCheckedAt = Get-Now
@@ -1314,7 +1333,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     $text = Read-Log $log
     $usage = Get-Usage $text
     if ($usage) {
-        Save-Usage $account $usage
+        [void](Save-RunUsage $log $account $usage)
     }
     $limited = $usage -and $usage.refused
     $modelRefused = $false

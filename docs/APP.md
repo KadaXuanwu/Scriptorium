@@ -180,6 +180,12 @@ One list of questions about the product, in two groups ([PLAYBOOK.md](../PLAYBOO
   comment).
 - **Not blocking:** an open question (its default is built already) and a follow-up that asks.
 
+**Away** is a switch in the tab's head, for the days when the owner is not there ([QUEUE.md](QUEUE.md), Away). It is
+the PC's (`away`), so it shows the same for every project, and the page's own project saves it. While it is on, no
+question holds a PR or a ticket: each goes on with the worker's default and waits under Not blocking, and a stuck run
+gets one more try. When a blocking question or a stuck run waits at the click, the page asks first: what waits goes on
+at once, and that cannot be taken back.
+
 Every question has one answer box and two buttons: **Accept default** and **Send answer**. The server decides what the
 queue does (`Get-AnswerRoute`), and the answer goes on GitHub as the owner's comment:
 

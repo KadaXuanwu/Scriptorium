@@ -485,26 +485,6 @@ function Get-Typical($runs, [string] $size, [string] $model, [string] $field = '
     return $null
 }
 
-# A held PR's questions: its body's Held questions section, a heading or a bold label (PLAYBOOK.md, Ship), up to the
-# next heading or bold label; '' for none.
-function Get-HeldQuestions([string] $body) {
-    $match = [regex]::Match([string]$body, '(?ms)^(?:##\s*Held questions\s*$|\*\*Held questions:?\*\*:?)(.*?)(?=^##\s|^\*\*[^*\n]+:\*\*|\z)')
-    $text = if ($match.Success) { $match.Groups[1].Value.Trim() } else { '' }
-    if (Test-NoneText $text) {
-        return ''
-    }
-    return $text
-}
-
-# A held PR's Decision line: the owner's choice in one sentence, '' without one.
-function Get-Decision([string] $body) {
-    $match = [regex]::Match([string]$body, '(?m)^\*\*Decision:\*\*[ \t]*(.+?)\s*$')
-    if ($match.Success) {
-        return $match.Groups[1].Value
-    }
-    return ''
-}
-
 # A label's value, $null without one (the page reads null).
 function Get-Label($item, [string] $prefix) {
     $found = @(foreach ($name in Get-Names $item) { if ($name -like "$prefix*") { $name } })
@@ -1175,6 +1155,8 @@ function New-Snapshot($data) {
         models = @($models.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($models.efforts)
         # The project's colour on the page (`color`): only a valid one, as a hand edit of the file skips the action.
         color = $(if ($color -match '^#[0-9a-fA-F]{6}\z') { $color.ToLowerInvariant() } else { '' })
+        # The owner is away (docs/QUEUE.md, Away): the PC's switch, the same in every project's snapshot.
+        away = [bool]$(if ($data.settings) { $data.settings.away })
         # The settings' `model`, which goes over every pick of Details for every run; '' without one.
         settingsModel = $(if ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { '' })
         # Every complexity with its description, models, the first one's model and effort, the same without the owner's

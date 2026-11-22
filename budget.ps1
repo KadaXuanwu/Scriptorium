@@ -27,11 +27,14 @@ function Get-Pace([double] $room, [long] $left) {
 }
 
 # A new usage reading ($new, a hashtable), with each window taken from the stored reading where that one is further
-# on: the same login's, with a later reset, or the same reset and a higher share. A run that waits on a long task
-# has only an old event in its log, and every poll it replaced the newer reading of another run on the same account
-#. A window's share never falls before its reset. The Fable window too (limits.ps1): only Fable runs
-# carry it, so it stays from the last Fable run until a newer reading. A kept window takes the new one's read time
-# (`at`): it was read again. The queue app shows the Fable window's (Accounts).
+# on: the same login's, with a later reset. A share can fall before its reset: the plan's owner resets a limit
+# early, and the window keeps its reset time. A reading with the same reset and a lower share therefore replaces the
+# stored one (it once did not, and the page showed the old week for hours). So a caller saves only a reading that is
+# new to it (Get-ReadingKey).
+# The Fable window too (limits.ps1): only Fable runs carry it, so it stays from the last Fable run until a newer
+# reading. A Fable window that is used up (1 or more: the plan refused Fable, worker.ps1, Save-FableOut) stays until
+# its reset, or a refused start would give its ticket back to the account every poll. A kept window takes the new
+# one's read time (`at`): it was read again. The queue app shows the Fable window's (Accounts).
 function Merge-Usage($stored, $new) {
     if (-not $stored -or $stored.email -ne $new.email) {
         return $new
@@ -40,9 +43,19 @@ function Merge-Usage($stored, $new) {
         $old = $stored.$window
         $now = $new.$window
         if ($old -and (-not $now -or [long]$old.resetsAt -gt [long]$now.resetsAt -or
-                ([long]$old.resetsAt -eq [long]$now.resetsAt -and [double]$old.used -gt [double]$now.used))) {
+                ($window -eq $FableWindow -and [long]$old.resetsAt -eq [long]$now.resetsAt -and
+                    [double]$old.used -ge 1 -and [double]$old.used -gt [double]$now.used))) {
             $new[$window] = if ($now -and $now.at) { @{ used = [double]$old.used; resetsAt = [long]$old.resetsAt; at = [long]$now.at } } else { $old }
         }
     }
     return $new
+}
+
+# What a reading says, without its read time: the same text for the same event of a log. A run that waits on a long
+# task has only an old event in its log, and its worker reads that event again at every look. The worker saves a
+# reading only when this text changed (worker.ps1, Save-RunUsage), so an old event never replaces the newer reading
+# of another run on the account.
+function Get-ReadingKey($usage) {
+    return ((@('five_hour', 'seven_day', $FableWindow) | ForEach-Object { "$($usage.$_.used)@$($usage.$_.resetsAt)" }) -join '|') +
+        "|$($usage.refused)|$($usage.fableRefused)"
 }
