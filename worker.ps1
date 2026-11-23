@@ -1627,6 +1627,7 @@ while ($true) {
     $polledAt = Get-Date
     $job = $null
     $paused = $null
+    $roomAt = 0
     try {
         if (-not (Test-Enabled $Id)) {
             Disable-Worker
@@ -1730,6 +1731,9 @@ while ($true) {
             }
         } elseif (-not (Test-Path $forceFile) -and (Test-OverBudget $runConfigDir)) {
             Write-State 'over-budget'
+            # The account has room when its last full window resets: the wait below ends then, not a poll later.
+            $roomAt = ($windows | Where-Object { $script:budget[$_].used -ge $script:budget[$_].ceiling } |
+                ForEach-Object { [long]$script:budget[$_].resetsAt } | Measure-Object -Maximum).Maximum
         } elseif ((Read-Out)[(Get-Account $runConfigDir)]) {
             # The usage reading's probe found the account out: the next look waits for it.
             continue
@@ -1879,6 +1883,9 @@ while ($true) {
     # A force from the queue app since this poll began, a wake (the merger changed a PR, the owner acted on the
     # page), changed code, or a disable (looked at once a minute; its editors then close) wakes the next one early.
     $wake = (Get-Now) + $PollSeconds
+    if ($roomAt) {
+        $wake = [math]::Min($wake, $roomAt + 5)
+    }
     $enabledAt = Get-Now
     $enabled = $true
     while ((Get-Now) -lt $wake -and -not (Test-CodeChanged) -and $enabled -and
