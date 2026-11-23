@@ -133,7 +133,9 @@ function markdown(text) {
       ? { html: `<div class="choices">${run.map(choice).join('')}</div>`, block: true } : { html: run.map(inline).join('<br>') });
     run = [];
   };
-  for (const line of esc(text).split('\n')) {
+  // A writer's own wrap of a long line (the next line is indented and starts no list item or picture) is no line
+  // break: the page wraps the text.
+  for (const line of esc(text).replace(/(\S)[ \t]*\r?\n[ \t]+(?![-*] |\d+\. |!\[)(?=\S)/g, '$1 ').split('\n')) {
     if (/^\s*[-*] /.test(line)) run.push(line);
     else { flush(); parts.push({ html: inline(line) }); }
   }
@@ -141,9 +143,10 @@ function markdown(text) {
   return parts.map((part, i) => part.html + (parts[i + 1] && !part.block && !parts[i + 1].block ? '<br>' : '')).join('');
 }
 // A question's banner: its first picture that stands alone on a line, in the question or else in its details. Returns
-// the picture and both texts without that line; no banner for a question written before the rule.
+// the picture and both texts without that line and the empty lines after it; no banner for a question written before
+// the rule.
 function takeBanner(q) {
-  const alone = new RegExp(`^[ \\t]*${shotRe.source}[ \\t]*\\r?\\n?`, 'im');
+  const alone = new RegExp(`^[ \\t]*${shotRe.source}(?:[ \\t]*\\r?\\n)*`, 'im');
   for (const field of ['question', 'details']) {
     const hit = alone.exec(q[field] || '');
     if (hit) return { ...q, [field]: q[field].replace(alone, ''), banner: shotHtml(...esc(hit[0]).match(shotRe)).replace('class="shot"', 'class="shot banner"') };
