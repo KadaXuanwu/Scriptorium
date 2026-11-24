@@ -122,7 +122,9 @@ More rules:
 - **History:** `.queue/history.jsonl` keeps the dollar cost of every run (a resumed run's less the part before its
   pause) and its rise in each window, from its log's first and last usage reading. The page shows typical times and
   costs from it; the dispatcher does not read it. Each line also has the run's numbers from its log
-  ([usage.ps1](../usage.ps1)): `requests`, `toolCalls`, `first` (the tokens of the first request), `ctxMean` and
+  ([usage.ps1](../usage.ps1)): `requests`, `toolCalls`, `commands` (the tool calls, a Bash call counted as the commands
+  it chains: a run batches its work in one Bash call, so `commands` for each request shows it and `toolCalls` does not),
+  `first` (the tokens of the first request), `ctxMean` and
   `ctxMax` (the context), `read` and `write` (tokens from and to the cache), `compactions`, `advisorCalls` and
   `advisorCost` (the dollars of the advisor's model; a resumed run's less the part before its pause, which `paused.json`
   keeps as `AdvisorCost`; 0 when the advisor is the run's own model, because the log has one cost for each model).

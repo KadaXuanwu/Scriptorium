@@ -70,6 +70,11 @@ function Write-Medians($runs, [string[]] $by) {
         $row.Requests = Get-Median ($group | ForEach-Object { [long]$_.requests })
         $row.CallsPerRequest = [math]::Round((Get-Median ($group | Where-Object { $_.requests -gt 0 } |
             ForEach-Object { $_.toolCalls / $_.requests })), 2)
+        # A Bash call as the commands it chains: this one shows batching. Empty for runs from before the field.
+        $counted = @($group | Where-Object { $_.requests -gt 0 -and $null -ne $_.commands })
+        $row.CommandsPerRequest = if ($counted.Count) {
+            [math]::Round((Get-Median ($counted | ForEach-Object { $_.commands / $_.requests })), 2)
+        } else { '' }
         $row.CtxMean = Get-Median ($group | ForEach-Object { [long]$_.ctxMean })
         $row.First = Get-Median ($group | ForEach-Object { [long]$_.first })
         $row.AdvisorShare = '{0:P1}' -f (Get-Median ($group | Where-Object { $_.cost -gt 0 } |

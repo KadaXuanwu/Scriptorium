@@ -83,7 +83,7 @@ only).
 | 🤖 | No model outside runs | Dispatcher, merger, page and notifications are plain scripts. |
 | 🔁 | No retry loops | Failing tickets are parked; follow-ups of follow-ups are capped. |
 | 🧪 | Trial: no PowerShell tool | Runs use Bash only. |
-| 🧪 | Trial: batched tool calls | Independent tool calls go out in one message. |
+| 🧪 | Trial: batched commands | Independent commands go out in one message. |
 
 The model, effort, advisor and compact size of each complexity are yours to set on the page, and a per-run cost cap
 in `models.json`. `report.ps1` prints each run's cost and token numbers ([docs/QUEUE.md](docs/QUEUE.md)).

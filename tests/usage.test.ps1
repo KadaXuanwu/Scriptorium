@@ -15,7 +15,7 @@ function Assert-Equal($actual, $expected, [string] $what) {
 $log = @(
     '{"type":"system","subtype":"init","model":"claude-opus-5-5","tools":["Bash","Read"]}'
     '{"type":"assistant","message":{"model":"claude-opus-5-5","id":"m1","content":[{"type":"thinking","thinking":""}],"usage":{"input_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"parent_tool_use_id":null}'
-    '{"type":"assistant","message":{"model":"claude-opus-5-5","id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":2,"cache_creation_input_tokens":30000,"cache_read_input_tokens":0}},"parent_tool_use_id":null}'
+    '{"type":"assistant","message":{"model":"claude-opus-5-5","id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cd src && grep -n ''a; b'' x.cs | head; cat <<''EOF'' > f\nx; y\nEOF\nls"}}],"usage":{"input_tokens":2,"cache_creation_input_tokens":30000,"cache_read_input_tokens":0}},"parent_tool_use_id":null}'
     '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"{\"type\":\"result\"}"}]},"parent_tool_use_id":null}'
     '{"type":"assistant","message":{"model":"claude-haiku-5-5","id":"s1","content":[{"type":"tool_use","id":"t9","name":"Grep","input":{}}],"usage":{"input_tokens":9,"cache_creation_input_tokens":9000,"cache_read_input_tokens":0}},"parent_tool_use_id":"t0"}'
     '{"type":"rate_limit_event","rate_limit_info":{}}'
@@ -31,6 +31,10 @@ $log = @(
 $numbers = Get-RunNumbers $log
 Assert-Equal $numbers.requests 3 'requests: distinct message ids of the main session'
 Assert-Equal $numbers.toolCalls 3 'tool calls: the advisor counts, a subagent call does not'
+Assert-Equal $numbers.commands 5 'commands: the Bash call chains 3 (cd, the quoted ; and the here-document are none)'
+Assert-Equal (Get-CommandCount 'cd src') 1 'a call counts as 1 command at least'
+Assert-Equal (Get-CommandCount "for f in a b; do`n  wc -l `$f || true`ndone; ls | head") 4 'the words of a loop are no command'
+Assert-Equal (Get-CommandCount 'echo "it''s a"; ls; echo "b''s"') 3 'an apostrophe inside double quotes opens no quote'
 Assert-Equal $numbers.first 30002 'first request: the last line of its id'
 Assert-Equal $numbers.ctxMean 25669 'mean context of 30002, 32001 and 15003'
 Assert-Equal $numbers.ctxMax 32001 'largest context'

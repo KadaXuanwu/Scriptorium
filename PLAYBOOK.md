@@ -13,9 +13,9 @@ read each.
 **Nobody is there.** Never ask, never wait: no question prompts.
 
 **Turns.** Each request reads your whole context again: that is half of a run's cost. Before each message, list the
-reads, searches and commands that do not need each other's result, and send them all in that one message. One tool call
-for each message is the wrong default. Read the part of a file that you need once, in one range. Keep a command's
-output short (`-q`, `| head`, `| tail`).
+reads, searches and commands that do not need each other's result, and send them all in that one message: in Bash, as
+one call that chains them with `;`. One command for each message is the wrong default. Read the part of a file that you
+need once, in one range. Keep a command's output short (`-q`, `| head`, `| tail`).
 
 **What to ask.** Ask the owner only what the owner decides: a rule of the product, what a user sees or does, the UI, a
 look or a sound. For example: "May a user delete a file that others share?" Never ask about the workflow: merge or
