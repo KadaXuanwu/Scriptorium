@@ -7,7 +7,7 @@ Thank you for the help. Read this before you open a pull request.
 1. One topic for each pull request.
 2. The base stays free of environments. It knows git, GitHub and Claude Code, nothing else: no engine, no build tool,
    no test runner. What an environment needs goes into a plugin ([docs/PLUGINS.md](../docs/PLUGINS.md)).
-3. Every change to a queue rule has a test (`tests/*.test.ps1`) and the change to its doc in the same pull request:
+3. Every change to a queue rule has a test (`*.test.ps1`) and the change to its doc in the same pull request:
    [docs/QUEUE.md](../docs/QUEUE.md), [docs/APP.md](../docs/APP.md), [PLAYBOOK.md](../PLAYBOOK.md) or the info text on the
    page's Details tab.
 4. The code runs in Windows PowerShell 5.1 on Windows and in PowerShell 7 on macOS and Linux:

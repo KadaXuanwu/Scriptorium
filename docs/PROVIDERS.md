@@ -25,9 +25,7 @@ running code. Nothing was run with the other tools.
 
 - **A base with no provider, and one plugin for each provider.**
 - **The base is built around what every provider can do.** What only some can do is a feature that a provider plugin
-  switches on or off.
-- **A provider answers for each account at run time, not once in its manifest.** The same tool has other windows on
-  another plan, and effort levels depend on the model.
+  switches on or off while the base runs.
 - **Windows are a list that the provider returns.** One provider has 5 hours and a week, another a week alone,
   another a month.
 - **Environment plugins stop speaking Claude Code.** They hand over tool rules and MCP servers in a neutral form, and
@@ -190,7 +188,12 @@ window it gets, and the Fable rules become the rules of any window that covers s
 
 ## Proposed
 
-Not decided: the order, and which providers come first.
+Not decided: when a provider answers, the order, and which providers come first.
+
+### When a provider answers
+
+A provider answers for each account at run time, not once in its manifest. The same tool has other windows on
+another plan, effort levels depend on the model, and a usage reading exists for subscribers only.
 
 ### The order of work
 
@@ -280,21 +283,40 @@ Read on 2026-11-24.
 - Claude Code: [memory](https://code.claude.com/docs/en/memory), [headless](https://code.claude.com/docs/en/headless),
   [CLI reference](https://code.claude.com/docs/en/cli-reference), [skills](https://code.claude.com/docs/en/skills),
   [status line](https://code.claude.com/docs/en/statusline)
-- Codex: [non-interactive mode](https://developers.openai.com/codex/noninteractive)
+- Codex: [non-interactive mode](https://developers.openai.com/codex/noninteractive), which leads to
+  `learn.chatgpt.com/docs`. On that site also: the command reference, the config reference, approvals and security,
+  authentication, `AGENTS.md`, MCP, rules, subagents, skills, environment variables and pricing
 - Antigravity: [headless](https://www.antigravity.google/docs/cli/headless),
+  [CLI reference](https://www.antigravity.google/docs/cli/reference/),
   [plans](https://www.antigravity.google/docs/plans/), [usage](https://www.antigravity.google/docs/cli/commands/usage/),
   [MCP](https://www.antigravity.google/docs/mcp/), [rules](https://www.antigravity.google/docs/rules/),
-  [install](https://www.antigravity.google/docs/install/),
+  [settings](https://www.antigravity.google/docs/settings/), [install](https://www.antigravity.google/docs/install/),
+  [compact](https://www.antigravity.google/docs/commands/compact/),
+  [migration from Gemini CLI](https://www.antigravity.google/docs/cli/gcli-migration/),
   [the move from Gemini CLI](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli)
-- Cursor: [headless](https://cursor.com/docs/cli/headless), [parameters](https://cursor.com/docs/cli/reference/parameters),
+- Gemini CLI: [session management](https://geminicli.com/docs/cli/session-management/),
+  [quotas and pricing](https://geminicli.com/docs/resources/quota-and-pricing)
+- Cursor: [headless](https://cursor.com/docs/cli/headless), [using the CLI](https://cursor.com/docs/cli/using),
+  [parameters](https://cursor.com/docs/cli/reference/parameters),
   [output format](https://cursor.com/docs/cli/reference/output-format),
   [permissions](https://cursor.com/docs/cli/reference/permissions),
+  [authentication](https://cursor.com/docs/cli/reference/authentication),
   [configuration](https://cursor.com/docs/cli/reference/configuration), [skills](https://cursor.com/docs/skills),
-  [pricing](https://cursor.com/docs/models-and-pricing)
+  [pricing](https://cursor.com/docs/models-and-pricing),
+  [usage limits](https://cursor.com/help/models-and-usage/usage-limits)
 - Copilot CLI: [run programmatically](https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically),
   [programmatic reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference),
   [command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference),
+  [config folder](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference),
+  [MCP servers](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers),
+  [custom agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli),
+  [context](https://docs.github.com/en/copilot/concepts/prompting-and-context/context-management),
+  [allowing tools](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools),
+  [session limit](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/set-session-limit),
   [billing](https://docs.github.com/en/copilot/concepts/billing-and-usage/individuals/billing)
-- OpenCode: [CLI](https://opencode.ai/docs/cli), [permissions](https://opencode.ai/docs/permissions),
+- OpenCode: [CLI](https://opencode.ai/docs/cli), [config](https://opencode.ai/docs/config),
+  [permissions](https://opencode.ai/docs/permissions), [MCP servers](https://opencode.ai/docs/mcp-servers),
   [instructions](https://opencode.ai/docs/instructions), [skills](https://opencode.ai/docs/skills),
-  [compaction](https://opencode.ai/docs/compaction), [providers](https://opencode.ai/docs/providers)
+  [agents](https://opencode.ai/docs/agents), [models](https://opencode.ai/docs/models),
+  [compaction](https://opencode.ai/docs/compaction), [providers](https://opencode.ai/docs/providers),
+  [API](https://opencode.ai/docs/api)
