@@ -110,7 +110,11 @@ the script resumes the same session after the reset.
    need it, and come back. A step that needs a permission you lack: find another way, or ask a held question.
 5. **Rebase** (shipping, and the rebase job): `git fetch`, then `git rebase origin/main`. You know your ticket: read the
    other side's change (`git log origin/main`, its PR) and keep it whole. The whole check (3) runs after the rebase,
-   not before it. If a rebase brings changes after that check ran, run it again.
+   not before it. If main moves after that check passed, rebase again, but do not run the whole check again: build,
+   then run the parts of the check that cover your change and the changes that the rebase brought. Run the whole check
+   again only if the rebase had a conflict, or brought a change to a file that you also changed. A doc does not count:
+   not one that both sides changed, and a rebase that brought docs alone needs no check. Without this bound, a run
+   repeats a long check each time main moves.
    A file that `.gitattributes` merges by union keeps both sides' lines: `git diff origin/main -- <file>` must show only
    your change. A line that both sides rewrote shows twice, and a line main deleted can come back. Fix it.
 6. **Hold or merge.** Only a blocking question holds the PR (What to ask), and none does while the owner is away
