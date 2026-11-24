@@ -1,7 +1,8 @@
-# Checks Get-SmallShot in shots.ps1: powershell -NoProfile -File shots.test.ps1 (prints ok or throws).
+# Checks Get-SmallShot in shots.ps1: powershell -NoProfile -File tests/shots.test.ps1 (prints ok or throws).
 $ErrorActionPreference = 'Stop'
 # shots.ps1 uploads when run, so only its function is loaded.
-$ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'shots.ps1'), [ref]$null, [ref]$null)
+$baseDir = Split-Path $PSScriptRoot
+$ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $baseDir 'shots.ps1'), [ref]$null, [ref]$null)
 . ([scriptblock]::Create($ast.Find({ $args[0].Name -eq 'Get-SmallShot' }, $true).Extent.Text))
 $canShrink = $env:OS -eq 'Windows_NT'
 if (-not $canShrink) {

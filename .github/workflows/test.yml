@@ -33,4 +33,4 @@ jobs:
             export XDG_RUNTIME_DIR=/run/user/$(id -u)
             for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/bus" ] && break; sleep 1; done
           fi
-          pwsh -NoProfile -File tasks.smoke.ps1
+          pwsh -NoProfile -File tests/tasks.smoke.ps1

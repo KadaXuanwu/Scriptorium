@@ -158,7 +158,7 @@ request that does this.
 2. Say in its README what it needs on the PC and what each hook does to it.
 3. Test it on a project of your own with a `source` entry.
 4. To have it listed by name, open a pull request here that adds one entry to `plugins.json`:
-   `"<name>": { "source": "<git URL>", "description": "<one line>" }`. [CONTRIBUTING.md](../CONTRIBUTING.md) gives
+   `"<name>": { "source": "<git URL>", "description": "<one line>" }`. [CONTRIBUTING.md](../.github/CONTRIBUTING.md) gives
    the checks for it.
 5. Add `"detect"` to the entry, a list of file patterns from the repo root (`"*/ProjectSettings/ProjectVersion.txt"`),
    and `setup.ps1` puts the plugin in a new `scriptorium.json` when a pattern matches a file of the project.

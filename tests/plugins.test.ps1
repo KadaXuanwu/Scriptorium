@@ -1,7 +1,8 @@
-# Checks plugins.ps1, the plugin seam: powershell -NoProfile -File plugins.test.ps1 (prints ok or throws).
+# Checks plugins.ps1, the plugin seam: powershell -NoProfile -File tests/plugins.test.ps1 (prints ok or throws).
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'project.ps1')
-. (Join-Path $PSScriptRoot 'plugins.ps1')
+$baseDir = Split-Path $PSScriptRoot
+. (Join-Path $baseDir 'project.ps1')
+. (Join-Path $baseDir 'plugins.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
     if ("$actual" -ne "$expected") {
@@ -87,7 +88,7 @@ function Get-Word { 'two' }
     Assert-Equal (Get-PluginDir (Join-Path $root 'S') 'one' ('{ "source": "' + $one.Replace('\', '/') + '" }' | ConvertFrom-Json)) $one 'a folder source stays where it is'
 
     # A plugin loaded inside Start-Job works as in the script.
-    $job = Start-Job -ArgumentList $PSScriptRoot, $one -ScriptBlock {
+    $job = Start-Job -ArgumentList $baseDir, $one -ScriptBlock {
         param($base, $dir)
         . (Join-Path $base 'project.ps1')
         . (Join-Path $base 'plugins.ps1')

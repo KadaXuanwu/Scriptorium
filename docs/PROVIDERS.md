@@ -177,7 +177,7 @@ contract version ([PLUGINS.md](PLUGINS.md), What changes the version).
 - **Skills:** no folder is read by all six. The provider says where the front desk skill goes.
 
 `AllowedTools` in `GetRun` holds Claude Code tool rules today. A new meaning for it makes plugin contract version 2
-and needs an issue first ([CONTRIBUTING](../CONTRIBUTING.md)).
+and needs an issue first ([CONTRIBUTING](../.github/CONTRIBUTING.md)).
 
 ### Windows in the base
 

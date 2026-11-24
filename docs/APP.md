@@ -139,7 +139,7 @@ first, in the page's one dialog.
     branch that is gone on GitHub. The owner decides: the box works also when the copy holds work.
   - **What goes.** Only the worker's copy of its project, with the files that git ignores: its `.queue` with the run
     logs, and what a plugin added (a Unity `Library`). A link in the copy goes, never what it points at. The worker's
-    checkouts of other repos (`<Name>-w<N>`; [PLAYBOOK-repo.md](../PLAYBOOK-repo.md)) stay.
+    checkouts of other repos (`<Name>-w<N>`; [PLAYBOOK-repo.md](../playbook/PLAYBOOK-repo.md)) stay.
   - **How.** The server deletes the copy last, when the worker is gone or has left the project (`Remove-Copy`). It
     first renames the copy to `<main>-w<N>.deleting-<time>`: the name is free at once for a new worker, and Windows
     refuses the rename while a program still uses a file in the copy. Then a background job deletes the folder; a copy

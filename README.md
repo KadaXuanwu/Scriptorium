@@ -155,7 +155,7 @@ skill with no `PROJECT.md` stays as it is, and setup says how to move its rules.
 To add another project, run step 3 with its folder; it joins the same page. Only setup and uninstall add or remove a
 project, not the page.
 
-Or paste [PROMPT.md](PROMPT.md) into Claude Code in your project.
+Or paste [PROMPT.md](docs/PROMPT.md) into Claude Code in your project.
 
 Then open the page, add workers and accounts, and file your first ticket.
 
@@ -198,7 +198,7 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
 - [docs/PLUGINS.md](docs/PLUGINS.md): writing a plugin.
 - [docs/PROVIDERS.md](docs/PROVIDERS.md): the plan for AI tools other than Claude Code. Not built.
 - [PLAYBOOK.md](PLAYBOOK.md): what a run does.
-- [CONTRIBUTING.md](CONTRIBUTING.md): sending a change.
+- [CONTRIBUTING.md](.github/CONTRIBUTING.md): sending a change.
 
 ## Licence
 

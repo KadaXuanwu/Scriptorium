@@ -1,11 +1,12 @@
 # Checks uninstall.ps1 on a project of its own in a temp folder, with a PC folder of its own, so this PC's settings stay
-# as they are: powershell -NoProfile -File uninstall.test.ps1 (prints ok or throws). It needs git, not GitHub or
+# as they are: powershell -NoProfile -File tests/uninstall.test.ps1 (prints ok or throws). It needs git, not GitHub or
 # Tailscale.
 $ErrorActionPreference = 'Stop'
 $root = Join-Path ([IO.Path]::GetTempPath()) "uninstall-test-$PID"
 # pc.ps1 keeps a folder that is set before it loads, here and in uninstall.ps1.
 $PcDir = Join-Path $root 'pc'
-. (Join-Path $PSScriptRoot 'tasks.ps1')
+$baseDir = Split-Path $PSScriptRoot
+. (Join-Path $baseDir 'tasks.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
     if ("$actual" -ne "$expected") {
@@ -29,7 +30,7 @@ Set-Content (Join-Path $PcDir 'settings.json') ('{ "accounts": { "main": { "uses
     '"workers": { "9": { "enabled": true }, "1": { "enabled": true } } }') -Encoding utf8
 
 try {
-    $output = @(& (Join-Path $PSScriptRoot 'uninstall.ps1') -Project $main) -join "`n"
+    $output = @(& (Join-Path $baseDir 'uninstall.ps1') -Project $main) -join "`n"
     Assert-Equal (Test-Path (Join-Path $main '.queue')) $false 'the queue folder goes'
     Assert-Equal (Test-Path "$main-w9") $false 'a clean copy goes'
     Assert-Equal (Test-Path (Join-Path "$main-w8" 'draft.txt')) $true 'a copy with work stays'
@@ -41,7 +42,7 @@ try {
     Assert-Equal "$($pc.accounts.main.uses -join ',')" 'worker:1' 'and its account''s uses'
 
     # Safe to run again.
-    & (Join-Path $PSScriptRoot 'uninstall.ps1') -Project $main | Out-Null
+    & (Join-Path $baseDir 'uninstall.ps1') -Project $main | Out-Null
     Assert-Equal (Test-Path (Join-Path "$main-w8" 'draft.txt')) $true 'a second run keeps the copy with work'
 } finally {
     Remove-Tree $root

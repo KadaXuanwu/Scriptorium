@@ -1,8 +1,9 @@
-# Checks project.ps1: powershell -NoProfile -File project.test.ps1 (prints ok or throws).
+# Checks project.ps1: powershell -NoProfile -File tests/project.test.ps1 (prints ok or throws).
 $ErrorActionPreference = 'Stop'
 # The PC's files of a test are in a folder of its own (pc.ps1): set before anything loads.
 $PcDir = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-test-$PID"
-. (Join-Path $PSScriptRoot 'project.ps1')
+$baseDir = Split-Path $PSScriptRoot
+. (Join-Path $baseDir 'project.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
     if ("$actual" -ne "$expected") {
@@ -67,9 +68,9 @@ try {
 
 # The complexities: models.json's, with the project's over them; its own stand between high and design. Every place
 # reads this one list: the run's model and advisor, a follow-up's label, the page.
-. (Join-Path $PSScriptRoot 'followup.ps1')
-. (Join-Path $PSScriptRoot 'limits.ps1')
-. (Join-Path $PSScriptRoot 'app/state.ps1')
+. (Join-Path $baseDir 'followup.ps1')
+. (Join-Path $baseDir 'limits.ps1')
+. (Join-Path $baseDir 'app/state.ps1')
 $models = Read-Models
 $own = '{ "name": "App", "compactAt": 250000, "complexities": { "medium": { "models": ["claude-sonnet-5-5@high"] },
     "review": { "description": "A second look at a change", "models": ["claude-opus-5-5@high"], "advisor": true, "advisorFallback": "xhigh", "compactAt": 400000 },

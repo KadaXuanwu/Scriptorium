@@ -1,6 +1,7 @@
-# Checks usage.ps1: powershell -NoProfile -File usage.test.ps1 (prints ok or throws).
+# Checks usage.ps1: powershell -NoProfile -File tests/usage.test.ps1 (prints ok or throws).
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'usage.ps1')
+$baseDir = Split-Path $PSScriptRoot
+. (Join-Path $baseDir 'usage.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
     if ("$actual" -ne "$expected") {

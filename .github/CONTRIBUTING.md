@@ -6,14 +6,14 @@ Thank you for the help. Read this before you open a pull request.
 
 1. One topic for each pull request.
 2. The base stays free of environments. It knows git, GitHub and Claude Code, nothing else: no engine, no build tool,
-   no test runner. What an environment needs goes into a plugin ([docs/PLUGINS.md](docs/PLUGINS.md)).
-3. Every change to a queue rule has a test (`*.test.ps1`) and the change to its doc in the same pull request:
-   [docs/QUEUE.md](docs/QUEUE.md), [docs/APP.md](docs/APP.md), [PLAYBOOK.md](PLAYBOOK.md) or the info text on the
+   no test runner. What an environment needs goes into a plugin ([docs/PLUGINS.md](../docs/PLUGINS.md)).
+3. Every change to a queue rule has a test (`tests/*.test.ps1`) and the change to its doc in the same pull request:
+   [docs/QUEUE.md](../docs/QUEUE.md), [docs/APP.md](../docs/APP.md), [PLAYBOOK.md](../PLAYBOOK.md) or the info text on the
    page's Details tab.
 4. The code runs in Windows PowerShell 5.1 on Windows and in PowerShell 7 on macOS and Linux:
    - 5.1 syntax only: no `&&`, `||`, `?:` or `??`. Keep a new `.ps1` file in ASCII.
-   - What differs between the systems goes in [platform.ps1](platform.ps1) or the logon tasks of
-     [tasks.ps1](tasks.ps1), behind `$OnWindows` and `$OnMac`.
+   - What differs between the systems goes in [platform.ps1](../platform.ps1) or the logon tasks of
+     [tasks.ps1](../tasks.ps1), behind `$OnWindows` and `$OnMac`.
    - A path in `Join-Path` takes `/`: Windows reads it as `\`.
 5. No new dependency. The page stays plain HTML, CSS and JS, with no build step.
 6. A change to the plugin contract (a hook or a context field that goes away or changes its meaning) needs an issue
@@ -30,7 +30,7 @@ Thank you for the help. Read this before you open a pull request.
 
 ## A pull request that lists a plugin
 
-A pull request that adds a plugin to [plugins.json](plugins.json) adds one entry and nothing else. The reviewer checks:
+A pull request that adds a plugin to [plugins.json](../plugins.json) adds one entry and nothing else. The reviewer checks:
 
 1. The plugin's repo is public.
 2. It has a licence.

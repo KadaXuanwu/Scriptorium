@@ -5,7 +5,8 @@ $ErrorActionPreference = 'Stop'
 if (-not $env:CI) {
     throw 'tasks.smoke.ps1 runs in CI only: it registers a logon task.'
 }
-. (Join-Path $PSScriptRoot 'tasks.ps1')
+$baseDir = Split-Path $PSScriptRoot
+. (Join-Path $baseDir 'tasks.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
     if ("$actual" -ne "$expected") {

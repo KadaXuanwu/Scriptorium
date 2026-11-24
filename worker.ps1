@@ -642,11 +642,11 @@ function Get-ProjectComplexities {
 # The playbooks a run follows, in order (docs/PLUGINS.md, The playbook): the base's and each plugin's, copied into the
 # clone's queue folder before each run, then the project's own from origin/main of the clone. The run reads the copies:
 # it gets no folder of Scriptorium or of a plugin, so it cannot change the code that runs it. The base's parts
-# (PLAYBOOK-*.md) go beside its copy, unnamed: PLAYBOOK.md says when a run reads each.
+# (playbook/PLAYBOOK-*.md) go beside its copy, unnamed: PLAYBOOK.md says when a run reads each.
 function Get-Playbooks {
     $folder = Join-Path $queueDir 'playbooks'
     New-Item -ItemType Directory -Force $folder | Out-Null
-    Copy-Item (Join-Path $PSScriptRoot 'PLAYBOOK-*.md') $folder -Force
+    Copy-Item (Join-Path $PSScriptRoot 'playbook/PLAYBOOK-*.md') $folder -Force
     $sources = [ordered]@{ 'PLAYBOOK.md' = (Join-Path $PSScriptRoot 'PLAYBOOK.md') }
     foreach ($plugin in $plugins) {
         $sources["plugin-$($plugin.Name).md"] = Join-Path $plugin.Dir 'PLAYBOOK.md'

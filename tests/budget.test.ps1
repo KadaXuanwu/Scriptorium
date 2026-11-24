@@ -1,6 +1,7 @@
-# Checks budget.ps1's arithmetic: powershell -NoProfile -File budget.test.ps1 (prints ok or throws).
+# Checks budget.ps1's arithmetic: powershell -NoProfile -File tests/budget.test.ps1 (prints ok or throws).
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'budget.ps1')
+$baseDir = Split-Path $PSScriptRoot
+. (Join-Path $baseDir 'budget.ps1')
 
 function Assert-Near([double] $actual, [double] $expected, [string] $what) {
     if ([math]::Abs($actual - $expected) -gt 1e-9) {

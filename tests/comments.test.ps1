@@ -1,6 +1,7 @@
-# Checks comments.ps1: powershell -NoProfile -File comments.test.ps1 (prints ok or throws).
+# Checks comments.ps1: powershell -NoProfile -File tests/comments.test.ps1 (prints ok or throws).
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'comments.ps1')
+$baseDir = Split-Path $PSScriptRoot
+. (Join-Path $baseDir 'comments.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
     if ("$actual" -ne "$expected") {

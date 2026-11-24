@@ -1,9 +1,10 @@
-# Checks tasks.ps1, what a worker's copy holds and its delete: powershell -NoProfile -File tasks.test.ps1
+# Checks tasks.ps1, what a worker's copy holds and its delete: powershell -NoProfile -File tests/tasks.test.ps1
 # (prints ok or throws).
 $ErrorActionPreference = 'Stop'
 # The PC's files of a test are in a folder of its own (pc.ps1): set before anything loads.
 $PcDir = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-test-$PID"
-. (Join-Path $PSScriptRoot 'tasks.ps1')
+$baseDir = Split-Path $PSScriptRoot
+. (Join-Path $baseDir 'tasks.ps1')
 
 function Assert-Equal($actual, $expected, [string] $what) {
     if ("$actual" -ne "$expected") {
