@@ -196,6 +196,7 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
 - [docs/APP.md](docs/APP.md): the page.
 - [docs/CONFIG.md](docs/CONFIG.md): `scriptorium.json`.
 - [docs/PLUGINS.md](docs/PLUGINS.md): writing a plugin.
+- [docs/PROVIDERS.md](docs/PROVIDERS.md): the plan for AI tools other than Claude Code. Not built.
 - [PLAYBOOK.md](PLAYBOOK.md): what a run does.
 - [CONTRIBUTING.md](CONTRIBUTING.md): sending a change.
 
