@@ -211,6 +211,8 @@ option { background: var(--card); color: var(--ink); font-weight: 600; }
   option:hover, option:focus-visible { background: var(--raised); outline: none; }
   option:checked { color: var(--accent); }
   option::checkmark { display: none; }
+  /* A group of options (the accounts of one coding tool) stands apart from the group above it. */
+  optgroup + optgroup { margin-top: 10px; }
 }
 textarea, input:not([type="range"]):not([type="checkbox"]) {
   display: block;
