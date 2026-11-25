@@ -346,8 +346,8 @@ function workerCard(worker) {
 
   const card = `worker:${worker.id}`;
   return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}" data-card="${esc(`${scope}|${worker.id}`)}"${busyAttr(card)}>
-    <div class="worker-head"><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}${toolBadge(toolName(state, worker.provider))}</strong>
-      <span class="doing ${tone}">${icon(glyph)}${words}</span></div>
+    <div class="worker-head"><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}</strong>
+      <div class="who-line"><span class="doing ${tone}">${icon(glyph)}${words}</span>${toolBadge(toolName(state, worker.provider))}</div></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
     <div class="worker-tools"><label>${icon('accounts')}<select data-assign="${id}" aria-label="Account of worker ${id}">${options}</select></label>
@@ -637,9 +637,9 @@ function accountCard(a) {
   // The picture of the account's coding tool behind the card, where its plugin has one.
   const art = state.tools?.[a.provider]?.card;
   return `<article class="card account ${tone}${art ? ' art' : ''}${busyClass(card)}" data-card="${name}"${busyAttr(card)}${art ? ` style="--art:url('${esc(art)}')"` : ''}>
-    <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${toolBadge(toolOf(state))}${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
+    <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
       <span class="chip ${tone}">${icon(glyph)}${words}</span>${cross('account', a.name, a.name)}</div>
-    <div class="meta"><span class="email">${esc(a.signedIn ? maskEmail(a.email) : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${out}</div>
+    <div class="meta"><span class="email">${esc(a.signedIn ? maskEmail(a.email) : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${toolBadge(toolOf(state))}${out}</div>
     ${accountMeters(a)}
     <div class="buttons">${buttons.join('')}</div></article>`;
 }

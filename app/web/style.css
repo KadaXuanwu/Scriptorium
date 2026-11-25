@@ -305,7 +305,7 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 
 .worker.disabled .slot, .worker.disabled .who { opacity: 0.55; }
 .worker-head { display: flex; align-items: flex-start; gap: 12px; }
-.who { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
+.who { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .doing { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--tone); }
 .doing a { color: inherit; text-decoration: underline; }
 .doing.good .i { animation: pulse 1.6s ease-in-out infinite; }
@@ -772,7 +772,9 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 .who .badge.of { margin-left: 8px; vertical-align: 2px; }
 /* The coding tool of a worker or an account (app.js, toolBadge): an outline, so it never reads as a project's mark. */
 .badge.tool { background: transparent; box-shadow: inset 0 0 0 1px var(--line, currentColor); }
-.who .badge.tool { margin-left: 8px; vertical-align: 2px; }
+/* On a card it ends the worker's status line or the account's email line, at the right. */
+.who-line { display: flex; align-items: center; gap: 8px; }
+.who-line .badge.tool, .meta .badge.tool { margin-left: auto; }
 /* A setting the project's coding tool does not have (app.js, toolHas): unseen, and its place in the row stays. */
 .none { visibility: hidden; }
 /* A worker's mark is its project choice: a select with the mark's look, and never wider than its card. */
