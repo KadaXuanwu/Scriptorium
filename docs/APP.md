@@ -284,8 +284,8 @@ other the stop line for those models as advisors ("Advisor stops at").
 and its card names the tool beside the plan, with that tool's windows. A project's page gives the accounts of every
 tool it has a provider for (the snapshot's `tools`: each one's title, features and windows). The list is every
 project's, each account once: the project that gave an account reads its login and takes its actions. Sign in and
-Ping show only on the card of a tool that has them, and the last tile only where some tool has a sign-in; a line
-above the cards names each tool with no sign-in from the page.
+Ping show only on the card of a tool that has them, and the last tile only where some tool has a sign-in. The add dialog
+says how the picked tool signs in: from this page, or from a terminal with the tool's own command.
 
 **The meter** shows where the workers stop. The fill is the share used. The handle is the **stop line**: drag it to set
 the share where this account's workers stop (`stopAt`). The hatched part right of it is what they leave.

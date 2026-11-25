@@ -982,12 +982,9 @@ function render() {
 
   // The accounts are the PC's, each drawn as its own project gives it (pcAccounts).
   const code = $('login-code')?.value || '';
-  // Above the cards, what a card cannot say: a coding tool that has no sign-in from the page.
   const signIn = [home, ...names.filter((p) => p !== home)].find((p) => states[p]?.login) || home;
-  const unsigned = [...new Set(names.flatMap((p) => Object.values(states[p]?.tools || {}).filter((t) => !has(t, 'SignIn', 'ReadSignIn')).map((t) => toolTitle(t.title))))];
-  const toolNote = unsigned.length ? quiet(`${esc(inWords(unsigned))} ${unsigned.length > 1 ? 'have' : 'has'} no sign-in from this page: sign in from a terminal, with the tool's own command.`) : '';
   // The sign-in in progress is on the server of the project that started it.
-  put($('login-box'), within(signIn, () => tagged(signIn, loginBox(state.login))) + toolNote);
+  put($('login-box'), within(signIn, () => tagged(signIn, loginBox(state.login))));
   // The tile only where the PC has a coding tool.
   put($('account-list'), (accountsInOrder().map((a) => within(a.of, () => tagged(a.of, withTool(a.provider, () => accountCard(a))))).join('') || quiet('No accounts in the settings.'))
     + (accountTools().length ? addTile('account', 'Add an account') : ''));
@@ -1239,14 +1236,17 @@ async function addAccount() {
   const only = tools.length === 1 ? tools[0] : null;
   const signs = 'Then sign in as that account: this tab shows the link and a box for the code.';
   const byHand = 'has no sign-in from this page: sign it in from a terminal, with the tool\'s own command.';
-  const text = only ? (only.signIn ? `It is signed in to ${only.title}. ${signs}` : `${only.title} ${byHand}`)
-    : 'If its coding tool signs in from this page, this tab then shows the link and a box for the code. If not, sign it in from a terminal, with the tool\'s own command.';
+  // The text is the picked tool's: with two or more tools it follows the list.
+  const textOf = (t) => (t.signIn ? `It is signed in to ${t.title}. ${signs}` : `${t.title} ${byHand}`);
   const pick = only ? '' : `<label>Coding tool<select name="tool">${tools.map((t, i) => `<option value="${i}">${esc(t.title)}</option>`).join('')}</select></label>`;
   const email = only && !only.signIn ? '' : '<label>Email (optional)<input name="email" type="email" placeholder="Its email" autocomplete="off" autocapitalize="none"></label>';
-  const values = await ask(only ? `Add a ${only.title} account` : 'Add an account', text, only && !only.signIn ? 'Add' : only ? 'Add and sign in' : 'Add', {
+  const answer = ask(only ? `Add a ${only.title} account` : 'Add an account', textOf(only || tools[0]), only && !only.signIn ? 'Add' : only ? 'Add and sign in' : 'Add', {
     fields: `${pick}<label>Name<input name="account" required pattern="[a-zA-Z0-9][a-zA-Z0-9\\-]{0,30}" title="Letters, digits and dashes"
         placeholder="e.g. temp1" autocomplete="off" autocapitalize="none"></label>${email}`,
   });
+  const list = $('ask-fields').querySelector('[name=tool]');
+  list?.addEventListener('change', () => { $('ask-text').textContent = textOf(tools[Number(list.value)]); });
+  const values = await answer;
   if (!values) return;
   const tool = only || tools[Number(values.tool)];
   const account = values.account.trim().toLowerCase();
