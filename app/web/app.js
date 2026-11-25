@@ -1315,14 +1315,18 @@ function rename(label) {
         done: (s) => (workerOf(s, id)?.name || '') === value,
       });
     } else {
+      // An account is the PC's, so every project's snapshot holds it: the new name shows in all of them, and stays
+      // until none of their last snapshots has the old one, or a card of each name would show.
       await act(project, { action: 'rename-account', account: id, name: value }, {
         keys: [`account:${value}`],
-        apply: (s) => {
-          const account = accountOf(s, id);
-          if (account) account.name = value;
-          for (const w of s.workers) if (w.account === id) w.account = value;
+        apply: () => {
+          for (const s of Object.values(states)) {
+            const account = s?.accounts?.find((a) => a.name === id);
+            if (account) account.name = value;
+            for (const w of s?.workers || []) if (w.account === id) w.account = value;
+          }
         },
-        done: (s) => !!accountOf(s, value),
+        done: (s) => !!accountOf(s, value) && names.every((p) => !fresh[p]?.accounts?.some((a) => a.name === id)),
       });
     }
   };
