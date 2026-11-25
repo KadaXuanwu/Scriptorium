@@ -76,10 +76,21 @@ environment: plugins add them.
 | 🎛️ | No accidental advisor | The advisor is set per run, never inherited from a login's settings. |
 | ⚡ | Environment ready first | Plugins open the editor or server before the run starts, so no turn waits. |
 | 🗜️ | Compact before a hold | A paused run is compacted while its cache is still warm, so the resume is cheap. |
+| ⏯️ | Resume, don't restart | A held run continues in the same session with its context and work. |
+| ⏰ | Fewer cut-off runs | Large tickets are not started late in a usage window. |
+| 🔀 | Fewer rebases | Tickets that change the same files never run at once. |
+| 📍 | Start where the last left off | Each checkpoint writes what is done and what is next. |
+| ✅ | Answers that need no run | Accepting a default merges or closes without starting a run. |
+| 📖 | Short playbook | Rarely needed parts are separate files, read only when needed. |
+| ✂️ | Short tool output | Runs read files in parts and keep command output short. |
+| 📏 | Cheap usage reading | Usage comes from the run's own log, with the tool's cheapest request only when there is none. |
+| 🤖 | No model outside runs | Dispatcher, merger, page and notifications are plain scripts. |
 | 🔁 | No retry loops | Failing tickets are parked; follow-ups of follow-ups are capped. |
 | 🧪 | Trial: batched commands | Independent commands go out in one message. |
 
-A provider adds its own for its tool (tools and skills a run never needs, for example): its README lists them.
+These are the base's, for every coding tool. A provider adds the ones of its tool, such as the tools and skills a run
+never needs, and its README lists them:
+[Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-Claude#token-savings).
 
 The model, effort, advisor and compact size of each complexity are yours to set on the page, and a per-run cost cap
 in the provider's `models.json`. `report.ps1` prints each run's cost and token numbers ([docs/QUEUE.md](docs/QUEUE.md)).

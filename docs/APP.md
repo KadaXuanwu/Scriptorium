@@ -264,8 +264,9 @@ Also: **Sign in**, only while the account is signed out, and **Ping**. To change
 and add one. A double-click on an account's name renames it (Workers, Names): lower-case letters, digits and dashes,
 a name no other account has. Only its key in the register changes: its folder and its records stay, as the queue's
 files know an account by its folder. A new account may not take the old name while the renamed account has the folder
-of that name. The last tile adds an account: a dialog asks for its name and email, and the
-sign-in starts on this tab. The cross on a card removes an account that nothing uses: its login is signed out, and its
+of that name. The last tile adds an account: a dialog names the coding tool it is signed in to (the
+one of the page's own project: an account has no tool of its own yet, so there is none to choose), asks for its name
+and email, and the sign-in starts on this tab. The cross on a card removes an account that nothing uses: its login is signed out, and its
 folder stays.
 
 - **The sign-in** is the provider's sign-in command, run by the server ([PLUGINS.md](PLUGINS.md), SignIn). The page
