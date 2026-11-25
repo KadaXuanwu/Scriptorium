@@ -56,10 +56,10 @@ changes the same way (Accounts).
 
 **The coding tool.** Beside its name, each card names the coding tool that runs the worker's sessions: the one of its
 account ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`), by the provider plugin's title without
-"Scriptorium for". The account select lists the accounts of every tool, each with its tool while the PC has more than
-one. An account of another tool changes the worker's tool: it starts again on that tool before its next job. The
-server refuses that while the worker has a run in flight. A worker keeps its account, and so its tool, when it moves
-to another project.
+"Scriptorium for". The account select shows the account's name and lists the accounts of every tool, in a group for
+each tool while the PC has more than one. An account of another tool changes the worker's tool: it starts again on
+that tool before its next job. The server refuses that while the worker has a run in flight. A worker keeps its
+account, and so its tool, when it moves to another project.
 
 **Order.** A press on a card's empty space (not on a control or on text) and a drag move the card among the others:
 with a mouse at once, on a touch screen after a short hold. The order is the PC's (`order.workers`, `order.accounts`
