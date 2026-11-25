@@ -4,6 +4,10 @@ $ErrorActionPreference = 'Stop'
 # The PC's files of a test are in a folder of its own (pc.ps1): set before anything loads.
 $PcDir = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-test-$PID"
 . (Join-Path $PSScriptRoot 'state.ps1')
+$baseDir = Split-Path $PSScriptRoot
+# The models, the windows and the logs are the test provider's (tests/provider).
+Set-Provider (Import-Plugin (Join-Path $baseDir 'tests/provider') 'test' $null)
+$deep = 'deep'
 
 function Assert-Equal($actual, $expected, [string] $what) {
     if ("$actual" -ne "$expected") {
@@ -104,14 +108,14 @@ foreach ($bad in @('temp', 'Bad', '-x', '')) {
 $threw = $false
 try { Rename-Account ($register | ConvertFrom-Json) 'nope' 'x' | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'no such account'
-$folders = '{"accounts":{"other":{"configDir":"C:/Users/me/.claude-temp1","uses":[]}}}' | ConvertFrom-Json
+$folders = '{"accounts":{"other":{"configDir":"C:/Users/me/.test-temp1","uses":[]}}}' | ConvertFrom-Json
 $threw = $false
 try { Get-NewAccountDir $folders 'temp1' 'C:\Users\Me' | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'a new account may not take a renamed account''s folder'
-Assert-Equal (Get-NewAccountDir $folders 'temp2' 'C:\Users\me') 'C:/Users/me/.claude-temp2' 'a free folder'
+Assert-Equal (Get-NewAccountDir $folders 'temp2' 'C:\Users\me') 'C:/Users/me/.test-temp2' 'a free folder'
 # A worker's name: trimmed, and '' takes it away.
-$named = Set-WorkerName ('{"workers":{"2":{"enabled":true}}}' | ConvertFrom-Json) '2' '  Fable box '
-Assert-Equal ($named.workers.'2' | ConvertTo-Json -Compress) '{"enabled":true,"name":"Fable box"}' 'a worker named'
+$named = Set-WorkerName ('{"workers":{"2":{"enabled":true}}}' | ConvertFrom-Json) '2' '  Night box '
+Assert-Equal ($named.workers.'2' | ConvertTo-Json -Compress) '{"enabled":true,"name":"Night box"}' 'a worker named'
 Assert-Equal ((Set-WorkerName $named '2' '').workers.'2' | ConvertTo-Json -Compress) '{"enabled":true}' 'a name taken away'
 $threw = $false
 try { Set-WorkerName $named '2' ('x' * 31) | Out-Null } catch { $threw = $true }
@@ -189,8 +193,6 @@ $old = @{ github = $false; workers = @($busy, @{ id = '4'; status = 'active'; ac
 $new = @{ github = $false; workers = @($busy, @{ id = '4'; status = 'disabled'; activity = 'setup-failed' }) }
 Assert-Equal (@(Get-Events $old $new | ForEach-Object { $_.title }) -join ',') 'Setup failed' 'the push of a failed setup'
 
-Assert-Equal (Get-PlanName ('{"claudeAiOauth":{"subscriptionType":"pro","rateLimitTier":"default_claude_ai"}}' | ConvertFrom-Json)) 'Pro' 'plan pro'
-Assert-Equal (Get-PlanName ('{"claudeAiOauth":{"subscriptionType":"max","rateLimitTier":"default_claude_max_20x"}}' | ConvertFrom-Json)) 'Max 20x' 'plan max 20x'
 $snapshot = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $settings
     workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } })
     logins = @{ 'C:/t' = @{ signedIn = $true; email = 't@x'; plan = 'Pro' } }; login = @{ account = 'temp'; state = 'waiting' } }
@@ -202,27 +204,27 @@ Assert-Equal "$($take.model) $($take.effort)" 'some-model low' 'a model override
 $take = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = @{ model = 'some-model' }; workers = $idle }).workers[0].takes[0]
 Assert-Equal "$($take.model) $($take.effort)" 'some-model xhigh' 'a model not in the list runs at xhigh'
 # A worker has no model of its own: its entry in the settings changes nothing.
-$own = '{"workers":{"1":{"model":"claude-haiku-5-5@low"}}}' | ConvertFrom-Json
+$own = '{"workers":{"1":{"model":"small-1@low"}}}' | ConvertFrom-Json
 $take = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $own; workers = $idle }).workers[0].takes[0]
-Assert-Equal "$($take.model) $($take.effort)" 'claude-opus-5-5 medium' 'a worker''s own model is no model'
+Assert-Equal "$($take.model) $($take.effort)" 'main-1 medium' 'a worker''s own model is no model'
 # Details: the project's colour (a valid one only), the settings' `model`, the advisor's model with its default, and
 # each complexity's advisor switch as the owner set it, apart from the advisor that its run gets.
-$owner = '{"color":"#A0B1C2","model":"claude-sonnet-5-5@high","advisor":{"model":"claude-opus-5-5"},
+$owner = '{"color":"#A0B1C2","model":"mid-1@high","advisor":{"model":"main-1"},
     "complexities":{"design":{"advisor":true},"low":{"advisor":true,"advisorFallback":"max"}}}' | ConvertFrom-Json
 $details = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = $owner
     complexities = Get-Complexities (Read-Models) $null $owner }
-Assert-Equal "$($details.color) $($details.settingsModel) $($details.advisor.model) $($details.advisor.base)" '#a0b1c2 claude-sonnet-5-5@high claude-opus-5-5 claude-fable-5-2' 'the colour, the settings'' model and the advisor''s model'
+Assert-Equal "$($details.color) $($details.settingsModel) $($details.advisor.model) $($details.advisor.base)" '#a0b1c2 mid-1@high main-1 deep-1' 'the colour, the settings'' model and the advisor''s model'
 $low = $details.complexities | Where-Object { $_.name -eq 'low' }
 Assert-Equal "$($low.advisorOn) $($low.advisorFallback) $($low.baseAdvisor) '$($low.baseFallback)' '$($low.advisor)'" "True max False '' ''" 'on, and no advisor for a run on the advisor''s own model'
 $design = $details.complexities | Where-Object { $_.name -eq 'design' }
-Assert-Equal "$($design.advisorOn) $($design.baseAdvisor) $($design.advisor)" 'True False claude-opus-5-5' 'a complexity that the owner gave the advisor'
+Assert-Equal "$($design.advisorOn) $($design.baseAdvisor) $($design.advisor)" 'True False main-1' 'a complexity that the owner gave the advisor'
 Assert-Equal (@($details.advisor.complexities) -join ',') 'low,medium,high,design' 'the switches of the owner in the rule'
 foreach ($bad in 'red', '#abc', "#a0b1c2`nx", '') {
     $color = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = @{ color = $bad } }).color
     Assert-Equal "'$color'" "''" "no colour on the page: '$bad'"
 }
 $plain = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }
-Assert-Equal "'$($plain.color)' '$($plain.settingsModel)' $($plain.advisor.model)" "'' '' claude-fable-5-2" 'no settings'
+Assert-Equal "'$($plain.color)' '$($plain.settingsModel)' $($plain.advisor.model)" "'' '' deep-1" 'no settings'
 # The PC's No blocking switch (docs/QUEUE.md, No blocking).
 $gone = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = ('{"away":true}' | ConvertFrom-Json) }
 Assert-Equal "$($plain.away) $($gone.away)" 'False True' 'the No blocking switch'
@@ -234,41 +236,41 @@ Assert-Equal @((New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(
 Assert-Equal (($info.complexities | ForEach-Object { "$($_.name)=$($_.effort)/$($_.advisor -ne '')" }) -join ' ') 'low=medium/False medium=high/True high=xhigh/True design=high/False' 'each complexity with its effort and advisor'
 # The advisor rule from models.json, for the Details tab.
 $advisor = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).advisor
-Assert-Equal "$($advisor.model) $(@($advisor.complexities) -join ',')" 'claude-fable-5-2 medium,high' 'the advisor rule'
+Assert-Equal "$($advisor.model) $(@($advisor.complexities) -join ',')" 'deep-1 medium,high' 'the advisor rule'
 $temp = $snapshot.accounts | Where-Object { $_.name -eq 'temp' }
 Assert-Equal "$($temp.own) $($temp.signedIn) $($temp.email) $($temp.plan) $($temp.status)" 'True True t@x Pro ready' 'account login'
 Assert-Equal (($snapshot.accounts | Where-Object { $_.name -eq 'main' }).status) 'signedout' 'an account with no login is signed out'
 Assert-Equal $snapshot.login.state 'waiting' 'sign-in passed through'
 $future = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 1000
 foreach ($case in @(@('t@x', 0.5), @('old@x', $null))) {
-    $usage = [pscustomobject]@{ 'C:/t' = [pscustomobject]@{ email = $case[0]; five_hour = [pscustomobject]@{ used = 0.5; resetsAt = $future } } }
+    $usage = [pscustomobject]@{ 'C:/t' = [pscustomobject]@{ email = $case[0]; short = [pscustomobject]@{ used = 0.5; resetsAt = $future } } }
     $temp = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $settings; workers = @(); usage = $usage
         logins = @{ 'C:/t' = @{ signedIn = $true; email = 't@x'; plan = 'Pro' } } }).accounts | Where-Object { $_.name -eq 'temp' }
-    Assert-Equal $temp.five_hour.used $case[1] "reading of $($case[0]) on t@x's login"
+    Assert-Equal $temp.short.used $case[1] "reading of $($case[0]) on t@x's login"
 }
 # The stop line: the default and the account's own; under the week's, what each human use's share keeps for the time
 # left (here half a week); at the ceiling, the account is at its limit.
-$stops = '{"keep":{"personal":0.3},"accounts":{"temp":{"configDir":"C:/t","uses":["worker:1","frontdesk","personal"],"stopAt":{"five_hour":0.5,"seven_day":0.9},"pickUp":{"five_hour":{"L":0.4}}}}}' | ConvertFrom-Json
-$usage = [pscustomobject]@{ 'C:/t' = [pscustomobject]@{ email = 't@x'; five_hour = [pscustomobject]@{ used = 0.5; resetsAt = $future }
-    seven_day = [pscustomobject]@{ used = 0.2; resetsAt = $future - 1000 + 302400 } } }
+$stops = '{"keep":{"personal":0.3},"accounts":{"temp":{"configDir":"C:/t","uses":["worker:1","frontdesk","personal"],"stopAt":{"short":0.5,"long":0.9},"pickUp":{"short":{"L":0.4}}}}}' | ConvertFrom-Json
+$usage = [pscustomobject]@{ 'C:/t' = [pscustomobject]@{ email = 't@x'; short = [pscustomobject]@{ used = 0.5; resetsAt = $future }
+    long = [pscustomobject]@{ used = 0.2; resetsAt = $future - 1000 + 302400 } } }
 $temp = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $stops; usage = $usage; workers = @()
     logins = @{ 'C:/t' = @{ signedIn = $true; email = 't@x'; plan = 'Pro' } } }).accounts[0]
 $round = { param($share) [math]::Round($share, 2) }
-Assert-Equal "$($temp.five_hour.stopAt) $($temp.five_hour.ceiling) $($temp.five_hour.kept) $($temp.status)" '0.5 0.5 0 limit' 'the 5-hour stop line keeps no room'
-$week = $temp.seven_day
+Assert-Equal "$($temp.short.stopAt) $($temp.short.ceiling) $($temp.short.kept) $($temp.status)" '0.5 0.5 0 limit' 'the 5-hour stop line keeps no room'
+$week = $temp.long
 Assert-Equal "$($week.stopAt) $(& $round $week.left) $(& $round $week.kept) $(& $round $week.ceiling)" '0.9 0.5 0.2 0.7' 'the room kept under the week''s stop line'
-Assert-Equal "$($temp.five_hour.pickUp.S) $($temp.five_hour.pickUp.L) $($week.ContainsKey('pickUp'))" '0.9 0.4 False' 'pick-up limits: the default and the account''s own, none for the week'
+Assert-Equal "$($temp.short.pickUp.S) $($temp.short.pickUp.L) $($week.ContainsKey('pickUp'))" '0.9 0.4 False' 'pick-up limits: the default and the account''s own, none for the week'
 Assert-Equal (($week.guards | ForEach-Object { "$($_.use) $($_.share) $(& $round $_.kept)" }) -join ', ') 'frontdesk 0.1 0.05, personal 0.3 0.15' 'each guard: its share of a week and what it keeps now'
-Assert-Equal $temp.ContainsKey($FableWindow) $false 'no Fable reading: no Fable week'
-# The Fable week: its share, reset, read time, stop line and design line (each the default, else the account's own);
+Assert-Equal $temp.ContainsKey($deep) $false 'no the deep model reading: no deep week'
+# The deep week: its share, reset, read time, stop line and design line (each the default, else the account's own);
 # nothing used once it has reset.
-$own = '{"accounts":{"temp":{"configDir":"C:/t","uses":["worker:1"],"stopAt":{"seven_day_overage_included":0.9},"pickUp":{"seven_day_overage_included":{"design":0.7}}}}}' | ConvertFrom-Json
+$own = '{"accounts":{"temp":{"configDir":"C:/t","uses":["worker:1"],"stopAt":{"deep":0.9},"pickUp":{"deep":{"design":0.7}}}}}' | ConvertFrom-Json
 foreach ($case in @(@($future, $stops, '0.99 0.98 0.98 50 0.9'), @(5, $stops, '0 0.98 0.98 50 0.9'), @($future, $own, '0.99 0.9 0.9 50 0.7'))) {
     $usage = [pscustomobject]@{ 'C:/t' = [pscustomobject]@{ email = 't@x'
-        $FableWindow = [pscustomobject]@{ used = 0.99; resetsAt = $case[0]; at = 50 } } }
-    $fable = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $case[1]; usage = $usage; workers = @()
-        logins = @{ 'C:/t' = @{ signedIn = $true; email = 't@x'; plan = 'Pro' } } }).accounts[0].$FableWindow
-    Assert-Equal "$($fable.used) $($fable.stopAt) $($fable.ceiling) $($fable.at) $($fable.pickUp.design)" $case[2] "the Fable week, reset at $($case[0])"
+        $deep = [pscustomobject]@{ used = 0.99; resetsAt = $case[0]; at = 50 } } }
+    $deepWeek = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $case[1]; usage = $usage; workers = @()
+        logins = @{ 'C:/t' = @{ signedIn = $true; email = 't@x'; plan = 'Pro' } } }).accounts[0].$deep
+    Assert-Equal "$($deepWeek.used) $($deepWeek.stopAt) $($deepWeek.ceiling) $($deepWeek.at) $($deepWeek.pickUp.design)" $case[2] "the deep week, reset at $($case[0])"
 }
 
 # Held questions: the section of a PR body, up to the next heading.
@@ -284,18 +286,18 @@ Assert-Equal (Get-Decision $body) '' 'no decision line'
 
 # Typical run: the median of whole-ticket runs of the size on the model; another model's when the model has none.
 $runs = @(
-    @{ wall = $true; kind = 'ticket'; partial = $false; size = 'L'; model = 'opus'; duration = 3600; cost = 10 },
-    @{ wall = $true; kind = 'ticket'; partial = $false; size = 'L'; model = 'opus'; duration = 7200; cost = 30 },
-    @{ wall = $true; kind = 'ticket'; partial = $false; size = 'L'; model = 'opus'; duration = 5400; cost = 20 },
-    @{ wall = $true; kind = 'ticket'; partial = $true; size = 'L'; model = 'opus'; duration = 100; cost = 1 },
-    @{ wall = $true; kind = 'answered'; partial = $true; size = 'L'; model = 'opus'; duration = 100; cost = 1 },
-    @{ kind = 'ticket'; partial = $false; size = 'L'; model = 'opus'; duration = 3; cost = 1 },
-    @{ wall = $true; kind = 'ticket'; partial = $false; size = 'S'; model = 'sonnet'; duration = 600; cost = 2 }
+    @{ wall = $true; kind = 'ticket'; partial = $false; size = 'L'; model = 'big'; duration = 3600; cost = 10 },
+    @{ wall = $true; kind = 'ticket'; partial = $false; size = 'L'; model = 'big'; duration = 7200; cost = 30 },
+    @{ wall = $true; kind = 'ticket'; partial = $false; size = 'L'; model = 'big'; duration = 5400; cost = 20 },
+    @{ wall = $true; kind = 'ticket'; partial = $true; size = 'L'; model = 'big'; duration = 100; cost = 1 },
+    @{ wall = $true; kind = 'answered'; partial = $true; size = 'L'; model = 'big'; duration = 100; cost = 1 },
+    @{ kind = 'ticket'; partial = $false; size = 'L'; model = 'big'; duration = 3; cost = 1 },
+    @{ wall = $true; kind = 'ticket'; partial = $false; size = 'S'; model = 'mid'; duration = 600; cost = 2 }
 ) | ForEach-Object { [pscustomobject]$_ }
-Assert-Equal (Get-Typical $runs 'L' 'opus') 5400 'typical L on opus'
-Assert-Equal (Get-Typical $runs 'L' 'opus' 'cost') 20 'typical cost of an L on opus'
-Assert-Equal (Get-Typical $runs 'S' 'opus') 600 'typical S falls back to any model'
-Assert-Equal (Get-Typical $runs 'M' 'opus') '' 'no history'
+Assert-Equal (Get-Typical $runs 'L' 'big') 5400 'typical L on one model'
+Assert-Equal (Get-Typical $runs 'L' 'big' 'cost') 20 'typical cost of an L on one model'
+Assert-Equal (Get-Typical $runs 'S' 'big') 600 'typical S falls back to any model'
+Assert-Equal (Get-Typical $runs 'M' 'big') '' 'no history'
 
 # Queue: claimed tickets left out; each waiting one says why, in priority then age order; no priority is parked.
 $free = @{ id = '1'; status = 'active'; activity = 'free' }
@@ -362,7 +364,7 @@ Assert-Equal (Next $next '4') '4 False its account is at its stop line' 'no room
 $sized = @((Issue 11 @('P1', 'size:S')), (Issue 12 @('P1')), (Issue 13 @('P1', 'size:L')))
 $onAccount = @{ id = '1'; status = 'active'; activity = 'free'; account = 'a' }
 function NextAt([double] $used) {
-    $account = @{ name = 'a'; five_hour = @{ used = $used; ceiling = 0.95; pickUp = @{ S = 0.9; M = 0.75; L = 0.5 } }; seven_day = @{ used = 0.1; ceiling = 0.9 } }
+    $account = @{ name = 'a'; short = @{ used = $used; ceiling = 0.95; pickUp = @{ S = 0.9; M = 0.75; L = 0.5 } }; long = @{ used = 0.1; ceiling = 0.9 } }
     return Next (Get-NextTickets $sized @() @($onAccount) $null $null @($account)) '1'
 }
 Assert-Equal (NextAt 0.2) '13 True' 'room for every size: the biggest ticket first'
@@ -371,8 +373,8 @@ Assert-Equal (NextAt 0.8) '11 True' 'over the M limit: an S'
 Assert-Equal (NextAt 0.92) '13 False over the pick-up limit for size L' 'over every limit: the first, locked'
 Assert-Equal (Next (Get-NextTickets $sized @() @($onAccount)) '1') '13 True' 'no account known: every size'
 # A ticket shown locked for the pick-up limit is not given: a worker on an account with room still gets it.
-$full = @{ name = 'a'; five_hour = @{ used = 0.92; ceiling = 0.95; pickUp = @{ S = 0.9; M = 0.75; L = 0.5 } }; seven_day = @{ used = 0.1; ceiling = 0.9 } }
-$room = @{ name = 'b'; five_hour = @{ used = 0.1; ceiling = 0.95; pickUp = @{ S = 0.9; M = 0.75; L = 0.5 } }; seven_day = @{ used = 0.1; ceiling = 0.9 } }
+$full = @{ name = 'a'; short = @{ used = 0.92; ceiling = 0.95; pickUp = @{ S = 0.9; M = 0.75; L = 0.5 } }; long = @{ used = 0.1; ceiling = 0.9 } }
+$room = @{ name = 'b'; short = @{ used = 0.1; ceiling = 0.95; pickUp = @{ S = 0.9; M = 0.75; L = 0.5 } }; long = @{ used = 0.1; ceiling = 0.9 } }
 $two = Get-NextTickets $sized @() @($onAccount, @{ id = '2'; status = 'active'; activity = 'free'; account = 'b' }) $null $null @($full, $room)
 Assert-Equal "$(Next $two '1') | $(Next $two '2')" '13 False over the pick-up limit for size L | 13 True' 'a locked ticket still goes to the worker with room'
 Assert-Equal ((Get-QueueRows (@($sized) + @((Issue 14 @('P0', 'size:S')))) @($free)).queued.number -join ',') '14,13,12,11' 'queue order: priority, then the bigger ticket'
@@ -404,7 +406,7 @@ function Working([string] $id, [int] $ticket, [string] $account, [long] $started
     return @{ id = $id; status = 'active'; activity = 'running'; ticket = $ticket; title = "Ticket $ticket"; account = $account; startedAt = $started }
 }
 function Account([string] $name, [double] $used) {
-    return @{ name = $name; five_hour = @{ used = $used; ceiling = 0.95; pickUp = @{ S = 0.9; M = 0.75; L = 0.5 } }; seven_day = @{ used = 0.1; ceiling = 0.9 } }
+    return @{ name = $name; short = @{ used = $used; ceiling = 0.95; pickUp = @{ S = 0.9; M = 0.75; L = 0.5 } }; long = @{ used = 0.1; ceiling = 0.9 } }
 }
 function Now($pick) {
     return $(if ($pick.worker) { "$($pick.worker) stops $($pick.stops) busy '$($pick.busy -join ',')'" } else { $pick.why })
@@ -425,15 +427,15 @@ $not = @(@{ id = '1'; status = 'paused'; activity = 'free' }, @{ id = '2'; statu
     @{ id = '5'; status = 'active'; activity = 'running'; pending = @{ to = 'paused' } }, @{ id = '6'; status = 'active'; activity = 'free' })
 $off = '{"workers":{"6":{"complexity":{"medium":false}}}}' | ConvertFrom-Json
 Assert-Equal (Now (Select-NowWorker $urgent $flight $not $off)) 'no worker can take it: each is paused, held, forced or has its complexity off' 'no worker that looks for a job on its own'
-# A ticket that runs on Fable gets no Now on an account at the design line of its Fable week.
+# A ticket that runs on the deep model gets no Now on an account at the start line of its deep week.
 $design = Issue 24 @('P1', 'complexity:design')
-$onFable = @{ id = '7'; status = 'active'; activity = 'free'; account = 'f'; takes = @(@{ name = 'design'; model = 'claude-fable-5-2' }, @{ name = 'medium'; model = 'claude-opus-5-5' }) }
+$onDeep = @{ id = '7'; status = 'active'; activity = 'free'; account = 'f'; takes = @(@{ name = 'design'; model = 'deep-1' }, @{ name = 'medium'; model = 'main-1' }) }
 $week = Account 'f' 0.1
-$week[$FableWindow] = @{ used = 0.92; stopAt = 0.98; pickUp = @{ design = 0.9 } }
-Assert-Equal (Now (Select-NowWorker $design @($design) @($onFable) $null @($week))) 'no account has Fable left for a design ticket' 'the Fable week at its design line'
-Assert-Equal (Now (Select-NowWorker (Issue 25 @('P1')) @() @($onFable) $null @($week))) "7 stops 0 busy ''" 'a ticket on another model still gets its Now there'
-$week[$FableWindow].used = 0.5
-Assert-Equal (Now (Select-NowWorker $design @($design) @($onFable) $null @($week))) "7 stops 0 busy ''" 'Fable left: the Now goes on'
+$week[$deep] = @{ used = 0.92; stopAt = 0.98; pickUp = @{ design = 0.9 } }
+Assert-Equal (Now (Select-NowWorker $design @($design) @($onDeep) $null @($week))) 'no account has the model of a design ticket left' 'the deep week at its start line'
+Assert-Equal (Now (Select-NowWorker (Issue 25 @('P1')) @() @($onDeep) $null @($week))) "7 stops 0 busy ''" 'a ticket on another model still gets its Now there'
+$week[$deep].used = 0.5
+Assert-Equal (Now (Select-NowWorker $design @($design) @($onDeep) $null @($week))) "7 stops 0 busy ''" 'the deep model left: the Now goes on'
 # The queue and the cards with a Now: the ticket is its worker's next, no other worker's, and has no Now button.
 $taking = Working '3' 23 'a' 200
 $taking.forced = $true
@@ -457,7 +459,7 @@ $prs = @((Pr 10 1 @('worker:1')))
 Assert-Equal (Next (Get-NextTickets $same $prs @(@{ id = '1'; status = 'active'; activity = 'running'; ticket = 1 })) '1') '2 True' 'the area of its own ticket counts as free'
 
 # A queued ticket and a worker's ticket show their areas; the queue's sums come from typical runs by size.
-$busyWorker = @{ id = '1'; state = [pscustomobject]@{ state = 'running'; at = 0; ticket = 1; size = 'L'; model = 'opus'; startedAt = 0 } }
+$busyWorker = @{ id = '1'; state = [pscustomobject]@{ state = 'running'; at = 0; ticket = 1; size = 'L'; model = 'big'; startedAt = 0 } }
 $snapshot = New-Snapshot @{ now = 0; slug = 'o/r'; workers = @($busyWorker); runs = $runs; gh = @{ issues = @((Issue 1 @('area:ui', 'area:api/search', 'worker:1', 'size:S')), (Issue 2 @('P1', 'area:api/auth', 'size:L')), (Issue 3 @('P1', 'size:S') '' '2026-10-11T10:00:00Z')); prs = @(); merged = @() } }
 Assert-Equal "$($snapshot.workers[0].areas -join ',')|$($snapshot.queued[0].areas -join ',')" 'api/search,ui|api/auth' 'areas of a worker and a queued ticket'
 Assert-Equal "$($snapshot.workers[0].typical) $($snapshot.workers[0].typicalCost) $($snapshot.workers[0].next.number)" '5400 20 2' 'the run against a typical one, and its next ticket'
@@ -483,12 +485,12 @@ $pausedWorker = @{ id = '1'; state = [pscustomobject]@{ state = 'stopped'; at = 
 $control = Json @{ workers = @{ '1' = 'stop' } }
 $view = (New-Snapshot @{ now = 0; slug = 'o/r'; workers = @($pausedWorker); runs = @(); control = $control; gh = @{ issues = @((Issue 5 @('P1', 'worker:1'))); prs = @(); merged = @() } }).workers[0]
 Assert-Equal "$($view.status) $($view.ticket)" 'paused 5' 'a paused worker keeps its ticket'
-$limited = @{ id = '1'; state = [pscustomobject]@{ state = 'paused'; at = 0; ticket = 5; resetsAt = 600; elapsed = 1200; kind = 'ticket'; size = 'L'; model = 'opus' } }
+$limited = @{ id = '1'; state = [pscustomobject]@{ state = 'paused'; at = 0; ticket = 5; resetsAt = 600; elapsed = 1200; kind = 'ticket'; size = 'L'; model = 'big' } }
 $view = (New-Snapshot @{ now = 10; slug = 'o/r'; workers = @($limited); runs = $runs }).workers[0]
 Assert-Equal "$($view.status) $($view.activity) $($view.elapsed) $($view.typical)" 'active limit 1200 5400' 'at its usage limit: active, with its progress'
 Assert-Equal (New-Snapshot @{ now = 700; awake = 700; slug = 'o/r'; workers = @($limited); runs = $runs }).workers[0].activity 'resuming' 'after the reset the run resumes: no reset time in the past'
 # A run held for the owner's pause (worker.ps1, Suspend-Job): the worker is paused and keeps its run and progress.
-$heldRun = @{ id = '1'; state = [pscustomobject]@{ state = 'stopped'; at = 0; ticket = 5; resetsAt = 5; stopped = $true; elapsed = 1200; kind = 'ticket'; size = 'L'; model = 'opus' } }
+$heldRun = @{ id = '1'; state = [pscustomobject]@{ state = 'stopped'; at = 0; ticket = 5; resetsAt = 5; stopped = $true; elapsed = 1200; kind = 'ticket'; size = 'L'; model = 'big' } }
 $view = (New-Snapshot @{ now = 10; slug = 'o/r'; workers = @($heldRun); runs = $runs; control = $control }).workers[0]
 Assert-Equal "$($view.status) $($view.activity) $($view.run) $($view.elapsed)" 'paused held True 1200' 'held for a pause: paused, with its run'
 
@@ -517,11 +519,11 @@ Assert-Equal ($rows.queued.Count + $rows.parked.Count) 0 'questions, stuck and h
 # The stuck reason comes from the run's log: its error, else its last words, else its last step.
 $log = Join-Path ([IO.Path]::GetTempPath()) "queue-app-test-$PID.jsonl"
 # Written without a byte order mark, as a run writes its log.
-[System.IO.File]::WriteAllLines($log, [string[]]@('{"type":"assistant","message":{"content":[{"type":"text","text":"I stop here."}]}}', '{"type":"result","subtype":"error_max_turns","is_error":true,"result":"Reached the turn limit."}'))
-Assert-Equal (Get-StuckReason $log) 'The run failed (error_max_turns): Reached the turn limit.' 'a failed run'
-[System.IO.File]::WriteAllLines($log, [string[]]@('{"type":"result","subtype":"success","is_error":false,"result":"I stop #7 here."}'))
+[System.IO.File]::WriteAllLines($log, [string[]]@('step I stop here.', 'end error(max_turns) Reached the turn limit.'))
+Assert-Equal (Get-StuckReason $log) 'The run failed (max_turns): Reached the turn limit.' 'a failed run'
+[System.IO.File]::WriteAllLines($log, [string[]]@('end ok I stop #7 here.'))
 Assert-Equal (Get-StuckReason $log) 'The run ended by itself. Its last words: I stop #7 here.' 'a run that ended by itself'
-[System.IO.File]::WriteAllLines($log, [string[]]@('{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"description":"Run the suite"}}]}}'))
+[System.IO.File]::WriteAllLines($log, [string[]]@('step Bash: Run the suite'))
 Assert-Equal (Get-StuckReason $log) 'The run''s process ended with no result (a crash or a kill). Its last step: Bash: Run the suite' 'a run that died'
 Remove-Item $log
 Assert-Equal (Get-StuckReason 'C:\none.jsonl') '' 'no log, no reason'
@@ -536,13 +538,11 @@ Assert-Equal "$(Route 'question' 'Three.') $(Route 'question' ' ')" 'change keep
 Assert-Equal "$(Route 'followup' 'Yes, with oak.') $(Route 'followup' 'No.') $(Route 'followup' 'no, but make the wall 6 high')" 'queue drop queue' 'a follow-up: only a bare no drops it'
 Assert-Equal "$(Route 'followup' '' '1. Do this? Default: yes.') $(Route 'followup' '' '1. Do this? **Default:** no. Size M.') $(Route 'followup' '')" 'queue drop queue' 'a follow-up''s default'
 
-# Steps: a tool call names the tool and what it does; words are shown as said.
-Assert-Equal (Get-StepText '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git push","description":"Push the branch"}}]}}') 'Bash: Push the branch' 'tool step'
-Assert-Equal (Get-StepText '{"type":"assistant","message":{"content":[{"type":"text","text":"Rungs  pass."}]}}') 'Rungs pass.' 'text step'
-Assert-Equal (Get-StepText '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__UnityMCP__manage_scene","input":{"action":"save"}}]}}') 'UnityMCP manage_scene: save' 'an MCP tool step'
-Assert-Equal (Get-StepText '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__my_db__run_query","input":{}}]}}') 'my_db run_query' 'a server name with an underscore'
-Assert-Equal (Get-StepText '{"type":"user"}') '' 'not a step'
-Assert-Equal (Get-StepText '{"type":"result","stop_reason":"end_turn"}') '' 'a turn end is not a step'
+# Steps: what the provider reads from a line, in one line of at most 160 characters; '' for a line that is no step.
+Assert-Equal (Get-StepText 'step Rungs  pass.') 'Rungs pass.' 'a step in one line'
+Assert-Equal (Get-StepText ('step ' + ('x' * 200))).Length 160 'a long step is cut'
+Assert-Equal (Get-StepText 'end ok done') '' 'not a step'
+Assert-Equal (@(Get-Steps 'C:\none.jsonl' 3)).Count 0 'no log, no steps' 
 
 # A stale worker is down; not just after the PC wakes.
 $idleState = @{ id = '2'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }
@@ -634,10 +634,31 @@ $new.workers[0].out.kind = 'start'
 Assert-Equal (@(Get-Events $old $new | ForEach-Object { $_.title }) -join ',') 'Runs do not start' 'the push of runs that do not start'
 # The same activity again pushes nothing: the workers test the account with a probe, so the card does not flicker.
 Assert-Equal @(Get-Events $new $new).Count 0 'no second push while the account stays out'
-# A refused request has the subtype 'success': the reason leaves it out.
+# A refused request has no detail: the reason leaves it out.
 $log = Join-Path ([IO.Path]::GetTempPath()) "queue-app-test-$PID.jsonl"
-[System.IO.File]::WriteAllLines($log, [string[]]@('{"type":"result","subtype":"success","is_error":true,"result":"Not logged in"}'))
+[System.IO.File]::WriteAllLines($log, [string[]]@('end error Not logged in'))
 Assert-Equal (Get-StuckReason $log) 'The run failed: Not logged in' 'a refused request'
 Remove-Item $log
+
+# The provider and its windows for the Accounts tab, and each model's name on the page.
+$shown = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }
+Assert-Equal "$($shown.provider): $(($shown.windows | ForEach-Object { "$($_.name)=$($_.title)/$($_.models)/$($_.keep)" }) -join ' ')" 'The test provider: short=5 hours/False/False long=Week/False/True deep=Deep week/True/False' 'the windows'
+Assert-Equal "$($shown.modelTitles.'main-1') $($shown.modelTitles.ContainsKey('mid-1'))" 'Main 1 False' 'the models'' names'
+# With a provider that has only the hooks it must have: no step and no end from a log, one window, no advisor, no
+# effort, and a sign-in folder with its name.
+Set-Provider (Import-Plugin (Join-Path $baseDir 'tests/bare') 'bare' $null)
+$log = Join-Path ([IO.Path]::GetTempPath()) "queue-app-test-$PID.jsonl"
+[System.IO.File]::WriteAllLines($log, [string[]]@('step one', 'end ok done'))
+Assert-Equal "$(@(Get-Steps $log 3).Count) $(Get-StuckReason $log)" '0 The run''s process ended with no result (a crash or a kill).' 'a log that the provider does not read'
+Remove-Item $log
+$bare = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = ('{"accounts":{"a":{"configDir":"C:/a","uses":["worker:1","personal"]}}}' | ConvertFrom-Json)
+    workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }); logins = @{ 'C:/a' = @{ signedIn = $true } } }
+Assert-Equal "$(($bare.windows | ForEach-Object { $_.name }) -join ',') $($bare.accounts[0].month.ceiling) $($bare.accounts[0].month.ContainsKey('guards')) $($bare.accounts[0].status)" 'month 1 False ready' 'one window, nothing kept'
+Assert-Equal "'$($bare.advisor.model)' $($bare.efforts.Count) $($bare.workers[0].takes[0].model) '$($bare.workers[0].takes[0].effort)' $($bare.complexities[0].compactAt)" "'' 0 only '' 0" 'no advisor, no effort, no compact size'
+Assert-Equal (Get-NewAccountDir ('{"accounts":{}}' | ConvertFrom-Json) 'x' 'C:\Users\me') 'C:/Users/me/.bare-x' 'the folder of a new account'
+# With no provider the page still shows the queue: no model and no window.
+Set-Provider $null
+$none = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
+Assert-Equal "'$($none.provider)' $($none.windows.Count) $($none.models.Count) $(($none.complexities | ForEach-Object { $_.name }) -join ',')" "'' 0 0 low,medium,high,design" 'no provider'
 
 Write-Output 'ok'

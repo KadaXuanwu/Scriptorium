@@ -10,7 +10,8 @@ $script:watched = @()
 # script, with no list to keep.
 function Get-CodeStamp {
     $files = @(Get-ChildItem $PSScriptRoot -Recurse -Filter *.ps1 | Where-Object {
-        $_.Name -notlike '*.test.ps1' -and $_.FullName -notlike (Join-Path $PSScriptRoot 'plugins/*') -and $_.FullName -notlike (Join-Path $PSScriptRoot '_source/*')
+        $_.Name -notlike '*.test.ps1' -and $_.FullName -notlike (Join-Path $PSScriptRoot 'plugins/*') -and
+            $_.FullName -notlike (Join-Path $PSScriptRoot 'tests/*') -and $_.FullName -notlike (Join-Path $PSScriptRoot '_source/*')
     })
     foreach ($path in $script:watched) {
         if (Test-Path $path -PathType Container) {

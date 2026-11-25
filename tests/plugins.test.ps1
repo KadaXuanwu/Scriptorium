@@ -28,7 +28,7 @@ try {
 function Get-Word { 'one' }
 @{
     Start = { param($ctx) & $ctx.Report "start $(Get-Word) in $($ctx.Copy)" }
-    GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'one' }; First = @{ command = 'a' } }; AllowedTools = @('mcp__First', 'Bash(dotnet:*)'); Prompt = "Word $(Get-Word)."; Env = @{ SHARED = 'one'; FIRST = 'a' } } }
+    GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'one' }; First = @{ command = 'a' } }; Commands = @('dotnet', 'unity command'); AllowedTools = @('rule-a'); Prompt = "Word $(Get-Word)."; Env = @{ SHARED = 'one'; FIRST = 'a' } } }
     EndRun = { param($ctx) throw 'the server did not stop' }
     Close = { param($ctx) if ($ctx.Copy -eq 'D:/o-w1') { throw 'no editor' }; & $ctx.Log "one $($ctx.Copy)" }
 }
@@ -36,11 +36,11 @@ function Get-Word { 'one' }
     $two = New-Plugin $root 'two' @'
 function Get-Word { 'two' }
 @{
-    GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'two' } }; AllowedTools = @('Bash(dotnet:*)', 'mcp__Shared'); Prompt = "Word $(Get-Word) at $($ctx.Settings.level)."; Env = @{ SHARED = 'two' } } }
+    GetRun = { param($ctx) @{ McpServers = @{ Shared = @{ command = 'two' } }; Commands = @('dotnet'); AllowedTools = @('rule-a', 'rule-b'); Prompt = "Word $(Get-Word) at $($ctx.Settings.level)."; Env = @{ SHARED = 'two' } } }
     Close = { param($ctx) & $ctx.Log "two $($ctx.Copy)" }
 }
 '@
-    $config = "{ `"name`": `"App`", `"allowedTools`": [`"Bash(npm:*)`"], `"plugins`": { `"one`": { `"source`": `"$($one.Replace('\', '/'))`" }, `"two`": { `"source`": `"$($two.Replace('\', '/'))`", `"level`": 1 } } }" | ConvertFrom-Json
+    $config = "{ `"name`": `"App`", `"commands`": [`"npm`"], `"allowedTools`": [`"rule-own`"], `"plugins`": { `"one`": { `"source`": `"$($one.Replace('\', '/'))`" }, `"two`": { `"source`": `"$($two.Replace('\', '/'))`", `"level`": 1 } } }" | ConvertFrom-Json
     $plugins = Import-Plugins $root $config
     Assert-Equal (($plugins | ForEach-Object { $_.Name }) -join ',') 'one,two' 'the plugins in the order the file gives them'
     Assert-Equal "$($plugins[1].Title) $($plugins[1].Version) $($plugins[1].Settings.level) $($plugins[1].Settings.ContainsKey('source'))" 'The two plugin 1.0.0 1 False' 'the manifest and the settings, without source'
@@ -56,8 +56,8 @@ function Get-Word { 'two' }
     Assert-Equal (($run.McpServers.Keys | Sort-Object) -join ',') 'First,Shared' 'servers by name'
     Assert-Equal $run.McpServers.Shared.command 'two' 'a later plugin''s server of the same name wins'
     Assert-Equal "$($run.Env.FIRST) $($run.Env.SHARED) $($run.Env.Count)" 'a two 2' 'environment variables by name, a later plugin''s wins'
-    Assert-Equal ((Get-RunTools $config $run) -join ',') 'Bash(git:*),Bash(gh:*),Bash(npm:*),mcp__First,Bash(dotnet:*),mcp__Shared' 'tools as a union'
-    Assert-Equal ((ConvertTo-McpConfig $run.McpServers) -match '^\{"mcpServers":\{.*"First":\{"command":"a"\}') $true 'the MCP config'
+    Assert-Equal ((Get-RunCommands $config $run) -join ',') 'git,gh,npm,dotnet,unity command' 'commands as a union: of the base, the project and the plugins'
+    Assert-Equal ((Get-RunTools $config $run) -join ',') 'rule-own,rule-a,rule-b' 'the provider''s own tool rules as a union'
 
     # Report and Log reach the caller; a hook only one plugin has calls only that one.
     Invoke-Hooks $plugins 'Start' 'D:/p' 'D:/p-w1' 1 'D:/q' $null $report $report | Out-Null
@@ -99,16 +99,50 @@ function Get-Word { 'two' }
     Assert-Equal (Receive-Job $job) 'Word one.' 'a plugin inside Start-Job'
     Remove-Job $job -Force
 
-    # No plugin: a plain git repo. The run gets an MCP config with no server, the base's tools and no prompt.
+    # No plugin: a plain git repo. The run gets no server, the base's commands and no prompt.
     $plain = '{ "name": "App", "plugins": {} }' | ConvertFrom-Json
     $none = Import-Plugins $root $plain
     Assert-Equal @($none).Count 0 'no plugin'
     Assert-Equal (Invoke-Hooks $none 'Start' 'D:/p' 'D:/p-w1' 1 'D:/q' $null).Count 0 'Start does nothing'
     $run = Merge-RunAnswers (Invoke-Hooks $none 'GetRun' 'D:/p' 'D:/p-w1' 1 'D:/q' $null)
-    Assert-Equal (ConvertTo-McpConfig $run.McpServers) '{"mcpServers":{}}' 'an MCP config with no server'
-    Assert-Equal ((Get-RunTools $plain $run) -join ',') 'Bash(git:*),Bash(gh:*)' 'the base''s tools only'
+    Assert-Equal "$($run.McpServers.Count) $((Get-RunCommands $plain $run) -join ',') $(@(Get-RunTools $plain $run).Count)" '0 git,gh 0' 'no server, the base''s commands only, no tool rule'
     Assert-Equal $run.Prompt '' 'no prompt'
     Assert-Equal (Import-Plugins $root ('{ "name": "App" }' | ConvertFrom-Json)).Count 0 'no plugins key'
+
+    # The provider (docs/PLUGINS.md, A provider): the first plugin whose manifest says so. Its hooks get the scope's
+    # fields with the call's over them, and the PC's settings of the plugin.
+    Assert-Equal "$([bool](Get-Provider $plugins)) $([bool](Get-Provider $none))" 'False False' 'no provider among plain plugins'
+    $test = Import-Plugin (Join-Path $PSScriptRoot 'provider') 'test' ('{ "level": 3 }' | ConvertFrom-Json)
+    $found = Get-Provider (@($plugins) + @($test))
+    Assert-Equal "$($found.Name) $($found.Provider) $($found.Skills)" 'test True .test/skills' 'the provider and its skills folder'
+    Set-Provider $found @{ Project = 'D:/p'; Copy = 'D:/p-w1'; Worker = 4; QueueDir = 'D:/p-w1/.queue'; Machine = { '{ "plugins": { "test": { "level": 5 } } }' | ConvertFrom-Json } }
+    Assert-Equal (Read-Models).advisor.model 'deep-1' 'the models are the provider''s'
+    $seen = Invoke-Provider 'GetCommand' @{ Copy = 'D:/other'; Run = @{ Model = 'main-1'; Prompt = 'Do it.'; Session = 's1'; Login = 'C:/l'; Commands = @('git', 'unity command') } }
+    Assert-Equal "$($seen.FilePath) $($seen.Arguments -join '|') $($seen.Env.TEST_LOGIN)" 'test-tool resume|s1|run|--model|main-1|--allow=git|--allow=unity command|Do it. C:/l' 'the command of a run'
+    $provider = $found
+    $provider.Hooks.Peek = { param($ctx) "$($ctx.Project) $($ctx.Copy) $($ctx.Worker) $($ctx.QueueDir) $($ctx.Settings.level) $($ctx.Extra)" }
+    Assert-Equal (Invoke-Provider 'Peek' @{ Extra = 'x' }) 'D:/p D:/p-w1 4 D:/p-w1/.queue 5 x' 'the context of a provider''s hook'
+    Assert-Equal (Invoke-Provider 'Peek' @{ Copy = 'D:/job' }).Split(' ')[1] 'D:/job' 'a call''s field goes over the scope''s'
+    $provider.Hooks.Fail = { param($ctx) throw 'no tool' }
+    $threw = ''
+    try { Invoke-Provider 'Fail' | Out-Null } catch { $threw = "$_" }
+    Assert-Equal $threw 'plugin test, Fail: no tool' 'a hook that throws names its plugin'
+    # What the test provider reads from a log of its tool: the usage, the run's end and its numbers.
+    $log = "session s9`nusage short=0.1@100 long=0.2@900`nstep one`nstep two`nusage short=0.4@100 long=0.3@900 refused=deep@950`nend window:deep The deep model is used up"
+    $first = Invoke-Provider 'ReadUsage' @{ Text = $log; First = $true }
+    $last = Invoke-Provider 'ReadUsage' @{ Text = $log }
+    Assert-Equal "$($first.Windows.short.Used) $($last.Windows.short.Used) $($last.Windows.long.ResetsAt) '$($first.Refused)' $($last.Refused) $($last.RefusedResetsAt)" "0.1 0.4 900 '' deep 950" 'the first and the last reading'
+    $end = Invoke-Provider 'ReadRun' @{ Text = $log }
+    Assert-Equal "$($end.Session) $($end.Ended) $($end.Error) $($end.Kind) $($end.Window) $($end.Worked) $($end.Numbers.requests)" 's9 True True window deep True 2' 'the end of a run'
+    Assert-Equal (Invoke-Provider 'ReadRun' @{ Text = 'step one' }).Ended $false 'a log with no end'
+    # A provider with only the hooks it must have: every other hook is a feature that is off.
+    Set-Provider (Import-Plugin (Join-Path $PSScriptRoot 'bare') 'bare' $null)
+    Assert-Equal "$(Test-ProviderHook 'GetCommand') $(Test-ProviderHook 'ReadRun') $(Test-ProviderHook 'Probe') $(Test-ProviderHook 'Compact')" 'True True False False' 'the hooks of a bare provider'
+    Assert-Equal "$($null -eq (Invoke-Provider 'ReadUsage' @{ Text = 'x' })) $($null -eq (Invoke-Provider 'GetLogin' @{ Login = '' }))" 'True True' 'a hook it does not have answers nothing'
+    Assert-Equal "'$((Read-Models).advisor.model)' '$((Split-Pick (Read-Models) 'only').effort)'" "'' ''" 'no advisor and no effort'
+    # No provider: no hook, and a model list with no model.
+    Set-Provider $null
+    Assert-Equal "$(Test-ProviderHook 'GetCommand') $($null -eq (Invoke-Provider 'GetCommand')) $(@((Read-Models).models.PSObject.Properties).Count)" 'False True 0' 'no provider'
 } finally {
     Remove-Item $root -Recurse -Force
 }

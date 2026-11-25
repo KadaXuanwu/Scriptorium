@@ -1,0 +1,25 @@
+{
+  "models": {
+    "deep-1": { "title": "Deep 1", "effort": "xhigh" },
+    "main-1": { "title": "Main 1", "effort": "medium" },
+    "mid-1": { "effort": "xhigh" },
+    "small-1": { "effort": "xhigh" }
+  },
+  "efforts": ["low", "medium", "high", "xhigh", "max"],
+  "effort": "xhigh",
+  "complexities": {
+    "low": { "models": ["main-1@medium"] },
+    "medium": { "models": ["main-1@high"], "advisor": true },
+    "high": { "models": ["main-1@xhigh"], "advisor": true },
+    "design": { "models": ["deep-1@high"] }
+  },
+  "compactAt": 250000,
+  "compactRange": [67000, 967000],
+  "runCap": 60,
+  "advisor": { "model": "deep-1" },
+  "windows": {
+    "short": { "title": "5 hours", "seconds": 18000, "stopAt": 0.98, "pickUp": { "S": 0.90, "M": 0.75, "L": 0.50 } },
+    "long": { "title": "Week", "seconds": 604800, "stopAt": 1.0, "keep": true },
+    "deep": { "title": "Deep week", "seconds": 604800, "stopAt": 0.98, "models": "deep-*", "pickUp": { "design": 0.90 }, "after": "main-1@xhigh" }
+  }
+}

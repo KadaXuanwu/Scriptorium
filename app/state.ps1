@@ -7,6 +7,7 @@
 . (Join-Path $PSScriptRoot '../areas.ps1')
 . (Join-Path $PSScriptRoot '../limits.ps1')
 . (Join-Path $PSScriptRoot '../project.ps1')
+. (Join-Path $PSScriptRoot '../plugins.ps1')
 
 # A worker state older than this is a stopped script: idle ones refresh every poll (5 min), running ones every 30 s.
 $StaleSeconds = 900
@@ -26,22 +27,6 @@ function Read-Json([string] $path) {
 # seconds, and a pipeline costs ten times as much in Windows PowerShell.
 function Get-Names($item) {
     return @(foreach ($label in $item.labels) { $label.name })
-}
-
-# A login's plan as the page names it, from its .credentials.json.
-function Get-PlanName($credentials) {
-    $oauth = if ($credentials) { $credentials.claudeAiOauth } else { $null }
-    if (-not $oauth) {
-        return ''
-    }
-    if ($oauth.rateLimitTier -match 'max_(\d+)x') {
-        return "Max $($Matches[1])x"
-    }
-    $type = [string]$oauth.subscriptionType
-    if ($type) {
-        return $type.Substring(0, 1).ToUpperInvariant() + $type.Substring(1)
-    }
-    return ''
 }
 
 # The register after moving a worker to an account ('' for the command-line login: in no entry). Throws for an
@@ -142,14 +127,16 @@ function Set-CardOrder($settings, [string] $kind, $list) {
     return $settings
 }
 
-# The login folder of a new account named $name, ~/.claude-<name>. Throws when an account has that folder: a renamed
-# account keeps the folder of its old name, and a second sign-in there would replace its login.
+# The login folder of a new account named $name: ~/.<provider>-<name>, with the provider plugin's name. Throws when an
+# account has that folder: a renamed account keeps the folder of its old name, and a second sign-in there would replace
+# its login.
 function Get-NewAccountDir($settings, [string] $name, [string] $homeDir) {
-    $dir = "$($homeDir.Replace('\', '/'))/.claude-$name"
+    $prefix = if ($script:Provider) { $script:Provider.Name } else { 'account' }
+    $dir = "$($homeDir.Replace('\', '/'))/.$prefix-$name"
     $holder = $settings.accounts.PSObject.Properties | Where-Object { $_.Value.configDir -and (Get-FolderKey ([string]$_.Value.configDir)) -eq (Get-FolderKey $dir) } |
         Select-Object -First 1
     if ($holder) {
-        throw "the folder .claude-$name is the folder of account $($holder.Name): pick another name"
+        throw "the folder .$prefix-$name is the folder of account $($holder.Name): pick another name"
     }
     return $dir
 }
@@ -167,8 +154,8 @@ function Get-ComplexitySettings($settings, [string] $name) {
 
 # The owner's pick of a complexity's model and effort on this PC (docs/QUEUE.md, Settings,
 # `complexities.<name>.model`), as `model@effort`. Only an effort of models.json's list, and a model of its list or
-# the base's own (a project may name another in scriptorium.json): Claude Code takes an effort it does not know without
-# a word. The base's own pick is not saved, so the PC follows models.json and scriptorium.json again. $complexities:
+# the base's own (a project may name another in scriptorium.json): a coding tool may take an effort it does not know
+# without a word. The base's own pick is not saved, so the PC follows models.json and scriptorium.json again. $complexities:
 # the list with these settings (project.ps1, Get-Complexities).
 function Set-ComplexityModel($settings, $models, $complexities, [string] $name, [string] $model, [string] $effort) {
     $entry = $complexities | Where-Object { $_.name -ceq $name } | Select-Object -First 1
@@ -372,27 +359,17 @@ function Get-WorkerStatus([string] $raw, $mode, [bool] $enabled, [bool] $disable
     return @{ status = 'active'; pending = $null }
 }
 
-# What a run did last, from the end of its stream-json log: its last words or the tool it last called.
+# What a run did at one line of its log, as the provider reads it (docs/PLUGINS.md, ReadStep): its words or the tool
+# it called, in one line of at most 160 characters. $null for a line that is no step, and with a provider that reads
+# none.
 function Get-StepText([string] $line) {
     try {
-        $entry = $line | ConvertFrom-Json
+        $text = [string](Invoke-Provider 'ReadStep' @{ Line = $line })
     } catch {
         return $null
     }
-    # A result line ends a turn, not the run: a run that waits on a background job gets one and goes on later.
-    if ($entry.type -ne 'assistant' -or -not $entry.message.content) {
-        return $null
-    }
-    $item = @($entry.message.content)[-1]
-    if ($item.type -eq 'text' -and $item.text) {
-        $text = ($item.text -replace '\s+', ' ').Trim()
-    } elseif ($item.type -eq 'tool_use') {
-        $toolInput = $item.input
-        $detail = @($toolInput.description, $toolInput.command, $toolInput.file_path, $toolInput.pattern, $toolInput.action) |
-            Where-Object { $_ } | Select-Object -First 1
-        # An MCP tool's name `mcp__<Server>__<tool>` reads `<Server> <tool>`.
-        $text = "$($item.name -replace '^mcp__(.+?)__', '$1 ')$(if ($detail) { ': ' + (($detail -replace '\s+', ' ').Trim()) })"
-    } else {
+    $text = ($text -replace '\s+', ' ').Trim()
+    if (-not $text) {
         return $null
     }
     if ($text.Length -gt 160) {
@@ -439,28 +416,24 @@ function Limit-Text([string] $text, [int] $length) {
     return $text
 }
 
-# Why a run ended with no PR and no question, in one line from its log, no model: the error its result names, else
-# its last words, else (no result: the process died) its last step. '' without a log.
+# Why a run ended with no PR and no question, in one line from its log, no model: the error its end names, else its
+# last words, else (no end: the process died) its last step. '' without a log. The provider reads the end
+# (docs/PLUGINS.md, ReadEnd).
 function Get-StuckReason([string] $log) {
     $lines = @(Read-LogTail $log)
     if ($lines.Count -eq 0) {
         return ''
     }
-    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
-        if ($lines[$i] -notlike '*"type":"result"*') {
-            continue
+    $end = $null
+    try {
+        $end = Invoke-Provider 'ReadEnd' @{ Text = ($lines -join "`n") }
+    } catch {
+    }
+    if ($end) {
+        if ($end.Error) {
+            return Limit-Text "The run failed$(if ($end.Detail) { " ($($end.Detail))" }): $($end.Text)" 300
         }
-        try {
-            $result = $lines[$i] | ConvertFrom-Json
-        } catch {
-            break
-        }
-        if ($result.is_error -or ($result.subtype -and $result.subtype -ne 'success')) {
-            # An error with the subtype 'success' is a refused request, not a failed step: its text says it all.
-            $subtype = if ($result.subtype -and $result.subtype -ne 'success') { " ($($result.subtype))" } else { '' }
-            return Limit-Text "The run failed${subtype}: $($result.result)" 300
-        }
-        return Limit-Text "The run ended by itself. Its last words: $($result.result)" 300
+        return Limit-Text "The run ended by itself. Its last words: $($end.Text)" 300
     }
     $step = @(Get-Steps $log 1)[0]
     return Limit-Text "The run's process ended with no result (a crash or a kill).$(if ($step) { " Its last step: $step" })" 300
@@ -566,9 +539,9 @@ function Test-PrOff($pr, $issues, $settings, [string] $worker) {
 # Now (docs/QUEUE.md, Now): the worker that does a queued ticket at once, for the page's Now button. Only a worker that
 # looks for its next job on its own: active with no change of status to come, free or in a run, with no force on it and
 # with the ticket's complexity on. Its account must take the ticket's size now (Get-Fit, as for a worker's next ticket),
-# and for a ticket that runs on Fable it must be under the design line of its Fable week.
+# and for a ticket whose model has a window of its own it must be under that window's start line.
 # Of those: first a worker whose ticket in work holds an area of this one (the two would change the same files), then a
-# free one, then the most 5-hour room, then the most weekly room, then the run that started last (it loses the least
+# free one, then the most room in the shortest window, then in the longest, then the run that started last (it loses the least
 # work). Returns @{ worker; stops; title; busy }: `stops` and `title` are the ticket of the run that ends at its next
 # checkpoint (0 for a free worker); `busy` are this ticket's areas that other tickets in flight still hold. With no
 # such worker: @{ why }.
@@ -586,18 +559,25 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
     if ($able.Count -eq 0) {
         return @{ why = 'no worker can take it: each is paused, held, forced or has its complexity off' }
     }
-    $noFable = 0
+    $noModel = 0
     $ranked = @(foreach ($view in $able) {
         $account = $accounts | Where-Object { $_.name -eq $view.account } | Select-Object -First 1
-        # Not an account at the design line of its Fable week, for a ticket that runs on Fable (docs/QUEUE.md, The Fable
-        # limit): a run would end for a ticket that cannot start.
+        # Not an account at the start line of the model's own window (docs/QUEUE.md, A model's limit): a run would end
+        # for a ticket that cannot start.
         # shortcut: a model that the plan refused (the PC's access.json) is not read here; the worker script puts such a
         # ticket back in the queue. Read it here when a Now is lost to it in use.
         $model = [string]($view.takes | Where-Object { $_.name -eq $complexity } | Select-Object -First 1).model
-        $fable = if ($account) { $account[$FableWindow] } else { $null }
-        if ($model -like '*fable*' -and $fable -and [double]$fable.used -ge [math]::Min([double]$fable.pickUp.design, [double]$fable.stopAt)) {
-            $noFable++
-            continue
+        $window = Get-ModelWindow $model
+        $reading = if ($account -and $window) { $account[$window] } else { $null }
+        if ($reading) {
+            $start = [double]$reading.stopAt
+            if ($reading.pickUp) {
+                $start = [math]::Min([double](@($reading.pickUp.Values) | Measure-Object -Minimum).Minimum, $start)
+            }
+            if ([double]$reading.used -ge $start) {
+                $noModel++
+                continue
+            }
         }
         if ($account -and -not (Get-Fit $size $account)) {
             continue
@@ -610,20 +590,23 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
         } else {
             @()
         }
-        $room = @{}
-        foreach ($window in 'five_hour', 'seven_day') {
-            $room[$window] = if ($account -and $account[$window]) { [double]$account[$window].ceiling - [double]$account[$window].used } else { 1.0 }
+        $room = @{ short = 1.0; long = 1.0 }
+        foreach ($end in @('short', 'long')) {
+            $window = if ($end -eq 'short') { $ShortWindow } else { $LongWindow }
+            if ($window -and $account -and $account[$window]) {
+                $room[$end] = [double]$account[$window].ceiling - [double]$account[$window].used
+            }
         }
         @{
             view = $view; works = $works; clash = [int](@(Get-Clashes $areas $held).Count -gt 0); free = [int]($view.activity -eq 'free')
-            five = $room.five_hour; week = $room.seven_day; started = [long]$view.startedAt
+            short = $room.short; long = $room.long; started = [long]$view.startedAt
         }
     })
     if ($ranked.Count -eq 0) {
-        return @{ why = $(if ($noFable -eq $able.Count) { "no account has Fable left for a $complexity ticket" } else { "no account has room for a size $size ticket now" }) }
+        return @{ why = $(if ($noModel -eq $able.Count) { "no account has the model of a $complexity ticket left" } else { "no account has room for a size $size ticket now" }) }
     }
     $best = @($ranked | Sort-Object @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
-        @{ Expression = { $_.five }; Descending = $true }, @{ Expression = { $_.week }; Descending = $true },
+        @{ Expression = { $_.short }; Descending = $true }, @{ Expression = { $_.long }; Descending = $true },
         @{ Expression = { $_.started }; Descending = $true }, @{ Expression = { [int]$_.view.id } })[0]
     $view = $best.view
     $stops = if ($view.activity -eq 'running') { [int]$view.ticket } else { 0 }
@@ -1010,7 +993,7 @@ function New-Snapshot($data) {
             $uses = @($property.Value.uses)
             $usage = if ($data.usage) { $data.usage.$key } else { $null }
             # A reading of another account: the folder's login changed since.
-            if ($usage -and $data.logins -and $data.logins[$key] -and $usage.email -ne $data.logins[$key].email) {
+            if ($usage -and $data.logins -and $data.logins[$key] -and [string]$usage.email -ne [string]$data.logins[$key].email) {
                 $usage = $null
             }
             $budget = $null
@@ -1031,11 +1014,11 @@ function New-Snapshot($data) {
             }
             $atLimit = $false
             $clock = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-            foreach ($window in @('five_hour', 'seven_day')) {
-                $stopAt = if ($property.Value.stopAt -and $property.Value.stopAt.$window) { [double]$property.Value.stopAt.$window } else { $DefaultStopAt[$window] }
+            foreach ($window in @($WindowSeconds.Keys)) {
+                $stopAt = if ($property.Value.stopAt -and $property.Value.stopAt.$window) { [double]$property.Value.stopAt.$window } else { [double]$DefaultStopAt[$window] }
                 $w = @{ stopAt = $stopAt }
-                # `pickUp`: from which share the workers take no new ticket of each size; the week has none
-                # (limits.ps1).
+                # `pickUp`: from which share the workers take no new ticket of each size, in a window that has such
+                # limits (limits.ps1).
                 $pickUp = Get-PickUp $property.Value.pickUp $window
                 if ($pickUp) {
                     $w.pickUp = $pickUp
@@ -1052,11 +1035,11 @@ function New-Snapshot($data) {
                 if ($budget -and $budget.$window -and -not $w.resetsAt) {
                     $w.resetsAt = [long]$budget.$window.resetsAt
                 }
-                # The week keeps room under its stop line for each human use on the account (limits.ps1): its guard,
-                # with the share of a whole week the owner set and what that keeps for the time left. `left`: the
-                # share of the week still to run.
+                # One window keeps room under its stop line for each human use on the account (limits.ps1,
+                # $KeepWindow): its guard, with the share of the whole window the owner set and what that keeps for the
+                # time left. `left`: the share of the window still to run.
                 $reserve = 0.0
-                if ($window -eq 'seven_day') {
+                if ($window -eq $KeepWindow) {
                     $left = $WindowSeconds[$window]
                     if ($w.resetsAt -and $w.resetsAt -gt $clock) {
                         $left = $w.resetsAt - $clock
@@ -1078,21 +1061,27 @@ function New-Snapshot($data) {
                 }
                 $account[$window] = $w
             }
-            # The Fable week (docs/QUEUE.md, The Fable limit), where the account has a reading of
-            # it: its share, reset and read time, its stop line and its design line (each the account's own, else
-            # limits.ps1's). No guards.
-            $fable = if ($usage) { $usage.$FableWindow } else { $null }
-            if ($fable) {
-                $stopAt = (Get-FableLines $property.Value.stopAt $null).stop
-                $w = @{ stopAt = $stopAt; ceiling = $stopAt; kept = 0.0; at = [long]$fable.at
-                    pickUp = Get-PickUp $property.Value.pickUp $FableWindow }
-                if ([long]$fable.resetsAt -le $clock) {
+            # The windows of some models (docs/QUEUE.md, A model's limit), each where the account has a reading of it:
+            # its share, reset and read time, its stop line and its start line (each the account's own, else the
+            # provider's). No guards.
+            foreach ($window in @($ModelWindows.Keys)) {
+                $reading = if ($usage) { $usage.$window } else { $null }
+                if (-not $reading) {
+                    continue
+                }
+                $stopAt = (Get-ModelLines $window $property.Value.stopAt $null).stop
+                $w = @{ stopAt = $stopAt; ceiling = $stopAt; kept = 0.0; at = [long]$reading.at }
+                $pickUp = Get-PickUp $property.Value.pickUp $window
+                if ($pickUp) {
+                    $w.pickUp = $pickUp
+                }
+                if ([long]$reading.resetsAt -le $clock) {
                     $w.used = 0.0
                 } else {
-                    $w.used = [double]$fable.used
-                    $w.resetsAt = [long]$fable.resetsAt
+                    $w.used = [double]$reading.used
+                    $w.resetsAt = [long]$reading.resetsAt
                 }
-                $account[$FableWindow] = $w
+                $account[$window] = $w
             }
             if ($data.logins -and $data.logins[$key]) {
                 $account.signedIn = [bool]$data.logins[$key].signedIn
@@ -1141,6 +1130,12 @@ function New-Snapshot($data) {
     }
 
     $color = [string]$(if ($data.settings) { $data.settings.color })
+    $titles = @{}
+    foreach ($entry in $models.models.PSObject.Properties) {
+        if ($entry.Value.title) {
+            $titles[$entry.Name] = [string]$entry.Value.title
+        }
+    }
     $snapshot = @{
         now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; login = $data.login; github = [bool]$data.gh
         # This project's name and the PC's projects, for the page's project switch.
@@ -1151,8 +1146,18 @@ function New-Snapshot($data) {
         left = @{ count = 0; seconds = 0; cost = 0.0 }
         # The advisor rule (docs/QUEUE.md, Models), with models.json's model as `base`, for the Details tab.
         advisor = (Get-AdvisorRule $models $complexities $data.settings) + @{ base = [string]$models.advisor.model }
-        # The models and efforts that Details offers for a complexity: models.json's two lists.
-        models = @($models.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($models.efforts)
+        # The models and efforts that Details offers for a complexity: models.json's two lists. And each model's name
+        # on the page, where models.json gives one (`title`).
+        models = @($models.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($models.efforts | Where-Object { $_ })
+        modelTitles = $titles
+        # The provider (its plugin's title; '' with none: no worker runs) and its windows for the Accounts tab, the
+        # account's own first: each @{ name; title; models (it holds only some models); keep (it holds the guards);
+        # seconds }.
+        provider = $(if ($script:Provider) { [string]$script:Provider.Title } else { '' })
+        windows = @(@($WindowSeconds.Keys) + @($ModelWindows.Keys) | ForEach-Object {
+            @{ name = $_; title = [string]$WindowTitles[$_]; models = $ModelWindows.Contains($_); keep = ($_ -eq $KeepWindow)
+                seconds = $(if ($ModelWindows.Contains($_)) { [long]$ModelWindows[$_].seconds } else { [long]$WindowSeconds[$_] }) }
+        })
         # The project's colour on the page (`color`): only a valid one, as a hand edit of the file skips the action.
         color = $(if ($color -match '^#[0-9a-fA-F]{6}\z') { $color.ToLowerInvariant() } else { '' })
         # The owner is away (docs/QUEUE.md, No blocking): the PC's switch, the same in every project's snapshot.

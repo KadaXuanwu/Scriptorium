@@ -1,25 +1,70 @@
 # The limits the owner sets on the workers' use of an account (docs/QUEUE.md, The budget): the stop line of each
-# window, the share of the week kept under its stop line for each human use of the account, and the pick-up limit of
-# each ticket size in the 5-hour window; and the ticket complexities the owner switched off. Pure functions,
-# dot-sourced
-# by budget.ps1 (the workers) and app/state.ps1 (the queue app), so both reckon the same ceiling. Checked by
-# budget.test.ps1.
+# window, the share kept under the stop line of one window for each human use of the account, and the pick-up limits
+# of a window; and the ticket complexities the owner switched off. The windows are the provider's (docs/PLUGINS.md, A
+# provider). Pure functions, dot-sourced by budget.ps1 (the workers) and app/state.ps1 (the queue app), so both reckon
+# the same ceiling. Checked by budget.test.ps1.
 
-$WindowSeconds = @{ five_hour = 18000; seven_day = 604800 }
+# The provider's windows (its models.json, `windows`), as Set-Windows reads them. None before it, and none for a
+# provider that has no usage reading: its workers run until the plan refuses.
+# The windows of the whole account, shortest first: each one's length in seconds.
+$WindowSeconds = [ordered]@{}
+# The windows of some models only: each one's @{ models (a wildcard of model names); after (the pick a job goes on
+# with when the window is used up, or '') }. One that is used up stops its models, not the account.
+$ModelWindows = [ordered]@{}
+# Every window's name on the page.
+$WindowTitles = @{}
 # The stop line: the share of a window where the workers stop, unless the account sets its own (`stopAt`, queue app,
-# Accounts). The 5-hour window stays below 100 %: readings come in whole per cent and lag a run by up to 30 s. The week
-# has no margin: a run that hits the weekly limit pauses until the reset, so none is lost.
-$DefaultStopAt = @{ five_hour = 0.98; seven_day = 1.0 }
-# The pick-up limits: the share of the 5-hour window from which the workers take no new ticket
-# of a size, unless the account sets its own (`pickUp`, queue app, Accounts). A bigger ticket stops being taken
-# earlier, so a run seldom reaches the stop line, where it ends at its next checkpoint. The week has none: there
-# only the ceiling holds a new ticket back. Placeholders.
-$DefaultPickUp = @{
-    five_hour = @{ S = 0.90; M = 0.75; L = 0.50 }
+# Accounts). In a window of some models: the share from which no run gets one of them as its advisor.
+$DefaultStopAt = @{}
+# The pick-up limits: the share of a window from which the workers take no new ticket of a size, unless the account
+# sets its own (`pickUp`, queue app, Accounts). A bigger ticket stops being taken earlier, so a run seldom reaches the
+# stop line, where it ends at its next checkpoint. A window of some models has one under a name of its own: from it no
+# new run starts on its models. A window with none holds a new ticket back only at its ceiling.
+$DefaultPickUp = @{}
+# The window that keeps room for the human uses of an account (Get-Reserve), '' for none.
+$KeepWindow = ''
+# The shortest and the longest window of the whole account, '' with none (budget.ps1 and worker.ps1, the dispatcher).
+$ShortWindow = ''
+$LongWindow = ''
+
+# Reads the provider's windows into the tables above. Each window: `seconds`, and where it has them `title`, `stopAt`
+# (else 1), `pickUp` (@{ S; M; L } for sizes), `keep` (it holds the kept share), `models` and `after`.
+function Set-Windows($windows) {
+    $script:WindowSeconds = [ordered]@{}
+    $script:ModelWindows = [ordered]@{}
+    $script:WindowTitles = @{}
+    $script:DefaultStopAt = @{}
+    $script:DefaultPickUp = @{}
+    $script:KeepWindow = ''
+    $entries = @(if ($windows) { $windows.PSObject.Properties | Sort-Object { [long]$_.Value.seconds } })
+    foreach ($entry in $entries) {
+        $name = $entry.Name
+        $window = $entry.Value
+        $script:WindowTitles[$name] = if ($window.title) { [string]$window.title } else { $name }
+        $script:DefaultStopAt[$name] = if ($null -ne $window.stopAt) { [double]$window.stopAt } else { 1.0 }
+        if ($window.pickUp) {
+            $limits = @{}
+            foreach ($property in $window.pickUp.PSObject.Properties) {
+                $limits[$property.Name] = [double]$property.Value
+            }
+            $script:DefaultPickUp[$name] = $limits
+        }
+        if ($window.models) {
+            $script:ModelWindows[$name] = @{ models = [string]$window.models; after = [string]$window.after; seconds = [long]$window.seconds }
+            continue
+        }
+        $script:WindowSeconds[$name] = [long]$window.seconds
+        if ($window.keep -and -not $script:KeepWindow) {
+            $script:KeepWindow = $name
+        }
+    }
+    $names = @($script:WindowSeconds.Keys)
+    $script:ShortWindow = if ($names.Count) { $names[0] } else { '' }
+    $script:LongWindow = if ($names.Count) { $names[-1] } else { '' }
 }
 
-# An account's pick-up limits in a window, @{ S; M; L } (the Fable week: @{ design }): its own setting ($pickUp), else
-# the default. $null for a window that has no pick-up limits.
+# An account's pick-up limits in a window, @{ S; M; L } (a window of some models: its one limit): its own setting
+# ($pickUp), else the default. $null for a window that has no pick-up limits.
 function Get-PickUp($pickUp, [string] $window) {
     if (-not $DefaultPickUp.ContainsKey($window)) {
         return $null
@@ -35,11 +80,11 @@ function Get-PickUp($pickUp, [string] $window) {
     return $limits
 }
 
-# The share of a whole week kept for each human use of an account, unless the settings say (`keep`, queue app,
+# The share of a whole window kept for each human use of an account, unless the settings say (`keep`, queue app,
 # Accounts). Placeholders.
 $DefaultKeep = @{ frontdesk = 0.10; personal = 0.15 }
 
-# The share of a whole week that a human use's usage guard holds: the settings' value (0 keeps nothing), else the
+# The share of the whole window that a human use's usage guard holds: the settings' value (0 keeps nothing), else the
 # default.
 # shortcut: a share of the account the use is on, not scaled by its plan; scale it when a human use moves to an
 # account on another plan.
@@ -50,51 +95,63 @@ function Get-Keep([string] $use, $settings) {
     return [double]$DefaultKeep[$use]
 }
 
-# What a usage guard keeps now: its share for the part of the week still to run (three days after a
-# reset it keeps 4/7 of the share). The part for the days gone is free for the workers.
+# What a usage guard keeps now: its share for the part of the window still to run (three days after the reset of a
+# week it keeps 4/7 of the share). The part for the time gone is free for the workers. Nothing where no window keeps.
 function Get-Reserve([double] $share, [long] $left) {
-    $week = $WindowSeconds.seven_day
-    return $share * [math]::Min([math]::Max($left, 0), $week) / $week
+    if (-not $KeepWindow) {
+        return 0.0
+    }
+    $whole = [long]$WindowSeconds[$KeepWindow]
+    return $share * [math]::Min([math]::Max($left, 0), $whole) / $whole
 }
 
 # The share of a window the workers may reach: the stop line ($stopAt, else the default) less the reserve on an
 # account a human use is on too. The reserve is an offset below the line, so a lower line
 # never uses it up.
 function Get-Ceiling([double] $reserve, [string] $window, $stopAt = $null) {
-    $stop = if ($stopAt) { [double]$stopAt } else { $DefaultStopAt[$window] }
+    $stop = if ($stopAt) { [double]$stopAt } else { [double]$DefaultStopAt[$window] }
     return [math]::Max(0.0, $stop - $reserve)
 }
 
-# The Fable limit (docs/QUEUE.md): the plan's weekly window of Fable alone, which the CLI's rate
-# limit events name `seven_day_overage_included`. Only Fable runs carry it. It is not in $WindowSeconds: a full Fable
-# window stops Fable, not the account. It has two lines, each the account's own (queue app,
-# Accounts), else the default here, until the reset:
-# - the design line (`pickUp.seven_day_overage_included.design`): from it no new Fable run (a `design` ticket) starts on
-#   the account. Lower than the stop line, so the Fable runs in flight end under it and the advisor goes on all week.
-#   Placeholder: two `design` runs moved the window about 2 %.
-# - the stop line (`stopAt.seven_day_overage_included`): from it no new session gets the Fable advisor. Placeholder:
-#   readings come in whole per cent, and one went from 0.99 to a refusal at 1.02.
-$FableWindow = 'seven_day_overage_included'
-$FableStopAt = 0.98
-$DefaultPickUp[$FableWindow] = @{ design = 0.90 }
-
-# Whether an account's Fable window is used up at $now, from its stored usage reading and a line ($stopAt).
-function Test-FableOut($usage, [long] $now, $stopAt = $null) {
-    $stop = if ($stopAt) { [double]$stopAt } else { $FableStopAt }
-    $fable = if ($usage) { $usage.$FableWindow } else { $null }
-    return [bool]($fable -and [long]$fable.resetsAt -gt $now -and [double]$fable.used -ge $stop)
+# The window of some models that covers $model ($ModelWindows), '' for a model that only the account's windows hold.
+function Get-ModelWindow([string] $model) {
+    if ($model) {
+        foreach ($window in @($ModelWindows.Keys)) {
+            if ($model -like $ModelWindows[$window].models) {
+                return $window
+            }
+        }
+    }
+    return ''
 }
 
-# An account's two Fable lines from its settings entry's `stopAt` and `pickUp`: @{ stop; design }. The design line is
-# never above the stop line.
-function Get-FableLines($stopAt, $pickUp) {
-    $stop = if ($stopAt -and $stopAt.$FableWindow) { [double]$stopAt.$FableWindow } else { $FableStopAt }
-    return @{ stop = $stop; design = [math]::Min((Get-PickUp $pickUp $FableWindow).design, $stop) }
+# Whether a window of an account is used up at $now, from the account's stored usage reading and a line ($stopAt, else
+# the window's stop line).
+function Test-WindowOut($usage, [string] $window, [long] $now, $stopAt = $null) {
+    $stop = if ($stopAt) { [double]$stopAt } else { [double]$DefaultStopAt[$window] }
+    $reading = if ($usage -and $window) { $usage.$window } else { $null }
+    return [bool]($reading -and [long]$reading.resetsAt -gt $now -and [double]$reading.used -ge $stop)
+}
+
+# An account's two lines in a window of some models (docs/QUEUE.md, A model's limit), from its settings entry's
+# `stopAt` and `pickUp`, each its own, else the default: @{ stop; start }.
+# - start (the window's pick-up limit): from it no new run starts on the window's models on the account. Lower than
+#   the stop line, so the runs in flight end under it and the advisor goes on. The stop line where the window has none.
+# - stop: from it no new session gets one of the window's models as its advisor.
+# The start line is never above the stop line.
+function Get-ModelLines([string] $window, $stopAt, $pickUp) {
+    $stop = if ($stopAt -and $stopAt.$window) { [double]$stopAt.$window } else { [double]$DefaultStopAt[$window] }
+    $start = $stop
+    $limits = Get-PickUp $pickUp $window
+    if ($limits) {
+        $start = [math]::Min([double](@($limits.Values) | Measure-Object -Minimum).Minimum, $stop)
+    }
+    return @{ stop = $stop; start = $start }
 }
 
 # The advisor of a run (docs/QUEUE.md, Models): the rule's model (project.ps1, Get-AdvisorRule) for a run of one of
 # `advisor.complexities` on another model, while the account has the advisor's model ($hasAdvisor: not refused, not at
-# the Fable limit); '' for none. Each advisor call reads the whole session again, uncached.
+# its window's stop line); '' for none, and with a provider that has no advisor.
 function Get-Advisor($advisor, [string] $complexity, [string] $model, [bool] $hasAdvisor) {
     if (-not $complexity) {
         $complexity = 'medium'
@@ -112,7 +169,7 @@ function Get-FallbackEffort($advisor, [string] $complexity, [string] $model, [st
     if (-not $complexity) {
         $complexity = 'medium'
     }
-    if (-not $advisor -or $hasAdvisor -or $model -eq [string]$advisor.model -or @($advisor.complexities) -notcontains $complexity) {
+    if (-not $advisor -or -not $advisor.model -or $hasAdvisor -or $model -eq [string]$advisor.model -or @($advisor.complexities) -notcontains $complexity) {
         return $effort
     }
     $raised = if ($advisor.fallback) { [string]$advisor.fallback.$complexity } else { '' }
@@ -145,59 +202,28 @@ function Get-Hold([bool] $limitNoted, [bool] $stopNoted, [bool] $stopStands, [bo
     return $(if ($stopNoted -and $clean -and $enabled) { 'pause' } else { $null })
 }
 
-# Why a run that ended with an error is not its ticket's failure, from its result line ($result: `is_error`, the
-# error's text in `result`, `total_cost_usd` and `subtype`):
+# Why a run that ended with an error is not its ticket's failure. The provider reads it from the run's log
+# (docs/PLUGINS.md, A provider, ReadRun):
 # - 'model': the plan does not include the model (only a start is refused for it).
 # - 'subscription': the account's subscription is refused (a payment past due, a subscription that ended).
 # - 'login': the account is signed out.
 # - 'limit': the plan's usage limit.
-# - 'fable': the account's Fable limit (The Fable limit): only Fable stops, the account's other models go on.
-# - 'start': the run did no work (no cost) and its first request failed, for a cause the text does not name: the
-#   service is down, a wrong model name. It catches a wording this list does not know. Before it, a refusal with a new
-#   wording marked a ticket stuck every 75 seconds.
-# - '': the run's own failure, its cap (models.json, runCap: `subtype` `error_max_budget_usd`), or no error.
+# - 'window': the limit of a window of some models: only those stop, the account's other models go on.
+# - 'start': the run did no work and its first request failed, for a cause the provider cannot name: the service is
+#   down, a wrong model name. Before it, a refusal with a new wording marked a ticket stuck every 75 seconds.
+# - '': the run's own failure, its cap, or no error.
 # 'subscription' and 'login' put the account out for every worker on it; so does 'start' when the account refuses a
-# probe too, else it stops only the worker (worker.ps1, Get-Out). The texts are the CLI's own.
+# probe too, else it stops only the worker (worker.ps1, Get-Out).
 $OutKinds = @('subscription', 'login', 'start')
-# The cheapest request an account answers: Haiku with no tools, settings, plugins or skills, and a one-line system
-# prompt in place of Claude Code's own, about 900 tokens. The page's Ping (app/server.ps1) and the worker's probe
-# (worker.ps1, Invoke-Probe) send it, each in a folder with no CLAUDE.md. A probe of the whole harness read 46,097
-# tokens.
-$BareRequestArgs = @('--model', 'haiku', '--tools=', '--system-prompt', 'Reply with one dot.', '--setting-sources=local',
-    '--strict-mcp-config', '--disable-slash-commands', '--max-turns', '1')
-function Get-Refusal($result) {
-    # Before the texts: the cap's wording is unknown, and a word like "limit" would hold the run for the account.
-    if (-not $result -or -not $result.is_error -or $result.subtype -eq 'error_max_budget_usd') {
-        return ''
-    }
-    $text = [string]$result.result
-    $noWork = [double]$result.total_cost_usd -eq 0
-    # First: one wording ends "limit reached", and its api_error is the same as a plan without the model's.
-    if ($text -match 'Fable limit') {
-        return 'fable'
-    }
-    if ($noWork -and $text -match 'requires usage credits|not available|no access|access to') {
-        return 'model'
-    }
-    if ($text -match 'Claude subscription|past due|settings/billing|subscription access') {
-        return 'subscription'
-    }
-    if ($text -match 'authenticat|OAuth|not logged in|/login') {
-        return 'login'
-    }
-    if ($text -match 'usage limit|rate limit|limit reached|hit your limit') {
-        return 'limit'
-    }
-    # A run that ended before its first request (a session to resume that is gone, a wrong argument) is its own
-    # failure: its `subtype` is not 'success'.
-    return $(if ($noWork -and $result.subtype -eq 'success') { 'start' } else { '' })
-}
 
-# Whether the workers take a new ticket of this size on an account: in both windows its usage is under the ceiling,
+# Whether the workers take a new ticket of this size on an account: in every window its usage is under the ceiling,
 # and under the size's pick-up limit where the window has them. $budget: per window @{ used; ceiling; pickUp }, with
 # pickUp = @{ S; M; L } or $null.
 function Get-Fit([string] $size, $budget) {
-    foreach ($window in $WindowSeconds.Keys) {
+    foreach ($window in @($WindowSeconds.Keys)) {
+        if (-not $budget[$window]) {
+            continue
+        }
         $limit = $budget[$window].ceiling
         if ($budget[$window].pickUp) {
             $limit = [math]::Min($budget[$window].pickUp[$size], $limit)
