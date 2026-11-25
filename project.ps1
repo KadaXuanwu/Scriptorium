@@ -210,6 +210,13 @@ function Split-Pick($models, [string] $pick) {
     return @{ model = [string]$model; effort = [string]$effort }
 }
 
+# The efforts a model takes (docs/PLUGINS.md, models.json): its own `efforts`, else the provider's list; none where
+# neither has one.
+function Get-ModelEfforts($models, [string] $model) {
+    $own = if ($model -and $models.models.$model) { $models.models.$model.efforts }
+    return @($(if ($null -ne $own) { $own } else { $models.efforts }) | Where-Object { $_ })
+}
+
 # A compact size (docs/CONFIG.md, The compact size): the context size at which a run compacts, in whole tokens in
 # plain digits, within the sizes the provider takes ($range: models.json's `compactRange`, the least and the most;
 # any size without one). Throws for anything else: a size written as '250k' was once read as the least without a word.

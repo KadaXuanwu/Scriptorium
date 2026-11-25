@@ -2,7 +2,7 @@
   "models": {
     "deep-1": { "title": "Deep 1", "effort": "xhigh" },
     "main-1": { "title": "Main 1", "effort": "medium" },
-    "mid-1": { "effort": "xhigh" },
+    "mid-1": { "effort": "high", "efforts": ["low", "high"] },
     "small-1": { "effort": "xhigh" }
   },
   "efforts": ["low", "medium", "high", "xhigh", "max"],

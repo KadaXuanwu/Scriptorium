@@ -134,6 +134,10 @@ Assert-Equal "$($shown.provider) | $($shown.tools.bare.title) $($shown.tools.bar
 $bareTake = $shown.workers[0].takes[0]
 Assert-Equal "$($shown.tools.bare.models -join ',') $($shown.tools.bare.efforts.Count) $($shown.tools.bare.compactRange.Count) '$($shown.tools.bare.advisor)' | '$($bareTake.effort)' $($bareTake.compactAt) '$($bareTake.advisor)' '$($shown.workers[0].mapping.advisor)'" "only 0 0 '' | '' 0 '' ''" 'a tool with no efforts, no compact size and no advisor'
 Assert-Equal "$($shown.tools.test.models.Count) $($shown.tools.test.efforts.Count) $($shown.tools.test.compactRange -join '-') $($shown.tools.test.advisor) $($shown.modelTitles.'deep-1')" '4 5 67000-967000 deep-1 Deep 1' 'a tool with all of them'
+# A model with efforts of its own (tests/provider: mid-1) has them in the snapshot, as a list through the JSON too,
+# with the effort its pick gets when it names none; a model without them has no entry.
+$perModel = (Json $shown).tools.test.perModel
+Assert-Equal "$(@($perModel.'mid-1'.efforts).Count) $($perModel.'mid-1'.efforts -join ',') $($perModel.'mid-1'.effort) $($null -eq $perModel.'main-1')" '2 low,high high True' 'each model''s own efforts'
 Assert-Equal "$($script:Provider.Name) $($shown.ContainsKey('loginTaken'))" 'test False' 'the default provider is set again after the snapshot'
 # Now: each worker's account is read with the windows of the worker's own tool. Worker 1's month is used up, so the
 # ticket goes to worker 2, though the default tool's windows show nothing used on worker 1's account.

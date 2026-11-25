@@ -287,9 +287,9 @@ restarts the workers and the page between jobs, as a change to a `.ps1` does.
 
 | Key | Needed | What |
 | --- | ------ | ---- |
-| `models` | yes | each model the page offers: its `effort` when a pick names none, and its `title` on the page |
+| `models` | yes | each model the page offers: its `effort` when a pick names none, its `title` on the page, and its own `efforts` where it takes only some of the list (`[]`: none) |
 | `complexities` | yes | for `low`, `medium`, `high` and `design` (the base's four, [QUEUE.md](QUEUE.md), Complexities) the candidate models, best first, each `model` or `model@effort`; `advisor` for the ones whose runs get the advisor. A complexity of the provider's own needs a `description` |
-| `efforts` | no | the efforts a run can have. Left out: runs have no effort |
+| `efforts` | no | the efforts a run can have. Left out: runs have no effort. A tool whose command line names a model and its effort as one name lists them apart here and joins them in `GetCommand` |
 | `effort` | no | the effort of a model that `models` does not list |
 | `advisor` | no | `model`: the advisor's model. Left out: no advisor |
 | `compactAt`, `compactRange` | no | the default compact size, and the least and the most the tool takes ([CONFIG.md](CONFIG.md), The compact size). Left out: runs get no compact size |

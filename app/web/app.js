@@ -205,6 +205,8 @@ const toolHas = (s) => ({ efforts: (s?.efforts || []).length > 0, advisor: Boole
 // The same of one coding tool (toolView), for a worker's mapping. A snapshot from before a tool had these lists has
 // none of the three: its rows show the model alone.
 const mappingHas = (tool) => ({ efforts: (tool?.efforts || []).length > 0, advisor: Boolean(tool?.advisor), compact: tool?.compactRange?.length === 2 });
+// The efforts one model of a coding tool takes: its own list where its models.json gives one (`perModel`), else the tool's.
+const effortsOf = (tool, model) => tool?.perModel?.[model]?.efforts || tool?.efforts || [];
 const toolBadge = (tool) => (tool ? `<span class="badge tool" title="The coding tool that runs here">${esc(tool)}</span>` : '');
 // The accounts as the options of a select, each by its name alone, so the closed select shows the name. While the PC
 // has more than one coding tool, the list is in groups, one for each tool. `tool` gives an account's tool by name.
@@ -406,7 +408,7 @@ function mappingRow(worker, t, tool, has) {
       ${icon(t.on ? 'check' : 'lock')}<span><b>${name}</b>${jobs}</span></button>${t.description ? `<button class="about" popovertarget="${about}" aria-label="What ${name} is">${icon('info')}</button>
       <span class="pop about-text" id="${about}" popover>${esc(t.description)}</span>` : ''}</span>
     <select data-run-model="${name}" data-worker="${id}" aria-label="Model of a ${name} run"${locked}>${pickList([...(tool?.models || []), t.base?.model], t.model, modelName)}</select>
-    <select data-run-effort="${name}" data-worker="${id}" aria-label="Effort of a ${name} run"${has.efforts ? locked : ' class="none" disabled'}>${pickList(tool?.efforts || [], t.effort, (v) => v)}</select>
+    <select data-run-effort="${name}" data-worker="${id}" aria-label="Effort of a ${name} run"${has.efforts ? locked : ' class="none" disabled'}>${pickList(effortsOf(tool, t.model), t.effort, (v) => v)}</select>
     <label class="compact${has.compact ? '' : ' none'}"><input type="number"${has.compact && !t.linked ? '' : ' disabled'} inputmode="numeric" min="${Math.round(least / 1000)}" max="${Math.round(most / 1000)}" step="1" value="${Math.round((t.compactAt || 0) / 1000)}"
       data-compact="${name}" data-worker="${id}" aria-label="Thousands of tokens at which a ${name} run compacts its context">k tokens</label>
     ${notes.length ? `<small>${notes.join(' · ')}</small>` : ''}${advisor}</div>`;
@@ -1834,6 +1836,9 @@ document.addEventListener('change', async (e) => {
     const name = data.runModel || data.runEffort;
     const row = e.target.closest('.config-row');
     const pick = { model: row.querySelector('[data-run-model]').value, effort: row.querySelector('[data-run-effort]').value };
+    // A model with efforts of its own that lack the one shown takes its own default (Flash has no xhigh, say).
+    const own = toolView(states[project], workerOf(states[project], data.worker)?.provider)?.perModel?.[pick.model];
+    if (own && !own.efforts.includes(pick.effort)) pick.effort = own.effort;
     const same = (t) => t && t.model === pick.model && (t.effort || '') === pick.effort;
     await act(project, { action: 'model', worker: data.worker, complexity: name, ...pick }, {
       keys: [`mapping:${data.worker}:${name}`],

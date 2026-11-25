@@ -206,8 +206,9 @@ Workers, Config; Settings, `workers.<id>.mapping`). One function gives a worker'
 the page: `Get-WorkerMapping` in [project.ps1](../project.ps1).
 
 - **A pick** is the complexity's one candidate, from the worker's next run. The page offers the models of `models`
-  and the efforts of `efforts`, and the server saves nothing else: a coding tool may take an effort it does not know
-  without a word. With a tool that lists no efforts, a pick is the model alone. A model that `scriptorium.json` names
+  and the efforts of `efforts` (a model's own `efforts` where it has them), and the server saves nothing else: a
+  coding tool may take an effort it does not know without a word. With a model that takes no efforts, a pick is the
+  model alone. A model that `scriptorium.json` names
   for the complexity stays a valid pick. Two things do not follow the pick: a held run resumes on the model it started
   on, and a run without its advisor takes the complexity's `advisorFallback` effort (Without the advisor).
 - **One for each coding tool:** a worker has a mapping for each tool it was on, under the provider plugin's name. On

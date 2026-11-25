@@ -339,10 +339,28 @@ function Get-ComplexitySettings($settings, [string] $name) {
     return $settings.complexities.$name
 }
 
+# Each model of a models.json ($list) with efforts of its own: that list (Get-ModelEfforts) and the effort of a pick
+# that names none, for its row in a worker's Config on the page.
+function Get-OwnEfforts($list) {
+    $own = @{}
+    foreach ($entry in $list.models.PSObject.Properties) {
+        if ($null -ne $entry.Value.efforts) {
+            $efforts = @(Get-ModelEfforts $list $entry.Name)
+            $effort = (Split-Pick $list $entry.Name).effort
+            if ($efforts -cnotcontains $effort) {
+                $effort = if ($efforts.Count) { $efforts[-1] } else { '' }
+            }
+            $own[$entry.Name] = @{ efforts = $efforts; effort = $effort }
+        }
+    }
+    return $own
+}
+
 # The owner's pick of a complexity's model and effort in a worker's mapping ($settings: Get-MappingToEdit;
-# docs/QUEUE.md, Settings, `complexities.<name>.model`), as `model@effort`. Only an effort of models.json's list, and a
-# model of its list or the base's own (a project may name another in scriptorium.json): a coding tool may take an
-# effort it does not know without a word. With a coding tool that lists no efforts, the pick is the model alone. The
+# docs/QUEUE.md, Settings, `complexities.<name>.model`), as `model@effort`. Only an effort the model takes
+# (Get-ModelEfforts), and a model of its list or the base's own (a project may name another in scriptorium.json): a
+# coding tool may take an effort it does not know without a word. With a model that takes no efforts, the pick is the
+# model alone. The
 # base's own pick is not saved, so the worker follows models.json and scriptorium.json again. $complexities: the list
 # with these picks (project.ps1, Get-Complexities).
 function Set-ComplexityModel($settings, $models, $complexities, [string] $name, [string] $model, [string] $effort) {
@@ -351,7 +369,7 @@ function Set-ComplexityModel($settings, $models, $complexities, [string] $name, 
         throw "no complexity $name"
     }
     $base = Split-Pick $models $entry.base
-    $efforts = @($models.efforts | Where-Object { $_ })
+    $efforts = @(Get-ModelEfforts $models $model)
     if (@($models.models.PSObject.Properties | ForEach-Object { $_.Name }) + $base.model -cnotcontains $model -or
         ($efforts.Count -and $efforts -cnotcontains $effort) -or (-not $efforts.Count -and $effort)) {
         throw "models.json lists no model '$model' or no effort '$effort'"
@@ -1116,7 +1134,7 @@ function New-Snapshot($data) {
     # Each coding tool this page serves, by its provider plugin's name: its models, what scriptorium.json says to it
     # (`config`) and the project's own complexities there (`own`) for a worker's mapping, and what the page draws of it
     # (`view`: its title, the features it has by their hooks' names, what a mapping offers on it (its models and
-    # efforts, the compact sizes it takes, its advisor's model; each empty where the tool has none), and its
+    # efforts, each model's own efforts where it has some, the compact sizes it takes, its advisor's model; each empty where the tool has none), and its
     # windows for an account's card, the account's own first: each @{ name; title; models (it holds only some
     # models); keep (it holds the guards); seconds }).
     $default = $script:Provider
@@ -1140,6 +1158,7 @@ function New-Snapshot($data) {
             view = @{
                 title = [string]$plugin.Title; hooks = @($ProviderFeatures | Where-Object { Test-ProviderHook $_ }); card = Get-CardArt $plugin
                 models = @($list.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($list.efforts | Where-Object { $_ })
+                perModel = Get-OwnEfforts $list
                 compactRange = @($list.compactRange | Where-Object { $_ }); advisor = [string]$list.advisor.model
                 windows = @(@($WindowSeconds.Keys) + @($ModelWindows.Keys) | ForEach-Object {
                     @{ name = $_; title = [string]$WindowTitles[$_]; models = $ModelWindows.Contains($_); keep = ($_ -eq $KeepWindow)

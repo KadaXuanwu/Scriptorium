@@ -183,6 +183,14 @@ foreach ($bad in @('none', 'main-1', 'high'), @('low', 'main', 'high'), @('low',
     Assert-Equal $threw $true "no pick: $($bad -join ' / ')"
 }
 Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000},"tidy":{"model":"main-1@low"}}' 'a refused pick changes nothing'
+# A model with efforts of its own (mid-1: low and high) takes only those; another model takes the provider's list.
+Assert-Equal "$((Get-ModelEfforts $models 'mid-1') -join ',') | $((Get-ModelEfforts $models 'main-1') -join ',') | $(@(Get-ModelEfforts ('{}' | ConvertFrom-Json) 'x').Count)" 'low,high | low,medium,high,xhigh,max | 0' 'the efforts of a model'
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'low' 'mid-1' 'low'
+Assert-Equal $file.complexities.low.model 'mid-1@low' 'an effort of the model''s own list'
+$threw = $false
+try { Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'low' 'mid-1' 'xhigh' | Out-Null } catch { $threw = $true }
+Assert-Equal "$threw $($file.complexities.low.model)" 'True mid-1@low' 'an effort of the provider''s list that the model does not take is refused'
+$file.complexities.low.PSObject.Properties.Remove('model')
 # A model that the project names outside models.json's list stays a valid pick for its complexity: its effort alone
 # changes, and the way back to it is open.
 $other = '{ "complexities": { "low": { "models": ["main-0@high"] } } }' | ConvertFrom-Json

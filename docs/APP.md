@@ -113,7 +113,8 @@ worker's next run. A run in progress or on hold keeps its model, its effort and 
   own, and stay buttons.
 - **A row for each complexity,** with its switch, its name and an (i) button that shows its description:
   - **Model and effort** are two lists: the models and the efforts of the coding tool's `models.json`
-    (`complexities.<name>.model`). A pick that is not the base's shows the base's under it as Default. Pick the
+    (`complexities.<name>.model`). The Effort list is the picked model's own where it has one; a new model whose
+    list lacks the effort shown takes its own default. A pick that is not the base's shows the base's under it as Default. Pick the
     default pair again, and the worker follows `models.json` and `scriptorium.json` again.
   - **Compacts near** is the compact size of the complexity in thousands of tokens (`complexities.<name>.compactAt`;
     [CONFIG.md](CONFIG.md), The compact size).
