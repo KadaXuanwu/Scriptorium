@@ -890,7 +890,7 @@ function Invoke-Action($request) {
             $target = [string]$request.target
             $context = Get-MappingContext $worker
             $toolOf = Get-WorkerTools $context.settings $context.here (Get-KnownProviders)
-            Save-Settings (Set-WorkerFollow $context.settings $worker $context.tool $target $toolOf $context.mapping.picks $context.own)
+            Save-Settings (Set-WorkerFollow $context.settings $worker $context.tool $target $toolOf $context.mapping.picks $context.own @($context.complexities | ForEach-Object { $_.name }))
             return "mapping: worker $worker $(if ($target) { "follows worker $target" } else { 'has its own' })"
         }
         'away' {

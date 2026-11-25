@@ -162,7 +162,8 @@ function Get-WorkerMapping($settings, [string] $worker, [string] $tool, [string[
     }
     $linked = $end -ne $worker
     $source = Get-MappingEntry $settings $end $tool
-    $kept = @(if ($linked -and $here -notcontains $end) { $own })
+    # Not a null name: a caller that passes a function's empty list on passes $null.
+    $kept = @(if ($linked -and $here -notcontains $end) { $own | Where-Object { $_ } })
     $complexities = [pscustomobject]@{}
     foreach ($property in @(if ($source -and $source.complexities) { $source.complexities.PSObject.Properties })) {
         if ($kept -notcontains $property.Name) {

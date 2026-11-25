@@ -251,6 +251,8 @@ Assert-Equal (Mapped '3' 'test' $all) '2>1  {"low":{"model":"small-1@max"},"revi
 Assert-Equal (Mapped '2' 'test' @('2', '3')) '1>1 review,tidy {"low":{"model":"small-1@max"},"review":{"model":"mid-1@low"}} main-1' 'the last worker is in another project: the project''s own complexities stay the worker''s'
 Assert-Equal (Mapped '3' 'test' @('2', '3')) '2>1 review,tidy {"low":{"model":"small-1@max"}} main-1' 'and a worker with no pick of its own runs them on the files'''
 Assert-Equal (Mapped '4' 'bare' @('4')) '>4  {} ' 'no mapping: the files'
+$none = Get-WorkerMapping ($register | ConvertFrom-Json) '2' 'test' $null @('2', '3')
+Assert-Equal "$($none.kept.Count) $($none.picks.complexities | ConvertTo-Json -Depth 6 -Compress)" '0 {"low":{"model":"small-1@max"},"review":{"model":"deep-1@max"}}' 'a project with no complexity of its own, its names passed on as nothing'
 Assert-Equal (Mapped '1' '' $all) '>1  {} ' 'no coding tool, no picks'
 $looped = $register | ConvertFrom-Json
 Set-JsonProperty $looped.workers.'1'.mapping.test 'follows' '3'
@@ -268,14 +270,17 @@ function Refused([string] $worker, [string] $target) {
 Assert-Equal (Refused '1' '3') 'worker 3 follows worker 1 already' 'no loop'
 Assert-Equal (Refused '1' '4') 'worker 4 is on another coding tool' 'not a worker on another tool'
 Assert-Equal "$(Refused '1' '1') | $(Refused '1' '9')" 'no worker 1 to follow | no worker 9 to follow' 'not itself, and no worker the PC does not know'
-# Its own again: it starts from the picks it ran on, as a copy.
+# Its own again: it starts from the picks it ran on, as a copy. Both changes touch only the complexities the worker
+# has now: its pick for a complexity of another project's own (`elsewhere`) waits for its return there.
+$has = @('low', 'medium', 'high', 'review', 'design')
+Set-JsonProperty $settings.workers.'2'.mapping.test.complexities 'elsewhere' ('{"model":"mid-1@max"}' | ConvertFrom-Json)
 $picks = (Get-WorkerMapping $settings '2' 'test' @('review') @('2', '3')).picks
-$settings = Set-WorkerFollow $settings '2' 'test' '' $toolOf $picks @('review')
-Assert-Equal ($settings.workers.'2'.mapping.test | ConvertTo-Json -Depth 6 -Compress) '{"complexities":{"low":{"model":"small-1@max"},"review":{"model":"mid-1@low"}},"advisor":{"model":"main-1"}}' 'its own again, with the picks it ran on'
+$settings = Set-WorkerFollow $settings '2' 'test' '' $toolOf $picks @('review') $has
+Assert-Equal ($settings.workers.'2'.mapping.test | ConvertTo-Json -Depth 6 -Compress) '{"complexities":{"elsewhere":{"model":"mid-1@max"},"low":{"model":"small-1@max"},"review":{"model":"mid-1@low"}},"advisor":{"model":"main-1"}}' 'its own again, with the picks it ran on'
 $settings.workers.'2'.mapping.test.complexities.low.model = 'mid-1@low'
 Assert-Equal $settings.workers.'1'.mapping.test.complexities.low.model 'small-1@max' 'a change of its own leaves the worker it followed'
-$settings = Set-WorkerFollow $settings '2' 'test' '1' $toolOf $null @('review')
-Assert-Equal ($settings.workers.'2'.mapping.test | ConvertTo-Json -Depth 6 -Compress) '{"complexities":{"review":{"model":"mid-1@low"}},"follows":"1"}' 'a link keeps only the picks of the project''s own complexities'
+$settings = Set-WorkerFollow $settings '2' 'test' '1' $toolOf $null @('review') $has
+Assert-Equal ($settings.workers.'2'.mapping.test | ConvertTo-Json -Depth 6 -Compress) '{"complexities":{"elsewhere":{"model":"mid-1@max"},"review":{"model":"mid-1@low"}},"follows":"1"}' 'a link keeps the picks of the project''s own complexities, and of another project''s'
 # A worker that goes away: its followers keep its picks.
 $settings = Remove-MappingLinks ($register | ConvertFrom-Json) '2'
 Assert-Equal "$($settings.workers.'3'.mapping.test.follows) $(Mapped '3' 'test' $all $settings)" '1 1>1  {"low":{"model":"small-1@max"},"review":{"model":"deep-1@max"}} main-1' 'the worker in the middle goes: its follower follows the next'

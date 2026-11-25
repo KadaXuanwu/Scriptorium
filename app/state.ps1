@@ -222,11 +222,13 @@ function Get-WorkerTools($settings, [string[]] $here, $providers) {
 
 # The register with worker $id's mapping for the coding tool $tool linked to worker $target's, or its own again
 # ($target ''). A link goes over any number of workers, but never back to the worker itself, and only to a worker on
-# the same tool ($toolOf: Get-WorkerTools). The linked worker keeps only its picks for the project's own complexities
-# ($own): those stay its own while the last worker of the chain is in another project (project.ps1,
-# Get-WorkerMapping). Its own again, it starts from the picks it ran on until now ($picks: Get-WorkerMapping's), so
-# the click changes no run.
-function Set-WorkerFollow($settings, [string] $id, [string] $tool, [string] $target, $toolOf, $picks, [string[]] $own = @()) {
+# the same tool ($toolOf: Get-WorkerTools). Both changes touch only the complexities the worker has now ($names: its
+# list in this project): a pick for a complexity of another project's own waits for the worker's return there.
+# - Linked, the worker loses its picks for those, but for this project's own complexities ($own): they stay its own
+#   while the last worker of the chain is in another project (project.ps1, Get-WorkerMapping).
+# - Its own again, it starts from the picks it ran on until now ($picks: Get-WorkerMapping's), so the click changes no
+#   run.
+function Set-WorkerFollow($settings, [string] $id, [string] $tool, [string] $target, $toolOf, $picks, [string[]] $own = @(), [string[]] $names = @()) {
     if ($target) {
         if ($target -eq $id -or -not $toolOf.ContainsKey($target)) {
             throw "no worker $target to follow"
@@ -247,8 +249,10 @@ function Set-WorkerFollow($settings, [string] $id, [string] $tool, [string] $tar
     }
     $entry = Get-MappingToEdit $settings $id $tool
     if ($target) {
-        foreach ($name in @(if ($entry.complexities) { $entry.complexities.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { $own -notcontains $_ } })) {
-            $entry.complexities.PSObject.Properties.Remove($name)
+        foreach ($name in @($names | Where-Object { $own -notcontains $_ })) {
+            if ($entry.complexities) {
+                $entry.complexities.PSObject.Properties.Remove($name)
+            }
         }
         $entry.PSObject.Properties.Remove('advisor')
         Set-JsonProperty $entry 'follows' $target
@@ -258,7 +262,15 @@ function Set-WorkerFollow($settings, [string] $id, [string] $tool, [string] $tar
     $copy = $picks | ConvertTo-Json -Depth 6 | ConvertFrom-Json
     $entry.PSObject.Properties.Remove('follows')
     $entry.PSObject.Properties.Remove('advisor')
-    Set-JsonProperty $entry 'complexities' $(if ($copy.complexities) { $copy.complexities } else { [pscustomobject]@{} })
+    if (-not $entry.complexities) {
+        Set-JsonProperty $entry 'complexities' ([pscustomobject]@{})
+    }
+    foreach ($name in $names) {
+        $entry.complexities.PSObject.Properties.Remove($name)
+        if ($copy.complexities -and $copy.complexities.$name) {
+            Set-JsonProperty $entry.complexities $name $copy.complexities.$name
+        }
+    }
     if ($copy.advisor) {
         Set-JsonProperty $entry 'advisor' $copy.advisor
     }
