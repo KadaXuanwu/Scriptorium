@@ -29,41 +29,60 @@ function Get-Names($item) {
     return @(foreach ($label in $item.labels) { $label.name })
 }
 
-# Whether an account's entry is this project's: of its provider (docs/QUEUE.md, Accounts). A project with no provider
-# runs nothing, and its page shows every account.
-function Test-OwnAccount($entry) {
-    return [bool]($entry -and (-not $script:Provider -or (Test-AccountOf $entry $script:Provider.Name)))
+# Whether this page serves an account's entry: its coding tool's provider is one of the script's (docs/QUEUE.md,
+# Accounts; plugins.ps1, Get-AccountProvider). A project with no provider runs nothing, and its page shows every
+# account.
+function Test-KnownAccount($entry) {
+    $known = Get-KnownProviders
+    return [bool]($entry -and (-not $known.Count -or (Get-AccountProvider $entry $known)))
 }
 
-# The entry of this project's account $name. Throws for a name the register doesn't have, and for another coding
-# tool's account: this project's provider cannot read, sign in or sign out that login.
-function Get-OwnAccount($settings, [string] $name) {
+# The entry of account $name. Throws for a name the register doesn't have, and for an account of a coding tool with no
+# plugin here: no provider of this page can read, sign in or sign out that login.
+function Get-KnownAccount($settings, [string] $name) {
     $entry = if ($settings.accounts) { $settings.accounts.$name }
     if (-not $entry) {
         throw "no account $name"
     }
-    if (-not (Test-OwnAccount $entry)) {
-        throw "account $name is another coding tool's: change it on a project of that tool"
+    if (-not (Test-KnownAccount $entry)) {
+        throw "account $name is of a coding tool with no plugin here ($($entry.provider)): add its plugin to scriptorium.json and run setup"
     }
     return $entry
 }
 
-# Whether this project's workers cannot run on the command-line login: it is another coding tool's account.
-function Test-OwnLoginTaken($settings) {
-    return [bool]($script:Provider -and (Test-LoginTaken $settings $script:Provider.Name))
+# The provider of a worker's view (its `provider`, the plugin's name) among the script's; $default for a view that
+# names none, and while the script serves one provider. A loop: the snapshot asks for every worker of every ticket.
+function Get-ViewProvider($view, $default) {
+    if ($view.provider -and $script:Providers.Count -gt 1) {
+        foreach ($plugin in $script:Providers) {
+            if ($plugin.Name -eq $view.provider) {
+                return $plugin
+            }
+        }
+    }
+    return $default
 }
 
-# The register after moving a worker to an account ('' for the command-line login: in no entry). Throws for an
-# account the register doesn't have, for another coding tool's account, and for the command-line login where that is
-# another coding tool's. -Off: the worker goes away, so it only leaves every entry, which nothing refuses.
+# Why a worker cannot go to an account of another coding tool now, '' when it can (the worker's card, its account):
+# a run in flight, working or held, is a session of the tool it began on. $from, $to: its provider before and after
+# the move.
+function Get-ToolRefusal($from, $to, [bool] $inFlight) {
+    if (-not $inFlight -or [string]$from.Name -eq [string]$to.Name) {
+        return ''
+    }
+    return "it has a run in flight on $($from.Title -replace '^Scriptorium for ', ''): it can go to another coding tool's account when that run is done"
+}
+
+# The register after moving a worker to an account ('' for the command-line login: in no entry). The worker runs on
+# that account's coding tool from its next job (plugins.ps1, Get-WorkerProvider). Throws for an account the register
+# doesn't have, and for one of a coding tool with no plugin here. -Off: the worker goes away, so it only leaves every
+# entry, which nothing refuses.
 function Set-WorkerAccount($settings, [string] $worker, [string] $account, [switch] $Off) {
     $use = "worker:$worker"
     if ($Off) {
         $account = ''
     } elseif ($account) {
-        [void](Get-OwnAccount $settings $account)
-    } elseif (Test-OwnLoginTaken $settings) {
-        throw "the command-line login is another coding tool's account: pick an account"
+        [void](Get-KnownAccount $settings $account)
     }
     foreach ($property in $settings.accounts.PSObject.Properties) {
         $uses = @($property.Value.uses | Where-Object { $_ -and $_ -ne $use })
@@ -160,6 +179,7 @@ function Set-CardOrder($settings, [string] $kind, $list) {
 # account has that folder: a renamed account keeps the folder of its old name, and a second sign-in there would replace
 # its login.
 function Get-NewAccountDir($settings, [string] $name, [string] $homeDir) {
+    # The provider that is set: the server sets the new account's coding tool first.
     $prefix = if ($script:Provider) { $script:Provider.Name } else { 'account' }
     $dir = "$($homeDir.Replace('\', '/'))/.$prefix-$name"
     $holder = $settings.accounts.PSObject.Properties | Where-Object { $_.Value.configDir -and (Get-FolderKey ([string]$_.Value.configDir)) -eq (Get-FolderKey $dir) } |
@@ -589,7 +609,10 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
         return @{ why = 'no worker can take it: each is paused, held, forced or has its complexity off' }
     }
     $noModel = 0
+    # Each worker's account is read with the windows of the worker's own coding tool.
+    $default = $script:Provider
     $ranked = @(foreach ($view in $able) {
+        Select-Provider (Get-ViewProvider $view $default)
         $account = $accounts | Where-Object { $_.name -eq $view.account } | Select-Object -First 1
         # Not an account at the start line of the model's own window (docs/QUEUE.md, A model's limit): a run would end
         # for a ticket that cannot start.
@@ -631,6 +654,7 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
             short = $room.short; long = $room.long; started = [long]$view.startedAt
         }
     })
+    Select-Provider $default
     if ($ranked.Count -eq 0) {
         return @{ why = $(if ($noModel -eq $able.Count) { "no account has the model of a $complexity ticket left" } else { "no account has room for a size $size ticket now" }) }
     }
@@ -731,11 +755,14 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             @(Get-Blockers $_ $open).Count -eq 0
     } | Sort-Object @{ Expression = { Get-Priority $_ } }, @{ Expression = { Get-SizeRank (Get-Size $_) } }, createdAt)
     $given = @($workerViews | ForEach-Object { [int]$_.now } | Where-Object { $_ })
-    # A free worker takes a ticket before a working one.
+    # A free worker takes a ticket before a working one. Each worker's account is read with the windows of the
+    # worker's own coding tool.
+    $default = $script:Provider
     foreach ($view in @($workerViews | Sort-Object @{ Expression = { [int][bool]$_.ticket } }, @{ Expression = { [int]$_.id } })) {
         if ($view.status -eq 'disabled') {
             continue
         }
+        Select-Provider (Get-ViewProvider $view $default)
         $me = "worker:$($view.id)"
         $current = [int]$view.ticket
         $why = if ($view.status -eq 'paused') {
@@ -819,6 +846,7 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             }
         }
     }
+    Select-Provider $default
     return $next
 }
 
@@ -827,7 +855,8 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
 #   Not blocking: an open question (its default is built already) and a follow-up that asks.
 # - stuck: a run that ended with no PR and no question, with the reason from its log. Not a question.
 # - held: a ticket that waits on the owner with no question on it. Not a question.
-function Get-Waiting($gh, [string] $slug) {
+# $settings: the register, for the coding tool of a stuck run's worker: its provider reads the run's log.
+function Get-Waiting($gh, [string] $slug, $settings = $null) {
     $questions = @()
     $stuck = @()
     $held = @()
@@ -855,7 +884,7 @@ function Get-Waiting($gh, [string] $slug) {
         $body = ($last -replace '^\*\*Worker[^*]*\*\*\s*', '').Trim()
         if ($body -match '^stopped without') {
             $log = [regex]::Match($body, 'Log: `([^`]+)`').Groups[1].Value
-            $reason = Get-StuckReason $log
+            $reason = Use-Provider (Get-WorkerProvider $settings ([string]$base.worker) (Get-KnownProviders)) { Get-StuckReason $log }
             $stuck += $base + @{ reason = $(if ($reason) { $reason } else { 'The run ended with no PR and no question. Its log is not on this PC.' }) }
         } elseif ($body -and $body -notmatch '^paused by') {
             $questions += $base + @{ blocking = $true; question = $body; details = '' }
@@ -931,12 +960,37 @@ function Get-PushUrl($views, [string] $own, [string] $click) {
 # Everything the page shows. $data: now, slug, workers (id, state, progress, forced, now: the ticket its force file
 # names for Now), control, usage,
 # settings, runs, gh (issues, prs, merged, titles, questions; $null until the first fetch), appUrl, logins, login,
-# name and projects (this project's name and the PC's projects, Get-ProjectViews), and
-# complexities (project.ps1, Get-Complexities; models.json's alone when left out).
+# name and projects (this project's name and the PC's projects, Get-ProjectViews),
+# complexities (project.ps1, Get-Complexities; models.json's alone when left out) and config (scriptorium.json, for
+# the complexities of another provider than the default). The provider that is set is the project's default.
 function New-Snapshot($data) {
     $now = [long]$data.now
     $models = Read-Models
     $complexities = if ($data.complexities) { @($data.complexities) } else { Get-Complexities $models $null }
+    # Each coding tool this page serves, by its provider plugin's name: its models and complexities for a worker's
+    # card, and what the page draws of it (`view`: its title, the features it has by their hooks' names, and its
+    # windows for an account's card, the account's own first: each @{ name; title; models (it holds only some
+    # models); keep (it holds the guards); seconds }).
+    $default = $script:Provider
+    $known = Get-KnownProviders
+    $tools = @{}
+    foreach ($plugin in $known) {
+        Select-Provider $plugin
+        $own = $plugin.Name -eq $default.Name
+        $list = if ($own) { $models } else { Read-Models }
+        $tools[$plugin.Name] = @{
+            models = $list
+            complexities = $(if ($own) { $complexities } else { @(Get-Complexities $list (Get-ProviderConfig $data.config $false)) })
+            view = @{
+                title = [string]$plugin.Title; hooks = @($ProviderFeatures | Where-Object { Test-ProviderHook $_ })
+                windows = @(@($WindowSeconds.Keys) + @($ModelWindows.Keys) | ForEach-Object {
+                    @{ name = $_; title = [string]$WindowTitles[$_]; models = $ModelWindows.Contains($_); keep = ($_ -eq $KeepWindow)
+                        seconds = $(if ($ModelWindows.Contains($_)) { [long]$ModelWindows[$_].seconds } else { [long]$WindowSeconds[$_] }) }
+                })
+            }
+        }
+    }
+    Select-Provider $default
     $workers = @()
     foreach ($worker in @($data.workers | Sort-Object { [int]$_.id })) {
         $s = $worker.state
@@ -947,11 +1001,18 @@ function New-Snapshot($data) {
         $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced; now = [int]$worker.now }
         # The owner's name for it (Set-WorkerName), '' for none.
         $view.name = if ($data.settings -and $data.settings.workers -and $data.settings.workers.$id) { [string]$data.settings.workers.$id.name } else { '' }
-        # The worker's complexity switches (limits.ps1): each with the model and effort its runs use (the settings'
-        # `model`, else the complexity's first candidate) and the PR jobs it holds while it is off.
-        $view.takes = @($complexities | ForEach-Object {
-            $pick = if ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { [string]@($_.models)[0] }
-            $run = Split-Pick $models $pick
+        # The worker's coding tool: its account's (plugins.ps1, Get-WorkerProvider), by its provider plugin's name.
+        $plugin = Get-WorkerProvider $data.settings $id $known
+        $view.provider = $(if ($plugin) { [string]$plugin.Name } else { '' })
+        $tool = if ($plugin) { $tools[$plugin.Name] } else { @{ models = $models; complexities = $complexities } }
+        $toolModels = $tool.models
+        # The settings' `model` names a model of the default provider.
+        $override = if ($data.settings -and $data.settings.model -and (-not $plugin -or $plugin.Name -eq $default.Name)) { [string]$data.settings.model } else { '' }
+        # The worker's complexity switches (limits.ps1): each with the model and effort its runs use on its coding
+        # tool (the settings' `model`, else the complexity's first candidate) and the PR jobs it holds while it is off.
+        $view.takes = @($tool.complexities | ForEach-Object {
+            $pick = if ($override) { $override } else { [string]@($_.models)[0] }
+            $run = Split-Pick $toolModels $pick
             @{ name = $_.name; on = -not (Test-ComplexityOff $_.name $data.settings $id); model = $run.model; effort = $run.effort; jobs = 0 }
         })
         # A run in flight: working, or waiting in paused.json for a limit reset, for room under the workers' limit
@@ -1018,10 +1079,13 @@ function New-Snapshot($data) {
     $keys = @{}
     if ($data.settings -and $data.settings.accounts) {
         foreach ($property in $data.settings.accounts.PSObject.Properties) {
-            # The accounts of this project's provider: another coding tool's are on the pages of its projects.
-            if (-not (Test-OwnAccount $property.Value)) {
+            # Not an account of a coding tool with no plugin here: a page of a project that has it shows it. Each
+            # account is reckoned with the windows of its own coding tool.
+            if (-not (Test-KnownAccount $property.Value)) {
                 continue
             }
+            $plugin = Get-AccountProvider $property.Value $known
+            Select-Provider $plugin
             $key = if ($property.Value.configDir) { $property.Value.configDir } else { 'default' }
             $uses = @($property.Value.uses)
             $usage = if ($data.usage) { $data.usage.$key } else { $null }
@@ -1037,7 +1101,8 @@ function New-Snapshot($data) {
                     break
                 }
             }
-            $account = @{ name = $property.Name; uses = $uses; own = [bool]$property.Value.configDir; signedIn = $false }
+            $account = @{ name = $property.Name; uses = $uses; own = [bool]$property.Value.configDir; signedIn = $false
+                provider = $(if ($plugin) { [string]$plugin.Name } else { '' }) }
             $names[$key] = $property.Name
             # The account is out (worker.ps1, Get-Out): the kind and the text of its refusal, and when the workers
             # test it next.
@@ -1140,6 +1205,11 @@ function New-Snapshot($data) {
             $accounts += $account
         }
     }
+    Select-Provider $default
+    $toolViews = @{}
+    foreach ($name in @($tools.Keys)) {
+        $toolViews[$name] = $tools[$name].view
+    }
     foreach ($view in $workers) {
         # A worker in no entry runs on the command-line login.
         $key = if ($view.on) { $view.on } elseif ($keys[$view.id]) { $keys[$view.id] } else { 'default' }
@@ -1170,7 +1240,9 @@ function New-Snapshot($data) {
         }
     }
     $snapshot = @{
-        now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; loginTaken = (Test-OwnLoginTaken $data.settings); login = $data.login; github = [bool]$data.gh
+        now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; login = $data.login; github = [bool]$data.gh
+        # The coding tools of the workers and the accounts ($tools above, each one's `view`), by provider name.
+        tools = $toolViews
         # This project's name and the PC's projects, for the page's project switch.
         name = [string]$data.name; projects = @($data.projects | Where-Object { $_ })
         # The owner's order of the cards (Set-CardOrder), the same in every project's snapshot.
@@ -1183,12 +1255,11 @@ function New-Snapshot($data) {
         # on the page, where models.json gives one (`title`).
         models = @($models.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($models.efforts | Where-Object { $_ })
         modelTitles = $titles
-        # The provider (its plugin's title; '' with none: no worker runs) and its windows for the Accounts tab, the
-        # account's own first: each @{ name; title; models (it holds only some models); keep (it holds the guards);
-        # seconds }.
+        # The project's default provider (its plugin's title; '' with none), whose models Details sets, and its
+        # windows as in `tools`.
         provider = $(if ($script:Provider) { [string]$script:Provider.Title } else { '' })
-        # The features the provider has (plugins.ps1, $ProviderFeatures), by their hooks' names: the page offers only
-        # these (Ping, the sign-in) and Details says what the coding tool gives. And the compact sizes it takes.
+        # The features the default provider has (plugins.ps1, $ProviderFeatures), by their hooks' names: Details
+        # says what the coding tool gives. And the compact sizes it takes.
         hooks = @($ProviderFeatures | Where-Object { Test-ProviderHook $_ })
         compactRange = @($models.compactRange | Where-Object { $_ })
         windows =@(@($WindowSeconds.Keys) + @($ModelWindows.Keys) | ForEach-Object {
@@ -1247,7 +1318,7 @@ function New-Snapshot($data) {
             $view.areas = Get-Areas $issue
             $view.size = Get-Label $issue 'size:'
         }
-        $waiting = Get-Waiting $gh $data.slug
+        $waiting = Get-Waiting $gh $data.slug $data.settings
         $snapshot.questions = @($waiting.questions)
         $snapshot.stuck = @($waiting.stuck)
         $snapshot.held = @($waiting.held)

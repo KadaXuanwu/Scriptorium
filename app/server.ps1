@@ -19,16 +19,23 @@ $Main = Resolve-Project $Project
 $config = Read-Project $Main
 # The project's plugins, for the Details tab; the page runs on without them when one does not load.
 $plugins = @()
+# The providers (docs/PLUGINS.md, A provider), each with its models and windows, its logins, and what a run's log
+# says: the project's, the default first, and each other one of the install (plugins.ps1, Get-Providers). A worker
+# runs on its account's coding tool, so the page serves the accounts and the workers of each. The page runs on
+# without one.
+$providers = @()
 try {
     $plugins = Import-Plugins (Split-Path $PSScriptRoot -Parent) $config
+    $providers = Get-Providers (Split-Path $PSScriptRoot -Parent) $plugins
 } catch {
     Add-Content (Join-Path $Main '.queue/app.log') "$(Get-Date -Format s) plugins: $_" -Encoding utf8
 }
-Start-CodeWatch (@((Join-Path $Main 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }) +
-    @($plugins | Where-Object { $_.Provider } | ForEach-Object { Join-Path $_.Dir 'models.json' }))
-# The provider (docs/PLUGINS.md, A provider): its models and windows, its logins, and what a run's log says. The page
-# runs on without one. Its calls get the settings as the snapshot last read them.
-Set-Provider (Get-Provider $plugins) @{ Project = $Main; Copy = $Main; Machine = { $script:saved } }
+Start-CodeWatch (@((Join-Path $Main 'scriptorium.json')) + @(@($plugins) + @($providers) | ForEach-Object { $_.Dir }) +
+    @($providers | ForEach-Object { Join-Path $_.Dir 'models.json' }))
+# The default is set. A provider's calls get the settings as the snapshot last read them.
+Set-Providers $providers @{ Project = $Main; Copy = $Main; Machine = { $script:saved } }
+# The project's default provider: each snapshot and each action starts from it (plugins.ps1, Select-Provider).
+$defaultProvider = $script:Provider
 if (-not $Port) {
     $Port = [int]$config.port
 }
@@ -39,7 +46,7 @@ Get-CommandLines -Shells |
     ForEach-Object { Stop-ProcessTree $_.ProcessId }
 
 $mainQueue = Join-Path $Main '.queue'
-# A PC from before an account had a provider: the accounts this project's workers are on become its provider's.
+# A PC from before an account had a provider: the accounts this project's workers are on become its default provider's.
 if ($script:Provider) {
     Update-AccountProviders $Main @(Get-ChildItem (Join-Path $mainQueue 'worker-*.json') -ErrorAction SilentlyContinue |
         ForEach-Object { $_.BaseName.Substring(7) }) $script:Provider.Name
@@ -203,8 +210,9 @@ function Start-Login([string] $name, [string] $configDir, [string] $email) {
             }
         }
     }
+    # Its provider reads the sign-in's output until it ends (Get-LoginView).
     $script:login = @{ account = $name; configDir = $configDir; out = $out; at = Get-Now; ended = $null
-        process = [System.Diagnostics.Process]::Start($info) }
+        provider = $script:Provider; process = [System.Diagnostics.Process]::Start($info) }
 }
 
 function Stop-Login {
@@ -234,7 +242,7 @@ function Get-LoginView {
     $view = @{ account = $login.account; state = 'starting' }
     $read = $null
     try {
-        $read = Invoke-Provider 'ReadSignIn' @{ Text = $text }
+        $read = Use-Provider $login.provider { Invoke-Provider 'ReadSignIn' @{ Text = $text } }
     } catch {
     }
     $url = if ($read) { [string]$read.Url } else { '' }
@@ -403,6 +411,7 @@ $script:gh = $null
 $script:snapshot = $null
 $script:json = '{}'
 function Update-Snapshot {
+    Select-Provider $defaultProvider
     $workers = @()
     foreach ($file in Get-ChildItem (Join-Path $mainQueue 'worker-*.json') -ErrorAction SilentlyContinue) {
         $state = Read-Json $file.FullName
@@ -446,15 +455,16 @@ function Update-Snapshot {
         runs = Read-Runs; gh = $script:gh; appUrl = $appUrl; dispatch = Read-Json (Join-Path $mainQueue 'dispatch.json')
         name = $config.name; projects = $script:projects
         logins = @{}; login = Get-LoginView; complexities = Get-Complexities (Read-Models) $config $saved; plugins = $plugins
+        config = $config
     }
     if ($data.settings -and $data.settings.accounts) {
         foreach ($property in $data.settings.accounts.PSObject.Properties) {
-            # Only this project's provider can read a login of its own.
-            if (-not (Test-OwnAccount $property.Value)) {
+            # Only the provider of an account's coding tool can read its login.
+            if (-not (Test-KnownAccount $property.Value)) {
                 continue
             }
             $key = if ($property.Value.configDir) { $property.Value.configDir } else { 'default' }
-            $data.logins[$key] = Get-LoginInfo $property.Value.configDir
+            $data.logins[$key] = Use-Provider (Get-AccountProvider $property.Value (Get-KnownProviders)) { Get-LoginInfo $property.Value.configDir }
         }
     }
     if ($script:snapshot -and $data.now - [long]$script:snapshot.now -gt $StaleSeconds) {
@@ -518,8 +528,18 @@ $ghWrite = {
 }
 $script:writes = @()
 
-# The owner's actions (docs/APP.md). One that writes to GitHub returns its calls.
+# Account $name's entry (state.ps1, Get-KnownAccount), with the provider of its coding tool set for the rest of the
+# action: its windows, its sign-in, its Ping.
+function Select-Account($settings, [string] $name) {
+    $entry = Get-KnownAccount $settings $name
+    Select-Provider (Get-AccountProvider $entry (Get-KnownProviders))
+    return $entry
+}
+
+# The owner's actions (docs/APP.md). One that writes to GitHub returns its calls. Each starts with the project's
+# default provider set: Details sets its models. An account's action sets the account's own (Select-Account).
 function Invoke-Action($request) {
+    Select-Provider $defaultProvider
     $worker = [string]$request.worker
     switch ($request.action) {
         'status' {
@@ -607,7 +627,7 @@ function Invoke-Action($request) {
             $old = [string]$request.account
             $new = [string]$request.name
             $settings = Read-SettingsToEdit
-            [void](Get-OwnAccount $settings $old)
+            [void](Get-KnownAccount $settings $old)
             Save-Settings (Rename-Account $settings $old $new)
             # A sign-in of it goes on in the same folder; only its box shows the name.
             if ($script:login -and $script:login.account -eq $old) {
@@ -619,17 +639,32 @@ function Invoke-Action($request) {
             if (-not (Test-Path (Join-Path $mainQueue "worker-$worker.json"))) {
                 throw "no worker $worker"
             }
-            Save-Settings (Set-WorkerAccount (Read-SettingsToEdit) $worker ([string]$request.account))
+            # The worker runs on its account's coding tool, so an account of another tool changes its tool: not
+            # while it has a run in flight (state.ps1, Get-ToolRefusal).
+            $settings = Read-SettingsToEdit
+            $known = Get-KnownProviders
+            $from = Get-WorkerProvider $settings $worker $known
+            $settings = Set-WorkerAccount $settings $worker ([string]$request.account)
+            $state = Read-Json (Join-Path $mainQueue "worker-$worker.json")
+            $refusal = Get-ToolRefusal $from (Get-WorkerProvider $settings $worker $known) ($state.state -eq 'running' -or [bool]($state.ticket -and $state.resetsAt))
+            if ($refusal) {
+                throw "worker ${worker}: $refusal"
+            }
+            Save-Settings $settings
             return "worker $worker on $(if ($request.account) { $request.account } else { 'the command-line login' })"
         }
         'complexity' {
             # Whether a worker takes the tickets of a complexity (docs/QUEUE.md, Settings, `workers.<id>.complexity`).
             $worker = [string]$request.worker
             $name = [string]$request.complexity
-            if ($worker -notmatch '^\d+$' -or @(Get-Complexities (Read-Models) $config | ForEach-Object { $_.name }) -cnotcontains $name) {
+            $settings = Read-SettingsToEdit
+            # The complexities of the worker's own coding tool.
+            $tool = Get-WorkerProvider $settings $worker (Get-KnownProviders)
+            Select-Provider $tool
+            $own = Get-ProviderConfig $config (-not $tool -or $tool.Name -eq $defaultProvider.Name)
+            if ($worker -notmatch '^\d+$' -or @(Get-Complexities (Read-Models) $own | ForEach-Object { $_.name }) -cnotcontains $name) {
                 throw "no worker $worker or no complexity $name"
             }
-            $settings = Read-SettingsToEdit
             $entry = Get-WorkerSettings $settings $worker
             if (-not $entry.complexity) {
                 $entry | Add-Member -NotePropertyName complexity -NotePropertyValue ([pscustomobject]@{}) -Force
@@ -817,9 +852,6 @@ function Invoke-Action($request) {
         }
         'login' {
             # An account new to the register gets its own login folder (state.ps1, Get-NewAccountDir).
-            if (-not (Test-ProviderHook 'SignIn')) {
-                throw 'the provider has no sign-in from the page: sign the account in from a terminal'
-            }
             $name = [string]$request.account
             $email = [string]$request.email
             if ($name -notmatch '^[a-z0-9][a-z0-9-]{0,30}$') {
@@ -834,13 +866,31 @@ function Invoke-Action($request) {
             if ($request.new -and $entry) {
                 throw "an account named $name exists: pick another name, or remove that account first"
             }
+            # The coding tool that signs in: the account's own; for a new account the one the page names
+            # (`provider`, a plugin's name), else the project's default.
             if ($entry) {
-                $entry = Get-OwnAccount $settings $name
-            } else {
+                $entry = Select-Account $settings $name
+            } elseif ($request.provider) {
+                $tool = Get-AccountProvider ([pscustomobject]@{ provider = [string]$request.provider }) (Get-KnownProviders)
+                if (-not $tool) {
+                    throw "no coding tool $($request.provider) here"
+                }
+                Select-Provider $tool
+            }
+            $signsIn = Test-ProviderHook 'SignIn'
+            if ($entry -and -not $signsIn) {
+                throw 'the provider has no sign-in from the page: sign the account in from a terminal'
+            }
+            if (-not $entry) {
                 $entry = [pscustomobject]@{ configDir = (Get-NewAccountDir $settings $name $HOME); uses = [object[]]@()
                     provider = [string]$script:Provider.Name }
                 $settings.accounts | Add-Member -NotePropertyName $name -NotePropertyValue $entry
                 Save-Settings $settings
+            }
+            # A new account of a coding tool with no sign-in from the page: it is in the register, for a worker to
+            # go on, and the owner signs the tool in from a terminal.
+            if (-not $signsIn) {
+                return "added: $name (its coding tool has no sign-in from the page)"
             }
             if ($entry.configDir) {
                 New-Item -ItemType Directory -Force $entry.configDir | Out-Null
@@ -867,7 +917,7 @@ function Invoke-Action($request) {
         'ping' {
             # The provider's cheapest request (docs/PLUGINS.md, Probe): it starts the account's windows.
             $name = [string]$request.account
-            $entry = Get-OwnAccount (Read-SettingsToEdit) $name
+            $entry = Select-Account (Read-SettingsToEdit) $name
             if (-not (Test-ProviderHook 'Probe')) {
                 throw 'the provider has no ping'
             }
@@ -882,7 +932,7 @@ function Invoke-Action($request) {
             # Only an account nothing runs on; its login is signed out, its folder kept (the queue's history names it).
             $name = [string]$request.account
             $settings = Read-SettingsToEdit
-            $entry = Get-OwnAccount $settings $name
+            $entry = Select-Account $settings $name
             if (@($entry.uses | Where-Object { $_ }).Count) {
                 throw "move $(@($entry.uses) -join ', ') to another account first"
             }
@@ -961,11 +1011,12 @@ function Invoke-Action($request) {
             $name = [string]$request.account
             $window = [string]$request.window
             $value = [math]::Round([double]$request.value, 2)
+            # The windows are the ones of the account's coding tool.
+            $settings = Read-SettingsToEdit
+            $entry = Select-Account $settings $name
             if (-not $DefaultStopAt.ContainsKey($window) -or $value -lt 0.1 -or $value -gt 1) {
                 throw 'the stop line is a share between 10 % and 100 % of a window'
             }
-            $settings = Read-SettingsToEdit
-            $entry = Get-OwnAccount $settings $name
             if (-not $entry.stopAt) {
                 $entry | Add-Member -NotePropertyName stopAt -NotePropertyValue ([pscustomobject]@{}) -Force
             }
@@ -981,11 +1032,11 @@ function Invoke-Action($request) {
             $window = [string]$request.window
             $size = [string]$request.size
             $value = [math]::Round([double]$request.value, 2)
+            $settings = Read-SettingsToEdit
+            $entry = Select-Account $settings $name
             if (-not $DefaultPickUp.ContainsKey($window) -or @($DefaultPickUp[$window].Keys) -cnotcontains $size -or $value -lt 0 -or $value -gt 1) {
                 throw 'a pick-up limit is a share between 0 % and 100 %, of a window that has that limit'
             }
-            $settings = Read-SettingsToEdit
-            $entry = Get-OwnAccount $settings $name
             if (-not $entry.pickUp) {
                 $entry | Add-Member -NotePropertyName pickUp -NotePropertyValue ([pscustomobject]@{}) -Force
             }
@@ -1114,7 +1165,9 @@ function Invoke-Request($context) {
             (Get-ChildItem (Join-Path (Get-Clone $id $state) '.queue/logs/*.jsonl') -ErrorAction SilentlyContinue |
                 Sort-Object LastWriteTime | Select-Object -Last 1).FullName
         }
-        Send-Json $context 200 (@{ log = $log; steps = @(Get-Steps $log 40) } | ConvertTo-Json -Depth 4 -Compress)
+        # The provider of the worker's coding tool reads its log.
+        $steps = @(Use-Provider (Get-WorkerProvider $script:saved $id (Get-KnownProviders)) { Get-Steps $log 40 })
+        Send-Json $context 200 (@{ log = $log; steps = $steps } | ConvertTo-Json -Depth 4 -Compress)
         return
     }
     if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/copy') {

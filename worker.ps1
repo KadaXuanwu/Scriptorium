@@ -28,11 +28,7 @@ $config = Read-Project $Project
 if (-not $Clone) {
     $Clone = "$Project-w$Id"
 }
-$plugins = Import-Plugins $PSScriptRoot $config
-# A pull of a plugin restarts the worker as a pull of Scriptorium does. So does a change to the provider's models.json:
-# its windows are read once, when a script starts (limits.ps1, Set-Windows).
-Start-CodeWatch (@((Join-Path $Project 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }) +
-    @($plugins | Where-Object { $_.Provider } | ForEach-Object { Join-Path $_.Dir 'models.json' }))
+$projectPlugins = Import-Plugins $PSScriptRoot $config
 
 # One loop per worker: stopping the task ends only its console host, so an older loop may still run, on old code.
 # End it with its run; the ticket resumes here (PLAYBOOK.md, Branch). Only this project's worker of this number.
@@ -63,15 +59,30 @@ $forceFile = Join-Path $mainQueueDir "force-$Id.json"
 $wakeMerger = Join-Path $mainQueueDir 'wake-merger'
 $wakeWorkers = Join-Path $mainQueueDir 'wake-workers'
 New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir | Out-Null
+# The providers this worker can run on (plugins.ps1, Get-Providers): the project's default first.
+$providers = Get-Providers $PSScriptRoot $projectPlugins
+# A PC from before an account had a provider: the accounts this worker is on become the default provider's (pc.ps1).
+if ($providers.Count) {
+    Update-AccountProviders $Project @("$Id") $providers[0].Name
+}
 # The provider (docs/PLUGINS.md, A provider): the plugin that runs the coding tool, reads its logs and knows its
-# accounts and windows. Without one the worker starts no run.
-$provider = Get-Provider $plugins
+# accounts and windows. It is the one of the worker's account (plugins.ps1, Get-WorkerProvider), so a worker runs on
+# its coding tool in any project. Without one the worker starts no run.
+$provider = Get-WorkerProvider (Read-ProjectSettings $Project) "$Id" $providers
+# scriptorium.json's models and the owner's picks on the page are the default provider's (project.ps1,
+# Get-ProviderConfig).
+$isDefault = [bool]($provider -and $provider.Name -eq $providers[0].Name)
+# The worker's plugins: the project's, without the other providers. Their playbooks and hooks are no part of its runs.
+$plugins = @($projectPlugins | Where-Object { -not $_.Provider -or ($provider -and $_.Name -eq $provider.Name) })
+if ($provider -and @($plugins | ForEach-Object { $_.Name }) -notcontains $provider.Name) {
+    $plugins = @($provider) + $plugins
+}
+# A pull of a plugin restarts the worker as a pull of Scriptorium does. So does a change to the provider's models.json:
+# its windows are read once, when a script starts (limits.ps1, Set-Windows).
+Start-CodeWatch (@((Join-Path $Project 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }) +
+    @($plugins | Where-Object { $_.Provider } | ForEach-Object { Join-Path $_.Dir 'models.json' }))
 Set-Provider $provider @{ Project = $Project; Copy = $Clone; Worker = $Id; QueueDir = $queueDir
     Machine = { Read-Settings }; Log = { param($text) Write-Log "$text" } }
-# A PC from before an account had a provider: the accounts this worker is on become its provider's (pc.ps1).
-if ($provider) {
-    Update-AccountProviders $Project @("$Id") $provider.Name
-}
 # Every turn reads the whole context again, so a run's context is compacted at the compact size of the job's
 # complexity, where the provider can (docs/CONFIG.md, The compact size). A run never hands off to a fresh session:
 # that cost 24 turns of reading, a compaction 7.
@@ -256,7 +267,7 @@ function Get-Accounts {
     $accounts = @()
     if ($json -and $json.accounts) {
         foreach ($property in $json.accounts.PSObject.Properties) {
-            # Only the accounts of this project's provider: another coding tool's login is no login here.
+            # Only the accounts of this worker's provider: another coding tool's login is no login to it.
             if (-not (Test-AccountOf $property.Value $provider.Name)) {
                 continue
             }
@@ -272,7 +283,8 @@ function Get-Accounts {
 }
 
 # A worker's settings, its own entry over the shared one; its login is the account the register gives it, else the
-# Windows user's command-line login. `model` is the shared one only: every worker of a project runs on the same models.
+# Windows user's command-line login. `model` is the shared one only: every worker of a project runs on the same
+# models. It names a model of the default provider, so a worker on another coding tool leaves it.
 function Get-RunSettings([int] $worker) {
     $settings = @{ model = $null; configDir = $null; sizes = $null; ghConfigDir = $null; assignedOnly = $null }
     $json = Read-Settings
@@ -283,7 +295,7 @@ function Get-RunSettings([int] $worker) {
     if ($json.workers) {
         $own = $json.workers."$worker"
     }
-    if ($json.model) {
+    if ($isDefault -and $json.model) {
         $settings.model = $json.model
     }
     foreach ($key in @('sizes', 'ghConfigDir', 'assignedOnly')) {
@@ -633,10 +645,18 @@ function Get-Out([string] $configDir) {
     return $record
 }
 
+# The owner's picks on the page (models, advisor, compact sizes): the settings for a worker on the project's default
+# provider, none for a worker on another coding tool (project.ps1, Get-ProviderConfig).
+function Read-Picks {
+    if ($isDefault) {
+        return Read-Settings
+    }
+}
+
 # The ticket complexities (project.ps1, Get-Complexities): the provider's models with the project's over them, and
 # the models and compact sizes the owner set on the page.
 function Get-ProjectComplexities {
-    return Get-Complexities (Read-Models) $config (Read-Settings)
+    return Get-Complexities (Read-Models) (Get-ProviderConfig $config $isDefault) (Read-Picks)
 }
 
 
@@ -774,11 +794,17 @@ function Get-Budget([string] $account, $usage) {
     return $budget
 }
 
-# Idle workers that could take a new ticket now, this one first, each with its account's budget and settings.
+# Idle workers that could take a new ticket now, this one first, each with its account's budget and settings. Only
+# the workers on this worker's coding tool: another tool's account has other windows and another probe, and its own
+# workers give its tickets out.
 function Get-Candidates {
     $candidates = @()
+    $register = Read-Settings
     foreach ($worker in Get-WorkerStates) {
         $state = $worker.State
+        if ($worker.Worker -ne $Id -and [string](Get-WorkerProvider $register "$($worker.Worker)" $providers).Name -ne $provider.Name) {
+            continue
+        }
         # An idle state older than two polls is a worker script that stopped.
         if ($worker.Worker -ne $Id -and ($state.state -ne 'idle' -or (Get-Now) - [long]$state.at -gt 2 * $PollSeconds + 60)) {
             continue
@@ -1161,7 +1187,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
     }
     # The run's advisor (limits.ps1, Get-Advisor): one for the whole session, like its model, so a resume and a
     # compaction see the same tools. A session held before the advisor existed has none recorded: it gets one now.
-    $advisorOf = Get-AdvisorRule (Read-Models) (Get-ProjectComplexities) (Read-Settings)
+    $advisorOf = Get-AdvisorRule (Read-Models) (Get-ProjectComplexities) (Read-Picks)
     $hasAdvisor = [bool]$advisorOf.model -and -not (Test-ModelRefused (Get-Account $configDir) ([string]$advisorOf.model) -Advisor)
     $advisor = Get-Advisor $advisorOf $job.Complexity $model $hasAdvisor
     if ($paused -and $null -ne $paused.Advisor) {
@@ -1636,16 +1662,24 @@ while ($true) {
             Start-Sleep 30
             continue
         }
+        # The worker's account is another coding tool's now (the owner moved the worker): it starts again on that
+        # tool. Between jobs only, and not with a run held: a held session is its own tool's. A worker with no
+        # provider looks again for one that was installed since.
+        $known = $providers
+        if (-not $provider) {
+            $known = Get-Providers $PSScriptRoot $projectPlugins
+        }
+        if (-not (Test-Path $pausedFile) -and [string](Get-WorkerProvider (Read-Settings) "$Id" $known).Name -ne [string]$provider.Name) {
+            Write-Log "the account's coding tool changed: restarting on it"
+            Restart-OnNewCode (Get-TaskName $config.name "worker $Id")
+        }
         # The worker restarts when scriptorium.json changes (Start-CodeWatch), so a provider added there is found.
         if (-not $provider) {
-            Write-State 'error' @{ error = 'no provider: add a provider plugin to scriptorium.json and run setup.ps1 (docs/PLUGINS.md, A provider)' }
-            Start-Sleep 30
-            continue
-        }
-        # In no account of its provider, the worker would run on the command-line login, which is another coding
-        # tool's account on this PC: its usage record is that tool's.
-        if (-not (Get-Accounts | Where-Object { $_.Uses -contains "worker:$Id" }) -and (Test-LoginTaken (Read-Settings) $provider.Name)) {
-            Write-State 'error' @{ error = "no account: this worker is on no account of $($provider.Title -replace '^Scriptorium for ', ''), and the command-line login is another coding tool's. Put it on an account (the page, Workers)." }
+            Write-State 'error' @{ error = $(if ($providers.Count) {
+                    "no provider: this worker's account is of a coding tool with no plugin here. Add its plugin to scriptorium.json and run setup.ps1, or put the worker on another account (the page, Workers)."
+                } else {
+                    'no provider: add a provider plugin to scriptorium.json and run setup.ps1 (docs/PLUGINS.md, A provider)'
+                }) }
             Start-Sleep 30
             continue
         }

@@ -156,12 +156,61 @@ function Get-RunTools($config, $merged) {
     return @(@($config.allowedTools) + @($merged.AllowedTools) | Where-Object { $_ } | Select-Object -Unique)
 }
 
-# The project's provider (docs/PLUGINS.md, A provider): the first of its plugins whose manifest says `provider`; $null
-# when it has none.
-# shortcut: one provider for a project; give an account its provider when a project runs two.
+# The project's default provider (docs/PLUGINS.md, A provider): the first of its plugins whose manifest says
+# `provider`; $null when it has none. A worker in no account runs on it, and scriptorium.json's models are its.
+# shortcut: the complexities' names and the ticket skill's folder are the default provider's alone; take every
+# provider's when one brings a complexity of its own or the front desk runs on a second coding tool.
 function Get-Provider($plugins) {
     return @($plugins | Where-Object { $_ -and $_.Provider }) | Select-Object -First 1
 }
+
+# Every provider a project's scripts can run (docs/PLUGINS.md, A provider): the project's own in scriptorium.json's
+# order, the default first, then each in the install's plugins folder that the project does not name. A worker runs
+# on its account's coding tool in any project of the PC, so a provider that one project installed serves them all.
+# A folder there that does not load is no provider.
+function Get-Providers([string] $install, $plugins) {
+    $found = @($plugins | Where-Object { $_ -and $_.Provider })
+    $named = @($plugins | Where-Object { $_ } | ForEach-Object { $_.Name })
+    foreach ($dir in @(Get-ChildItem (Join-Path $install 'plugins') -Directory -ErrorAction SilentlyContinue | Sort-Object Name)) {
+        if ($named -contains $dir.Name) {
+            continue
+        }
+        try {
+            if ((Get-Content (Join-Path $dir.FullName 'plugin.json') -Raw -Encoding UTF8 | ConvertFrom-Json).provider) {
+                $found += , (Import-Plugin $dir.FullName $dir.Name $null)
+            }
+        } catch {
+        }
+    }
+    return , $found
+}
+
+# The provider of an account's entry among $providers (docs/QUEUE.md, Settings, `accounts.<name>.provider`): the one
+# its `provider` names. An entry that names none (a PC from before an account had one), and no entry, is the first's:
+# the project's default. $null for a coding tool these scripts do not have.
+function Get-AccountProvider($entry, $providers) {
+    $name = if ($entry) { [string]$entry.provider } else { '' }
+    if (-not $name) {
+        return @($providers | Where-Object { $_ }) | Select-Object -First 1
+    }
+    return @($providers | Where-Object { $_ -and $_.Name -eq $name }) | Select-Object -First 1
+}
+
+# The provider a worker runs on: its account's (docs/QUEUE.md, Accounts). A worker in no entry runs on the
+# command-line login, which is the entry's with no login folder; on a PC with no such entry, the default provider's.
+function Get-WorkerProvider($settings, [string] $worker, $providers) {
+    $entries = @(if ($settings -and $settings.accounts) { $settings.accounts.PSObject.Properties })
+    $entry = $entries | Where-Object { @($_.Value.uses) -contains "worker:$worker" } | Select-Object -First 1
+    if (-not $entry) {
+        $entry = $entries | Where-Object { -not $_.Value.configDir } | Select-Object -First 1
+    }
+    return Get-AccountProvider $(if ($entry) { $entry.Value }) $providers
+}
+
+# Each provider's windows by its folder, read once: a script restarts when a models.json changes (Start-CodeWatch).
+$script:WindowsOf = @{}
+# The providers a script serves when it serves more than one (Set-Providers): the page's server.
+$script:Providers = @()
 
 # The provider that Invoke-Provider and Read-Models (project.ps1) use from here on, and its windows (limits.ps1) where
 # the script reckons a budget. $scope: the context fields of its calls, @{ Project; Copy; Worker; QueueDir; Machine (a
@@ -170,7 +219,48 @@ function Set-Provider($plugin, [hashtable] $scope = @{}) {
     $script:Provider = $plugin
     $script:ProviderScope = $scope
     if (Get-Command Set-Windows -ErrorAction SilentlyContinue) {
-        Set-Windows (Read-Models).windows
+        $key = if ($plugin) { [string]$plugin.Dir } else { '' }
+        if (-not $script:WindowsOf.ContainsKey($key)) {
+            $script:WindowsOf[$key] = (Read-Models).windows
+        }
+        Set-Windows $script:WindowsOf[$key]
+    }
+}
+
+# The providers of a script that serves the accounts and the workers of every coding tool (Get-Providers' list): the
+# first is set, as the project's default.
+function Set-Providers($providers, [hashtable] $scope = @{}) {
+    $script:Providers = @($providers | Where-Object { $_ })
+    Set-Provider $(if ($script:Providers.Count) { $script:Providers[0] }) $scope
+}
+
+# The providers a script serves: the list of Set-Providers, else its one provider. One list, also of one provider:
+# assign it or pass it on, and put it in parentheses before a pipe.
+function Get-KnownProviders {
+    if ($script:Providers.Count) {
+        return , $script:Providers
+    }
+    return , @($script:Provider | Where-Object { $_ })
+}
+
+# Sets another of the script's providers, with the same scope; nothing for the one that is set already, and for none.
+# The code that follows reads that provider's models, windows and hooks, so each entry of the server (a request, a
+# snapshot) sets the default first.
+function Select-Provider($plugin) {
+    if ($plugin -and (-not $script:Provider -or $script:Provider.Name -ne $plugin.Name)) {
+        Set-Provider $plugin $script:ProviderScope
+    }
+}
+
+# Runs a script block with a provider set (Select-Provider) and returns what it gives, then sets the one from before
+# again. The block reads the caller's variables; these three names are its own.
+function Use-Provider($providerToUse, [scriptblock] $blockToRun) {
+    $providerBefore = $script:Provider
+    Select-Provider $providerToUse
+    try {
+        return (& $blockToRun)
+    } finally {
+        Select-Provider $providerBefore
     }
 }
 

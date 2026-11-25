@@ -26,11 +26,11 @@ settings ([QUEUE.md](QUEUE.md), Settings).
 | Field | Needed | What |
 | ----- | ------ | ---- |
 | `name` | yes | The project's name: letters, digits and hyphens. It is in the names of the logon tasks and of the notification topic, so two projects on one PC never meet |
-| `plugins` | yes | The project's provider, the plugin of its coding tool, and its environments, each with its settings ([PLUGINS.md](PLUGINS.md)). The example's `claude` is the provider that [plugins.json](../plugins.json) lists. Without a provider no worker runs; with no environment the project is a plain git repo |
+| `plugins` | yes | The project's providers, each the plugin of a coding tool, and its environments, each with its settings ([PLUGINS.md](PLUGINS.md)). The example's `claude` is the provider that [plugins.json](../plugins.json) lists. The first provider is the project's default: the models below are its. A worker runs on the coding tool of its account ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`), which may be another provider of this list or of the install's `plugins` folder. Without a provider no worker runs; with no environment the project is a plain git repo |
 | `repos` | no | Other repos of the same owner that a ticket may name with a `repo:<Name>` label |
 | `playbook` | no | The path of the project's own rules for a run. A run reads it from `origin/main`, after the base's and the plugins' playbooks |
 | `commands` | no | Commands a run may start without asking, each by how it starts (`dotnet`, `npm run`), on top of `git`, `gh` and what the plugins give |
-| `allowedTools` | no | Tool rules in the syntax of the provider's own tool, for what `commands` cannot say. Another provider leaves out a rule it cannot read |
+| `allowedTools` | no | Tool rules in the syntax of one provider's own tool, for what `commands` cannot say. Every worker's provider gets them, and one leaves out a rule it cannot read |
 | `port` | no | The port of the page on this PC, 8770 when left out. Two projects on one PC need two ports; setup gives each its own Tailscale address ([APP.md](APP.md), Setup) |
 | `compactAt` | no | The compact size of every run, in tokens (The compact size, below). The provider's when left out |
 | `complexities` | no | Changes to the complexities (below) |
@@ -39,6 +39,9 @@ settings ([QUEUE.md](QUEUE.md), Settings).
 
 A ticket's `complexity:<name>` label picks the model and effort of its run. Scriptorium has four: `low`, `medium`,
 `high` and `design`. Their models are in the provider's `models.json` ([PLUGINS.md](PLUGINS.md), A provider).
+What this file says of models, the advisor and the compact size holds for the project's default provider. A worker on
+another coding tool takes only the names and descriptions of the project's own complexities from here
+([QUEUE.md](QUEUE.md), Complexities).
 
 An entry under `complexities` changes one of the four or adds one of the project's own:
 

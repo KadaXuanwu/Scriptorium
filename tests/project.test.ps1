@@ -112,6 +112,15 @@ Assert-Equal $threw $true 'a complexity of the project''s own needs a descriptio
 # The compact size: the complexity's own, else the project's, else models.json's; a name not in the list has medium's.
 Assert-Equal "$(Get-ComplexityCompactAt $list 'low') $(Get-ComplexityCompactAt $list 'review') $(Get-ComplexityCompactAt $list 'none')" '250000 400000 250000' 'the project''s compact size, a complexity''s own, medium''s for no complexity'
 Assert-Equal (Get-ComplexityCompactAt (Get-Complexities $models $null) 'design') 250000 'models.json''s compact size with no config'
+# scriptorium.json's models are the default provider's. Another provider (a worker runs on its account's coding tool)
+# gets the project's own complexities with their descriptions, and nothing else of it.
+$picks = '{"compactAt":300000,"complexities":{"high":{"models":["deep-1@max"]},"castle":{"description":"Castles","models":["small-1"],"advisor":true}}}' | ConvertFrom-Json
+Assert-Equal ((Get-ProviderConfig $picks $true) | ConvertTo-Json -Depth 5 -Compress) ($picks | ConvertTo-Json -Depth 5 -Compress) 'all of it for the default provider'
+Assert-Equal ((Get-ProviderConfig $picks $false) | ConvertTo-Json -Depth 5 -Compress) '{"complexities":{"castle":{"description":"Castles"}}}' 'for another provider: the project''s own complexities, their descriptions only'
+Assert-Equal "$($null -eq (Get-ProviderConfig $null $false))" 'True' 'no config, none for a provider'
+$other = @(Get-Complexities $models (Get-ProviderConfig $picks $false))
+$castle = $other | Where-Object { $_.name -eq 'castle' }
+Assert-Equal "$(($other | ForEach-Object { $_.name }) -join ',') $($castle.models -join ',') $($castle.advisor) $($castle.compactAt) $((Get-ComplexityModels $other 'high') -join ',')" 'low,medium,high,castle,design main-1@high False 250000 main-1@xhigh' 'another provider runs the project''s own complexity on its medium models, and every other on its models.json''s'
 # The page's size for a complexity (settings.json) goes over the project's and over the complexity's own; one for
 # a name not in the list changes nothing.
 $paged = Get-Complexities $models $own ('{ "complexities": { "review": { "compactAt": 90000 }, "low": { "compactAt": 300000 }, "gone": { "compactAt": 1 } } }' | ConvertFrom-Json)
@@ -389,9 +398,9 @@ Assert-Equal ((Place "{`"accounts`":$after}" @('6') 'two').EndsWith($expected)) 
 # Its second worker goes to that account, and a name that is taken gets a number.
 Assert-Equal ((Place "{`"accounts`":$((Place $real @('6') 'two').Substring(5))}" @('6', '7') 'two').EndsWith('"two":{"configDir":"C:/Users/me/.two-two","provider":"two","uses":["worker:6","worker:7"]}}')) $true 'a second worker goes to the provider''s first account'
 Assert-Equal ((Place '{"accounts":{"two":{"provider":"one","uses":["worker:1"]}}}' @('6') 'two').EndsWith('"two-2":{"configDir":"C:/Users/me/.two-two-2","provider":"two","uses":["worker:6"]}}')) $true 'a name that is taken gets a number'
-# A project that changed its coding tool: its worker leaves the old tool's account and gets one of the new tool's.
-# The other project's worker and the owner's own use stay.
-Assert-Equal (Place '{"accounts":{"main":{"provider":"one","uses":["personal","worker:1","worker:3"]}}}' @('3') 'two') 'True {"main":{"provider":"one","uses":["personal","worker:1"]},"two":{"configDir":"C:/Users/me/.two-two","provider":"two","uses":["worker:3"]}}' 'a worker on another tool''s account moves to an account of its project''s tool'
+# A worker runs on its account's coding tool, in any project: one that the owner put on another tool's account stays
+# there when setup runs again.
+Assert-Equal (Place '{"accounts":{"main":{"provider":"one","uses":["personal","worker:1","worker:3"]}}}' @('3') 'two') 'False {"main":{"provider":"one","uses":["personal","worker:1","worker:3"]}}' 'a worker on another tool''s account stays on it'
 # A PC whose accounts all have folders: a new worker is in none, as before.
 Assert-Equal (Place '{"accounts":{"a":{"provider":"one","configDir":"C:/a","uses":["worker:1"]}}}' @('1', '2') 'one') 'False {"a":{"provider":"one","configDir":"C:/a","uses":["worker:1"]}}' 'no command-line login entry: a new worker is in no entry'
 # Under the lock, on the PC's file: a project's settings come back with the claim.

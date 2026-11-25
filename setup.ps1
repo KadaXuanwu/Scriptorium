@@ -325,7 +325,7 @@ try {
         $settings = [pscustomobject]@{}
     }
     $changed = $false
-    # Each worker of the project on an account of its provider (pc.ps1, Set-WorkerAccounts).
+    # Each worker that is on no account yet goes on one of the project's default provider (pc.ps1, Set-WorkerAccounts).
     if (Set-WorkerAccounts $settings ([string[]]@($ids | ForEach-Object { "$_" })) $(if ($provider) { $provider.Name } else { '' }) $HOME) {
         $changed = $true
     }

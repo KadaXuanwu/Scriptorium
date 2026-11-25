@@ -1,7 +1,7 @@
 # Plugins
 
 The base knows git, GitHub and the queue. It knows no coding tool, no engine, no build tool and no test runner. A
-plugin teaches it one of them. A **provider** teaches it one coding tool (A provider): a project has exactly one. An
+plugin teaches it one of them. A **provider** teaches it one coding tool (A provider): each worker runs on one. An
 environment plugin teaches it one environment: Unity, a web stack, a mobile toolchain. A project with no environment
 plugin is a plain git repo, and that works.
 
@@ -159,9 +159,17 @@ what its environment adds: the order of its checks, its tools, its traps.
 ## A provider
 
 A provider is the plugin that teaches the base one coding tool: how to start a run with it, what its log says, who is
-signed in, and which usage windows its plans have. The base itself runs no tool and reads no log. A project has one
-provider: the first of its plugins whose manifest says `"provider": true`. With none, the page still shows the queue,
-and each worker's card says that the project has no provider.
+signed in, and which usage windows its plans have. The base itself runs no tool and reads no log. A plugin whose
+manifest says `"provider": true` is one.
+
+- **A worker runs on the provider of its account** ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`), in
+  any project. Its runs get that provider's hooks and playbook, and no other provider's.
+- **A project's scripts have** the providers that its `scriptorium.json` lists and each other one in the install's
+  `plugins` folder. The first that the project lists is its default: the models of `scriptorium.json` and of the
+  page's Details are its, and setup puts a new worker on its account.
+- **The page's server** serves the accounts and the workers of every provider it has, each with its own hooks,
+  models and windows.
+- With no provider, the page still shows the queue, and each worker's card says that it has no provider.
 
 A provider is a plugin like any other: it may also have `Setup`, `Start` and the other hooks above, and a
 `PLAYBOOK.md` with what holds for its tool (its shell, the rules file it loads, how it compacts).
@@ -192,9 +200,10 @@ Claude Code" is Claude Code on a worker's card.
 makes the folder of a new account: `~/.<the plugin's name>-<the account's name>`.
 
 A provider gets only its own accounts: an account names its provider ([QUEUE.md](QUEUE.md), Settings,
-`accounts.<name>.provider`). The PC has one command-line login, and it is one provider's. On a PC where it is
-another's, a provider's first account has a folder too. A tool that keeps its login elsewhere (in the OS keyring)
-need not read that folder: it is then only the account's key in the usage records.
+`accounts.<name>.provider`). The PC has one command-line login, and it is one provider's: a worker in no account
+runs on it, so on that provider. On a PC where it is another's, a provider's first account has a folder too. A tool
+that keeps its login elsewhere (in the OS keyring) need not read that folder: it is then only the account's key in
+the usage records.
 
 A hook that throws on a log never loses a run's end: the run then counts as one whose process died.
 

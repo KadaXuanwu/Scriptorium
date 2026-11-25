@@ -95,31 +95,53 @@ $threw = $false
 try { Set-WorkerAccount $settings '1' 'nope' | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'unknown account'
 
-# An account is one provider's (docs/QUEUE.md, Accounts). On a PC with two coding tools, a project has only its own
-# provider's accounts: its page lists no other, no worker of it goes on another tool's account, and none goes on the
-# command-line login where that is another tool's. An account with no provider is no project's until one claims it.
-$two = '{"accounts":{"main":{"provider":"other","uses":["worker:1","personal"]},"mine":{"provider":"test","configDir":"C:/m","uses":["worker:2"]},"old":{"configDir":"C:/o","uses":[]}}}'
+# An account is one provider's, and a worker runs on its account's coding tool, in any project (docs/QUEUE.md,
+# Accounts). So one page serves the accounts and the workers of every tool it has a provider for: here the test
+# provider, the project's default, and the bare one. An account that names no provider is the default's. One of a
+# tool with no plugin here is not served.
+$testProvider = $script:Provider
+$bareProvider = Import-Plugin (Join-Path $baseDir 'tests/bare') 'bare' $null
+Set-Providers @($testProvider, $bareProvider)
+$two = '{"accounts":{"main":{"provider":"bare","uses":["worker:1","personal"]},"mine":{"provider":"test","configDir":"C:/m","uses":["worker:2"]},"old":{"configDir":"C:/o","uses":[]},"far":{"provider":"other","configDir":"C:/f","uses":[]}}}'
 function Fails([scriptblock] $block) {
     try { & $block | Out-Null } catch { return [string]$_ }
     return ''
 }
 $register = $two | ConvertFrom-Json
-Assert-Equal "$(Test-OwnAccount $register.accounts.mine) $(Test-OwnAccount $register.accounts.main) $(Test-OwnAccount $register.accounts.old) $(Test-OwnLoginTaken $register)" 'True False False True' 'only the accounts of the project''s provider are its own'
-Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' 'main' }) "account main is another coding tool's: change it on a project of that tool" 'no worker on another tool''s account'
-Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' 'old' }) "account old is another coding tool's: change it on a project of that tool" 'no worker on an account that no provider has claimed'
-Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' '' }) "the command-line login is another coding tool's account: pick an account" 'no worker on the command-line login of another tool'
-Assert-Equal (Fails { Get-OwnAccount ($two | ConvertFrom-Json) 'mine' }) '' 'its own account'
-# A worker that goes away leaves its account all the same: nothing refuses that.
+Assert-Equal "$(Test-KnownAccount $register.accounts.main) $(Test-KnownAccount $register.accounts.mine) $(Test-KnownAccount $register.accounts.old) $(Test-KnownAccount $register.accounts.far)" 'True True True False' 'the page serves the accounts of every tool it has a provider for'
+Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' 'far' }) 'account far is of a coding tool with no plugin here (other): add its plugin to scriptorium.json and run setup' 'no worker on an account of a tool with no plugin here'
+Assert-Equal (Fails { Get-KnownAccount ($two | ConvertFrom-Json) 'nope' }) 'no account nope' 'an account the register does not have'
+# A worker that goes to another tool's account runs on that tool: not while it has a run in flight.
+$moved = Set-WorkerAccount ($two | ConvertFrom-Json) '2' 'main'
+Assert-Equal "$((Get-WorkerProvider $register '2' (Get-KnownProviders)).Name) $((Get-WorkerProvider $moved '2' (Get-KnownProviders)).Name)" 'test bare' 'a worker on another tool''s account runs on that tool'
+Assert-Equal (Get-ToolRefusal $testProvider $bareProvider $true) "it has a run in flight on The test provider: it can go to another coding tool's account when that run is done" 'not to another tool with a run in flight'
+Assert-Equal "'$(Get-ToolRefusal $testProvider $bareProvider $false)' '$(Get-ToolRefusal $testProvider $testProvider $true)' '$(Get-ToolRefusal $null $bareProvider $false)'" "'' '' ''" 'with no run, and to an account of the same tool, it goes'
+# A worker that goes away leaves its account; a new one on the command-line login runs on that login's tool.
 $gone = Set-WorkerEntry ($two | ConvertFrom-Json) '2' $false
-Assert-Equal "$(@($gone.accounts.mine.uses).Count) $($gone.accounts.main.uses -join ',')" '0 worker:1,personal' 'a removed worker leaves its account where the command-line login is another tool''s'
-Assert-Equal (Fails { Set-WorkerEntry ($two | ConvertFrom-Json) '3' $true '' }) "the command-line login is another coding tool's account: pick an account" 'a new worker does not go on the command-line login of another tool'
-$shown = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $register; workers = @(@{ id = '2'; state = [pscustomobject]@{ state = 'idle'; at = 0 } })
-    usage = ('{"default":{"at":9,"short":{"used":0.9,"resetsAt":99}}}' | ConvertFrom-Json) }
-Assert-Equal "$(($shown.accounts | ForEach-Object { $_.name }) -join ',') $($shown.loginTaken)" 'mine True' 'the page lists the project''s own accounts, and says that the command-line login is taken'
-# The same register for a project of the other tool.
-$register.accounts.mine.provider = 'other'
-$register.accounts.main.provider = 'test'
-Assert-Equal "$(Test-OwnLoginTaken $register) '$(Fails { Set-WorkerAccount $register '2' '' })'" "False ''" 'the command-line login of its own provider is free'
+Assert-Equal "$(@($gone.accounts.mine.uses).Count) $($gone.accounts.main.uses -join ',')" '0 worker:1,personal' 'a removed worker leaves its account'
+Assert-Equal (Fails { Set-WorkerEntry ($two | ConvertFrom-Json) '3' $true '' }) '' 'a new worker on the command-line login'
+$idle = [pscustomobject]@{ state = 'idle'; at = 0 }
+$shown = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $register
+    workers = @(@{ id = '1'; state = $idle }, @{ id = '2'; state = $idle }, @{ id = '3'; state = $idle })
+    usage = ('{"default":{"at":9,"month":{"used":1,"resetsAt":99999999999}},"C:/m":{"at":9,"short":{"used":0.2,"resetsAt":99999999999}}}' | ConvertFrom-Json) }
+Assert-Equal (($shown.accounts | ForEach-Object { "$($_.name)=$($_.provider)" }) -join ' ') 'main=bare mine=test old=test' 'the page lists the accounts of every tool it serves, each with its tool'
+$bareAccount = $shown.accounts[0]
+$testAccount = $shown.accounts[1]
+Assert-Equal "$($bareAccount.month.used) $($bareAccount.ContainsKey('short')) $($testAccount.short.used) $($testAccount.ContainsKey('month'))" '1 False 0.2 False' 'each account with the windows of its own tool'
+Assert-Equal (($shown.workers | ForEach-Object { "$($_.id)=$($_.provider)/$($_.takes[0].model)" }) -join ' ') '1=bare/only 2=test/main-1 3=bare/only' 'each worker with its tool and that tool''s models; worker 3, in no entry, is on the command-line login''s tool'
+Assert-Equal "$($shown.provider) | $($shown.tools.bare.title) $($shown.tools.bare.hooks.Count) $(($shown.tools.bare.windows | ForEach-Object { $_.name }) -join ',') | $($shown.tools.test.hooks.Count) $($shown.tools.test.windows.Count)" 'The test provider | The bare provider 0 month | 9 3' 'the default tool, and each tool with its features and windows'
+Assert-Equal "$($script:Provider.Name) $($shown.ContainsKey('loginTaken'))" 'test False' 'the default provider is set again after the snapshot'
+# Now: each worker's account is read with the windows of the worker's own tool. Worker 1's month is used up, so the
+# ticket goes to worker 2, though the default tool's windows show nothing used on worker 1's account.
+$large = Issue 50 @('P1', 'size:L')
+Assert-Equal "$((Select-NowWorker $large @($large) @($shown.workers | Where-Object { $_.id -ne '3' }) $register $shown.accounts).worker) $($script:Provider.Name)" '2 test' 'Now reads an account with its own tool''s windows'
+$next = Get-NextTickets @($large) @() @($shown.workers | Where-Object { $_.id -ne '3' }) $null $register $shown.accounts
+Assert-Equal "$($next.'1'.available) $($next.'2'.available) $($script:Provider.Name)" 'False True test' 'so does each worker''s next ticket'
+# A new account's sign-in is its own tool's: the server sets that tool's provider first, by its name.
+Assert-Equal "$((Get-AccountProvider ([pscustomobject]@{ provider = 'bare' }) (Get-KnownProviders)).Title) $($null -eq (Get-AccountProvider ([pscustomobject]@{ provider = 'nope' }) (Get-KnownProviders)))" 'The bare provider True' 'a provider by its name'
+# A script with one provider again.
+$script:Providers = @()
+Set-Provider $testProvider
 
 # Rename: an account keeps its place, its folder and its uses; a taken or bad name changes nothing; a new account
 # may not take a renamed account's folder.
