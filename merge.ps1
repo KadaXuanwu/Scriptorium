@@ -159,7 +159,8 @@ while ($true) {
                 }
             }
         }
-        foreach ($pr in ($prs | Sort-Object createdAt)) {
+        # Only the queue's PRs: one on another branch is the owner's own, and its branch names no ticket.
+        foreach ($pr in ($prs | Where-Object { Test-TicketBranch $_.headRefName } | Sort-Object createdAt)) {
             $where = $pr.Repo
             $ticket = [int]$pr.headRefName.Substring(1)
             $names = @($pr.labels | ForEach-Object { $_.name })

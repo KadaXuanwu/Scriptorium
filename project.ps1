@@ -281,6 +281,12 @@ function Get-TaskProject([string] $arguments) {
     return ''
 }
 
+# Whether a branch is a ticket's (PLAYBOOK.md, Branch: `t<N>`). A pull request on any other branch is the owner's own,
+# and the merger leaves it alone.
+function Test-TicketBranch([string] $branch) {
+    return $branch -cmatch '^t\d+$'
+}
+
 # Whether a process's command line runs $script (worker.ps1, merge.ps1, server.ps1) for this project. The path as a
 # whole argument: another project, a path that starts with this one, or a queue from before -Project never matches.
 # conhost passes a path with no space on without its quotes, so the quotes are optional.

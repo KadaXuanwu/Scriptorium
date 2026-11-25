@@ -1187,6 +1187,17 @@ $ghJob = $null
 $script:nextGh = 0
 $script:nextLocal = 0
 $script:nextProjects = (Get-Now) + 300
+
+# Restarts the server on new code (restart.ps1). Not while a sign-in waits for the owner, a GitHub write, a worker's
+# setup or a copy's delete runs: the restart would end it.
+function Restart-OnChange {
+    if (-not ($script:login -and -not $script:login.process.HasExited) -and $script:writes.Count -eq 0 -and $script:setups.Count -eq 0 -and $script:deletes.Count -eq 0 -and (Test-CodeChanged)) {
+        Write-AppLog 'script changed: restarting on the new code'
+        $listener.Stop()
+        Restart-OnNewCode (Get-TaskName $config.name 'app')
+    }
+}
+
 while ($true) {
     try {
         if ($pending.Wait(500)) {
@@ -1288,16 +1299,16 @@ while ($true) {
             }
             Update-Snapshot
             $script:nextLocal = $now + 5
-            # Not while a sign-in waits for the owner, a GitHub write, a worker's setup or a copy's delete runs: the
-            # restart would end it.
-            if (-not ($script:login -and -not $script:login.process.HasExited) -and $script:writes.Count -eq 0 -and $script:setups.Count -eq 0 -and $script:deletes.Count -eq 0 -and (Test-CodeChanged)) {
-                Write-AppLog 'script changed: restarting on the new code'
-                $listener.Stop()
-                Restart-OnNewCode (Get-TaskName $config.name 'app')
-            }
+            Restart-OnChange
         }
     } catch {
         Write-AppLog "error: $_"
+        # After an error too: old code that fails on what a pull took away (a file it reads) never gets to the check
+        # above. A check that fails itself (a file gone halfway through a pull) waits for the next round.
+        try {
+            Restart-OnChange
+        } catch {
+        }
         Start-Sleep 5
     }
 }
