@@ -132,7 +132,9 @@ foreach ($bad in @(@('cards', @('x')), @('workers', @(1..101)))) {
 }
 $shown = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = $ordered }).order
 Assert-Equal "$($shown.accounts -join ',') $($shown.workers -join ',')" 'b,c P|2' 'the snapshot gives the page the order'
-Assert-Equal ((New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).order | ConvertTo-Json -Compress) '{"workers":[],"accounts":[]}' 'no order: empty lists'
+# Counted, not compared as JSON text: PowerShell 7 gives a hashtable's keys in no fixed order.
+$none = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }).order
+Assert-Equal "$(@($none.Keys | Sort-Object) -join ',') $(@($none.workers).Count) $(@($none.accounts).Count)" 'accounts,workers 0 0' 'no order: empty lists'
 
 # Add a worker and Remove: the lowest free number; a fresh entry on its account; removal takes it off every account.
 Assert-Equal (Get-FreeWorkerId @('1', '3')) '2' 'a removed worker''s number comes back'
