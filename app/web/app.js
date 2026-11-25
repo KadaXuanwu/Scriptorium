@@ -393,8 +393,7 @@ function mappingRow(worker, t, tool, has) {
     && `Default: ${t.baseAdvisor ? `advisor, ${esc(fallbackName(t.baseFallback))}` : 'no advisor'}`].filter(Boolean);
   // Only what the coding tool has (mappingHas): with no efforts or no compact size the field keeps its place, unseen;
   // with no advisor the row has none.
-  const advisor = !has.advisor ? '' : t.model === worker.mapping?.advisor
-    ? '<small>No advisor: the run is on the advisor\'s model.</small>'
+  const advisor = !has.advisor || t.model === worker.mapping?.advisor ? ''
     : `<button class="take${on ? ' on' : ''}" data-advisor="${name}" data-worker="${id}" aria-pressed="${on}" aria-label="Advisor of a ${name} run"${locked}>${icon(on ? 'check' : 'lock')}<span><b>Advisor</b></span></button>
       <select data-fallback="${name}" data-worker="${id}" aria-label="Effort of a ${name} run without the advisor"${on && !t.linked ? '' : ' disabled'}>${
   ['', ...(tool?.efforts || [])].map((e) => `<option value="${esc(e)}"${e === fallback ? ' selected' : ''}>${esc(fallbackName(e))}</option>`).join('')}</select>`;
@@ -441,31 +440,23 @@ function drawConfigOf(worker) {
   const own = takes.filter((t) => t.own);
   const rows = (list) => list.map((t) => mappingRow(worker, t, tool, has)).join('');
   const all = pcWorkers();
-  const end = all.find((w) => w.id === mapping.end);
-  const endName = esc(end ? workerLabel(end) : `worker ${mapping.end}`);
-  const linkNote = !mapping.follows ? '' : `<small>The models${has.efforts ? ', efforts' : ''}${has.compact ? ', compact sizes' : ''}${has.advisor ? ' and advisor' : ''} below are ${endName}'s: change them there. The switches are this worker's own.${
-    end && end.provider !== worker.provider ? ` ${endName} is on another coding tool now; its picks for ${esc(toolName(state, worker.provider))} still count.` : ''}</small>`;
   const advisorKey = `mapping:${worker.id}:`;
-  const advisorRow = has.advisor ? `<div class="config-row${mapping.follows ? ' linked' : ''}${busyClass(advisorKey)}"${busyAttr(advisorKey)}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
+  const advisorRow = has.advisor ? `<div class="config-row${mapping.follows ? ' linked' : ''}${busyClass(advisorKey)}"${busyAttr(advisorKey)}><span class="config-name"><b>Advisor</b></span>
     <select data-advisor-model data-worker="${id}" aria-label="Model of the advisor"${mapping.follows ? ' disabled' : ''}>${pickList(tool.models || [], mapping.advisor, modelName)}</select>
     ${mapping.baseAdvisor && mapping.baseAdvisor !== mapping.advisor ? `<small>Default: ${esc(modelName(mapping.baseAdvisor))}</small>` : ''}</div>` : '';
   // The settings' `model` goes over the mapping of every worker on the project's default coding tool.
   const [model, effort] = (!worker.provider || toolName(state, worker.provider) === toolOf(state) ? state.settingsModel || '' : '').split('@');
   const override = model ? `<p class="takes-note">settings.json sets ${esc(modelName(model))}${effort ? ` · ${esc(effort)}` : ''}
     for every run of ${esc(scope)}: the models and efforts above are not in use.</p>` : '';
-  const ownNote = mapping.follows && own.some((t) => !t.linked) ? ` ${endName} is in another project, so these are this worker's own.` : '';
   const followKey = `mapping:${worker.id}`;
   put($('config-body'), `<div class="mapping-of${busyClass(followKey)}"${busyAttr(followKey)}>
       <label>Mapping<select data-follow="${id}" aria-label="Whose mapping worker ${id} uses">${followOptions(worker, all)}</select></label>
-      ${toolBadge(toolName(state, worker.provider))}${linkNote}</div>
+      ${toolBadge(toolName(state, worker.provider))}</div>
     ${own.length ? '<h3 class="config-group">In every project</h3>' : ''}
     <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide${has.efforts ? '' : ' none'}">Effort</span><span${has.compact ? '' : ' class="none"'}>Compacts near</span></div>
     ${rows(shared)}${advisorRow}
-    ${own.length ? `<h3 class="config-group project">Only in ${mark() || esc(scope)}</h3>
-      <p class="takes-note">${own.length > 1 ? 'Complexities' : 'A complexity'} of this project alone. In another project the worker has no such row; its pick here is kept for its return.${ownNote}</p>
-      ${rows(own)}` : ''}
-    ${override}
-    <p class="takes-note">The switch before a complexity says whether this worker takes its tickets. A pick counts from the worker's next run; a run in progress or on hold keeps its model, effort and advisor.</p>`);
+    ${own.length ? `<h3 class="config-group project">Only in ${mark() || esc(scope)}</h3>${rows(own)}` : ''}
+    ${override}`);
 }
 
 // ---- Details: the settings
@@ -807,13 +798,14 @@ function info(s) {
       ${toolHas(s).compact ? `<p>Compacts near: at this context size, the coding tool replaces the older part of a run with a summary. A larger
         size keeps more in view and uses more each turn.</p>` : ''}
       <p>A worker's ${setting('Config', 'workers')} holds its mapping: each complexity's model, with the effort, the
-        compact size and the advisor where its coding tool has them. A worker keeps one mapping for each coding tool
-        it was on${per.length > 1 ? ' and takes it along to another project' : ''}; a complexity of a project's own
-        has its row only in that project. A worker can use another worker's mapping instead: a change there then
-        counts for both. A pick counts from the worker's next run. A run in progress or on hold keeps its model,
+        compact size and the advisor where its coding tool has them, and a switch for whether the worker takes that
+        complexity's tickets. A worker keeps one mapping for each coding tool it was on${per.length > 1
+        ? ' and takes it along to another project' : ''}; a complexity of a project's own has its row only in that
+        project, and its pick waits there while the worker is elsewhere. A worker can use another worker's mapping instead: a change there
+        then counts for both, and the switches stay its own. A pick counts from the worker's next run. A run in progress or on hold keeps its model,
         effort and advisor.</p>
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
-        not see the advice. A run keeps its advisor to the end, but past the stop line of the advisor's own window
+        not see the advice. A complexity on the advisor's own model runs with none. A run keeps its advisor to the end, but past the stop line of the advisor's own window
         (Limits) new runs start without it.</p>` : ''}`),
     section('Coding tool', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${toolInfo(p.of)}`).join('')),
     section('Plugins', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${(p.plugins || []).length

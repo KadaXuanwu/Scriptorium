@@ -426,7 +426,6 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 /* Whose mapping the worker uses, above its rows. */
 .mapping-of { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; }
 .mapping-of label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-.mapping-of small { flex-basis: 100%; font-size: 12px; color: var(--muted); }
 /* The rows of a mapping in two groups: the ones the worker has in every project, then, apart, the project's own. */
 .config-group { margin: 16px 0 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .config-group.project { margin-top: 40px; padding-top: 16px; border-top: 2px solid var(--line); }

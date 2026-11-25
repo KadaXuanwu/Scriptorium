@@ -107,10 +107,10 @@ worker's mapping). Each change saves at once in the PC's settings (`workers.<id>
 worker's next run. A run in progress or on hold keeps its model, its effort and its advisor.
 
 - **Mapping,** the list at the top: Its own, or Same as another worker on the same coding tool, in any project. A
-  worker whose own links lead back to this one is not in the list. The page asks before a link, because the worker's
-  own picks for this tool go away. Its own again, the worker starts from the picks it ran on.
-- **A linked worker** shows the other worker's values as plain text, with no field to press, and a line that names
-  the worker to change them on. Its switches stay its own, and stay buttons.
+  worker whose own links lead back to this one is not in the list. A link takes the worker's own picks for this tool
+  away, with no question. Its own again, the worker starts from the picks it ran on.
+- **A linked worker** shows the other worker's values as plain text, with no field to press. Its switches stay its
+  own, and stay buttons.
 - **A row for each complexity,** with its switch, its name and an (i) button that shows its description:
   - **Model and effort** are two lists: the models and the efforts of the coding tool's `models.json`
     (`complexities.<name>.model`). A pick that is not the base's shows the base's under it as Default. Pick the
@@ -120,7 +120,7 @@ worker's next run. A run in progress or on hold keeps its model, its effort and 
   - **Advisor** is a switch (`complexities.<name>.advisor`), and the list beside it is the effort of a run that has
     no advisor left (`complexities.<name>.advisorFallback`): an effort, or the same effort. A value that differs from
     the files shows theirs under it as Default. A complexity that runs on the advisor's own model has no advisor: the
-    row says so.
+    row shows none.
 - **The advisor's model** (`advisor.model`): a list of the models of `models.json`, with the default under it when the
   pick differs.
 - **Only what the worker's coding tool has:** with no efforts, no compact size or no advisor in its `models.json`,
