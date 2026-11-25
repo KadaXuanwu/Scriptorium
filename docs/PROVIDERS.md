@@ -3,7 +3,8 @@
 **Status: the base has no provider, and two providers are plugins.** The contract is in [PLUGINS.md](PLUGINS.md), A
 provider. The first provider is [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode).
 The second is [Scriptorium for Antigravity](https://github.com/KadaXuanwu/Scriptorium-Antigravity): its hooks work
-with the real tool, and no ticket has run through it yet. This page keeps the research.
+with the real tool, and one small ticket has run through it, from the queue to its merged pull request. Both are
+listed in `plugins.json`. This page keeps the research.
 
 The research is a snapshot of 2026-11-24, taken from each tool's own docs. The Claude Code column rests on running
 code. The Antigravity column is the docs' too: where the real tool differs, [What the real Antigravity

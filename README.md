@@ -115,9 +115,11 @@ it.
 - Windows 10 or 11 (Windows PowerShell 5.1 is built in), or macOS or Linux with
   [PowerShell 7.4 or later](https://aka.ms/powershell) (`pwsh`). Linux needs systemd.
 - [git](https://git-scm.com) and the [GitHub CLI](https://cli.github.com), signed in with write access to the repo.
-- A provider's coding tool, signed in with a subscription. The listed one,
-  [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode), needs
-  [Claude Code](https://claude.com/claude-code) with a Claude Pro or Max plan.
+- A provider's coding tool, signed in with a subscription. Two providers are listed:
+  [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode) needs
+  [Claude Code](https://claude.com/claude-code) with a Claude Pro or Max plan, and
+  [Scriptorium for Antigravity](https://github.com/KadaXuanwu/Scriptorium-Antigravity) needs Google's Antigravity
+  CLI with a Google AI plan.
 - Optional: [Tailscale](https://tailscale.com) for the page on your phone, and [ntfy](https://ntfy.sh) for
   notifications.
 
@@ -145,14 +147,17 @@ it.
 3. Set it up:
 
    ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\setup.ps1 -Project D:\Work\MyApp -Commit -Start
+   powershell -NoProfile -ExecutionPolicy Bypass -File D:\Work\Scriptorium\setup.ps1 -Project D:\Work\MyApp -Plugins claude -Commit -Start
    ```
 
    On macOS or Linux:
 
    ```sh
-   pwsh -NoProfile -File ~/Work/Scriptorium/setup.ps1 -Project ~/Work/MyApp -Commit -Start
+   pwsh -NoProfile -File ~/Work/Scriptorium/setup.ps1 -Project ~/Work/MyApp -Plugins claude -Commit -Start
    ```
+
+   `-Plugins` names the project's provider, the plugin of your coding tool: `claude` here, or `antigravity`. Without
+   it, setup stops at a project that names no provider and lists them.
 
 Setup adds `scriptorium.json`, the ticket skill, the GitHub labels, one worker and the logon tasks, then prints the
 page address and the ntfy topic. Add `-WhatIf` to preview. It is safe to run again.
@@ -162,7 +167,7 @@ skills folder) with the current one. The project's own rules for tickets go in `
 skill with no `PROJECT.md` stays as it is, and setup says how to move its rules.
 
 An update from a version whose base ran the coding tool itself (before the provider plugins): pause the workers
-first, and after the pull run setup for each project, which adds the provider. That version's page server does not
+first, and after the pull run setup for each project with `-Plugins claude`, which adds the provider. That version's page server does not
 restart by itself after this pull. Restart each project's page: `Stop-ScheduledTask "Scriptorium <name> app"`, then
 `Start-ScheduledTask "Scriptorium <name> app"`.
 
@@ -205,11 +210,10 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
   run a ticket there yet: setup, the page, a run and the sign-in from the page are untested. On macOS the login is
   read from the keychain, which may ask once for access. Tell us what breaks.
 - On macOS and Linux, the pictures of a question go up at full size: the small copy needs Windows.
-- GitHub only. One provider is listed, for Claude Code. A worker runs on the coding tool of its account, so one
-  project can have workers on two tools ([docs/QUEUE.md](docs/QUEUE.md), Settings, `accounts.<name>.provider`); the
-  page's Details sets the models of a project's default provider only. A second provider, for Antigravity, is not
-  listed yet: no ticket has run through it. A project names it with a `source`
-  ([docs/PLUGINS.md](docs/PLUGINS.md), Where a plugin comes from).
+- GitHub only. Two providers are listed, for Claude Code and for Antigravity. A worker runs on the coding tool of
+  its account, so one project can have workers on two tools ([docs/QUEUE.md](docs/QUEUE.md), Settings,
+  `accounts.<name>.provider`); the page's Details sets the models of a project's default provider only. The
+  Antigravity provider is new: one small ticket has run through it, on Windows. Its README says what is proven.
 - GitHub builds and tests nothing: a run's own checks are the gate.
 
 ## Docs

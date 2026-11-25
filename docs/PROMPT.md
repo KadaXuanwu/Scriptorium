@@ -29,7 +29,8 @@ only for a step that needs me, and say exactly what I must do. Its docs are at h
 
    Read the output. It names the plugins of this project: its provider (the plugin of the coding tool) and the
    environments it detects. If one is wrong, or one is missing, tell me before
-   you go on. Run it again with `-Plugins <names>` when I name others.
+   you go on. Run it again with `-Plugins <names>` when I name others. If it says that the project has no provider,
+   ask me which of the listed coding tools the workers run on, and run it again with `-Plugins <name>`.
 4. **Run setup.** The same command without `-WhatIf`, with `-Commit -Start`. If it stops, do what its output says
    and run it again. Where it says to install a tool, tell me first.
 5. **Check the commit.** Setup committed and pushed the files it added (`scriptorium.json`, `.gitignore`, the ticket
