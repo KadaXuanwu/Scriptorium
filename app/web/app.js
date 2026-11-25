@@ -639,7 +639,7 @@ function accountCard(a) {
   return `<article class="card account ${tone}${art ? ' art' : ''}${busyClass(card)}" data-card="${name}"${busyAttr(card)}${art ? ` style="--art:url('${esc(art)}')"` : ''}>
     <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
       <span class="chip ${tone}">${icon(glyph)}${words}</span>${cross('account', a.name, a.name)}</div>
-    <div class="meta"><span class="email">${esc(a.signedIn ? maskEmail(a.email) : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${toolBadge(toolOf(state))}${out}</div>
+    <div class="meta"><span class="email">${esc(a.signedIn ? maskEmail(a.email) : '')}</span>${toolBadge(toolOf(state))}${out}</div>
     ${accountMeters(a)}
     <div class="buttons">${buttons.join('')}</div></article>`;
 }

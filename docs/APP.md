@@ -274,7 +274,7 @@ The repo may be private, so the server fetches each one once with the owner's `g
 ### Accounts
 
 Per account: a status (Ready, At its stop line, Signed out, Subscription refused, Runs do not start, Not used), its
-email (the first three letters of its name, the rest hidden) and plan, the human uses on it (front desk, you), and a
+email (the first three letters of its name, the rest hidden) and plan, its coding tool, and a
 meter for each of the provider's windows
 ([PLUGINS.md](PLUGINS.md), A provider). Under the last one stands each window of some models that the account has a
 reading of ([QUEUE.md](QUEUE.md), A model's limit), with two handles: the one under a letter is the start line, the
