@@ -25,7 +25,7 @@ function Get-Pace([double] $room, [long] $left) {
 # Save-WindowOut) stays until its reset, or a refused start would give its ticket back to the account every poll. A
 # kept window takes the new one's read time (`at`): it was read again. The queue app shows it (Accounts).
 function Merge-Usage($stored, $new) {
-    if (-not $stored -or $stored.email -ne $new.email) {
+    if (-not $stored -or [string]$stored.email -ne [string]$new.email) {
         return $new
     }
     foreach ($window in @($WindowSeconds.Keys) + @($ModelWindows.Keys)) {
