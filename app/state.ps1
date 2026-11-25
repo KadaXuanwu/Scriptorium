@@ -55,10 +55,12 @@ function Test-OwnLoginTaken($settings) {
 
 # The register after moving a worker to an account ('' for the command-line login: in no entry). Throws for an
 # account the register doesn't have, for another coding tool's account, and for the command-line login where that is
-# another coding tool's.
-function Set-WorkerAccount($settings, [string] $worker, [string] $account) {
+# another coding tool's. -Off: the worker goes away, so it only leaves every entry, which nothing refuses.
+function Set-WorkerAccount($settings, [string] $worker, [string] $account, [switch] $Off) {
     $use = "worker:$worker"
-    if ($account) {
+    if ($Off) {
+        $account = ''
+    } elseif ($account) {
         [void](Get-OwnAccount $settings $account)
     } elseif (Test-OwnLoginTaken $settings) {
         throw "the command-line login is another coding tool's account: pick an account"
@@ -76,7 +78,7 @@ function Set-WorkerAccount($settings, [string] $worker, [string] $account) {
 # The register with worker $id added (a fresh entry, active, on $account: '' for the command-line login) or removed
 # (no entry, in no account's uses). Throws for an account the register doesn't have, before it changes anything.
 function Set-WorkerEntry($settings, [string] $id, [bool] $present, [string] $account = '') {
-    $settings = Set-WorkerAccount $settings $id $account
+    $settings = Set-WorkerAccount $settings $id $account -Off:(-not $present)
     if ($settings.workers) {
         $settings.workers.PSObject.Properties.Remove($id)
     }
