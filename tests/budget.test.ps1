@@ -191,6 +191,28 @@ Assert-Same (Get-FallbackEffort $null 'review' 'main-1' 'high' $false) 'high' 'n
 
 Assert-Same (($OutKinds | Sort-Object) -join ',') 'login,start,subscription' 'the kinds that put an account out'
 
+# A provider's reading as the PC keeps it (ConvertTo-Reading): the provider's windows only, each with the read time; a
+# refusal of the account, and one of a window of some models under that window's name.
+$given = @{ Windows = @{ short = @{ Used = 0.4; ResetsAt = 900 }; nope = @{ Used = 1; ResetsAt = 900 } }; Refused = ''; RefusedResetsAt = 0 }
+$kept = ConvertTo-Reading $given 50
+Assert-Same "$($kept.at) $($kept.short.used) $($kept.short.resetsAt) $($kept.short.at) $($kept.ContainsKey('nope')) $($kept.ContainsKey('long')) $($kept.refused) '$($kept.modelRefused)'" "50 0.4 900 50 False False False ''" 'a reading of one window'
+Assert-Same "$((ConvertTo-Reading @{ Refused = 'short'; RefusedResetsAt = 70 } 50).refused) $((ConvertTo-Reading @{ Refused = $deep } 50).modelRefused) $((ConvertTo-Reading @{ Refused = $deep } 50).refused) $($null -eq (ConvertTo-Reading $null 50))" "True $deep False True" 'the refusals of a reading, and no reading'
+# The PC's usage file (Save-Reading), which the workers and the page's Ping write: another account's record stays; under
+# the same login a window that the new reading does not have stays; under another login the record is replaced.
+$file = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-usage-test-$PID.json"
+Remove-Item $file -ErrorAction SilentlyContinue
+$far = 99999999999
+Save-Reading $file 'C:/a' @{ at = 10; email = 'a@x'; short = @{ used = 0.2; resetsAt = $far; at = 10 }; $deep = @{ used = 0.3; resetsAt = $far; at = 10 } }
+Save-Reading $file 'C:/b' @{ at = 11; email = 'b@x'; short = @{ used = 0.7; resetsAt = $far; at = 11 } }
+Save-Reading $file 'C:/a' @{ at = 20; email = 'a@x'; short = @{ used = 0.5; resetsAt = $far; at = 20 } }
+$all = Read-UsageFile $file
+Assert-Same "$($all.Count) $($all.'C:/a'.short.used) $($all.'C:/a'.$deep.used) $($all.'C:/a'.at) $($all.'C:/b'.short.used)" '2 0.5 0.3 20 0.7' 'a save keeps the other account and a window the new reading has not'
+Save-Reading $file 'C:/a' @{ at = 30; email = 'other@x'; short = @{ used = 0.1; resetsAt = $far; at = 30 } }
+$all = Read-UsageFile $file
+Assert-Same "$($all.'C:/a'.short.used) $($null -eq $all.'C:/a'.$deep) $($all.'C:/a'.email)" '0.1 True other@x' 'another login in the folder: its reading replaces the record'
+Remove-Item $file
+Assert-Same (Read-UsageFile $file).Count 0 'no file: no reading'
+
 # A probe when a run ends: only with a provider that has a probe and reads no usage from a run's log.
 Assert-Same "$(Test-ProbeAfterRun $false $true) $(Test-ProbeAfterRun $true $true) $(Test-ProbeAfterRun $false $false) $(Test-ProbeAfterRun $true $false)" 'True False False False' 'the usage is read again after a run whose log holds none'
 

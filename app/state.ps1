@@ -5,7 +5,9 @@
 
 . (Join-Path $PSScriptRoot '../followup.ps1')
 . (Join-Path $PSScriptRoot '../areas.ps1')
-. (Join-Path $PSScriptRoot '../limits.ps1')
+# budget.ps1 loads limits.ps1, which empties the windows' tables: before any provider is set. Its Get-Priority (of
+# labels) gives way to this file's own (of an item), defined below; nothing of budget.ps1 that the page calls uses it.
+. (Join-Path $PSScriptRoot '../budget.ps1')
 . (Join-Path $PSScriptRoot '../project.ps1')
 . (Join-Path $PSScriptRoot '../plugins.ps1')
 

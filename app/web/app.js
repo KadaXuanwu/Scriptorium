@@ -590,7 +590,7 @@ function accountCard(a) {
   // Sign in only while the account is signed out: to change the login of an account, remove it and add one.
   // Each only with a coding tool that has it (has): a tool with no sign-in for the page is signed in from a terminal.
   const buttons = a.status === 'signedout' && has(state, 'SignIn', 'ReadSignIn') ? [`<button class="primary" data-login="${name}">Sign in</button>`] : [];
-  if (a.signedIn && has(state, 'Probe')) buttons.push(`<button data-ping="${name}" title="Sends the cheapest request: it starts the account's windows now">Ping</button>`);
+  if (a.signedIn && has(state, 'Probe')) buttons.push(`<button data-ping="${name}" title="Sends the cheapest request: it starts the account's windows now and reads its usage">Ping</button>`);
   const card = `account:${a.name}`;
   return `<article class="card account ${tone}${busyClass(card)}" data-card="${name}"${busyAttr(card)}>
     <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${toolBadge(toolOf(state))}${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
@@ -775,7 +775,7 @@ function info(s) {
         `<b>A worker script</b> for each worker has its plugins make its environment ready${plugins.length ? '' : ' (none here)'}, chooses its next job, starts the run and checks how it ended. A free worker looks for a job every few minutes, and at once on Force.`,
         '<b>The merger</b> looks at the open PRs every few minutes and merges, oldest first, each worker PR that GitHub can merge and no question holds. A PR that conflicts with main, or has a comment of yours its run did not read, goes back to its worker. While No blocking is on, it also hands back what waits on you.',
         '<b>This page\'s server</b> reads GitHub once a minute and the workers\' files every few seconds, sends the pushes and does what you click. Tailscale puts it on your phone; nothing is open to the internet. With the PC off, the page shows its last state, greyed out.',
-        has(s, 'Probe') ? 'Only the runs use a model, with two small exceptions: a worker with no run for a while reads an account\'s usage with the coding tool\'s cheapest request, and Ping starts an account\'s windows.'
+        has(s, 'Probe') ? 'Only the runs use a model, with two small exceptions: a worker with no run for a while reads an account\'s usage with the coding tool\'s cheapest request, and Ping starts an account\'s windows and reads its usage.'
           : 'Only the runs use a model.',
         'A change to the queue\'s scripts loads by itself: a worker restarts on the new code between jobs, never in a run.',
       ])}`),

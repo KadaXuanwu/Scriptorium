@@ -278,8 +278,8 @@ folder stays.
 - **The sign-in** is the provider's sign-in command, run by the server ([PLUGINS.md](PLUGINS.md), SignIn). The page
   shows its link: open it on any device, sign in as that account (not your own: the browser may already be signed in),
   and paste the code it shows. With a provider that has no sign-in for the page, sign the folder in from a terminal.
-- **Ping:** the provider's cheapest request (Probe). It starts the account's windows now. It is the only action here
-  that uses tokens.
+- **Ping:** the provider's cheapest request (Probe). It starts the account's windows now and saves the usage that the
+  request shows, so the meters show the account as it is. It is the only action here that uses tokens.
 
 ### History
 
