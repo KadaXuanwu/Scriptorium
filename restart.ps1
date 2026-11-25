@@ -2,16 +2,18 @@
 # change to the project's scriptorium.json, ends the loop at its next safe point, and its own logon task starts it
 # again. Dot-sourced by worker.ps1, merge.ps1 and app/server.ps1.
 
-# The folders and files watched: the install folder (without the plugins it holds and the tests), then what
-# Start-CodeWatch adds.
+# The folders and files watched: the install folder (without the plugins it holds, the tests and its .claude folder),
+# then what Start-CodeWatch adds.
 $script:watched = @()
 
 # Every .ps1 under the watched folders but the tests, and each watched file: a change to any of them restarts the
-# script, with no list to keep.
+# script, with no list to keep. The install's .claude folder is left out: a Claude Code worktree there is a whole
+# checkout, and an edit in it is not new code of the install.
 function Get-CodeStamp {
     $files = @(Get-ChildItem $PSScriptRoot -Recurse -Filter *.ps1 | Where-Object {
         $_.Name -notlike '*.test.ps1' -and $_.FullName -notlike (Join-Path $PSScriptRoot 'plugins/*') -and
-            $_.FullName -notlike (Join-Path $PSScriptRoot 'tests/*') -and $_.FullName -notlike (Join-Path $PSScriptRoot '_source/*')
+            $_.FullName -notlike (Join-Path $PSScriptRoot 'tests/*') -and $_.FullName -notlike (Join-Path $PSScriptRoot '_source/*') -and
+            $_.FullName -notlike (Join-Path $PSScriptRoot '.claude/*')
     })
     foreach ($path in $script:watched) {
         if (Test-Path $path -PathType Container) {
