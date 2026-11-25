@@ -74,8 +74,9 @@ function Import-Plugin([string] $dir, [string] $name, $entry) {
         Name = $name; Title = [string]$manifest.title; Version = [string]$manifest.version
         Description = [string]$manifest.description; Requires = @($manifest.requires | Where-Object { $_ })
         Dir = $dir; Hooks = $hooks; Settings = $settings
-        # A provider (docs/PLUGINS.md, A provider), and the folder of the project where its skills go.
-        Provider = [bool]$manifest.provider; Skills = [string]$manifest.skills
+        # A provider (docs/PLUGINS.md, A provider), the folder of the project where its skills go, and the picture
+        # behind its account cards.
+        Provider = [bool]$manifest.provider; Skills = [string]$manifest.skills; Card = [string]$manifest.card
     }
 }
 

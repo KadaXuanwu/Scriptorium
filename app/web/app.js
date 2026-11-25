@@ -634,7 +634,9 @@ function accountCard(a) {
   const buttons = a.status === 'signedout' && has(state, 'SignIn', 'ReadSignIn') ? [`<button class="primary" data-login="${name}">Sign in</button>`] : [];
   if (a.signedIn && has(state, 'Probe')) buttons.push(`<button data-ping="${name}" title="Sends the cheapest request: it starts the account's windows now and reads its usage">Ping</button>`);
   const card = `account:${a.name}`;
-  return `<article class="card account ${tone}${busyClass(card)}" data-card="${name}"${busyAttr(card)}>
+  // The picture of the account's coding tool behind the card, where its plugin has one.
+  const art = state.tools?.[a.provider]?.card;
+  return `<article class="card account ${tone}${art ? ' art' : ''}${busyClass(card)}" data-card="${name}"${busyAttr(card)}${art ? ` style="--art:url('${esc(art)}')"` : ''}>
     <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${toolBadge(toolOf(state))}${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
       <span class="chip ${tone}">${icon(glyph)}${words}</span>${cross('account', a.name, a.name)}</div>
     <div class="meta"><span class="email">${esc(a.signedIn ? maskEmail(a.email) : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${out}</div>

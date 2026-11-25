@@ -31,6 +31,22 @@ function Get-Names($item) {
     return @(foreach ($label in $item.labels) { $label.name })
 }
 
+# The picture behind a provider's account cards (docs/PLUGINS.md, Its manifest, `card`) as a data URL, '' for none:
+# an SVG in the plugin's folder, read once.
+$CardArt = @{}
+function Get-CardArt($plugin) {
+    if (-not $plugin.Card -or $plugin.Card -notmatch '^[\w.-]+\.svg$') {
+        return ''
+    }
+    $file = Join-Path $plugin.Dir $plugin.Card
+    if (-not $script:CardArt.ContainsKey($file)) {
+        $script:CardArt[$file] = if (Test-Path -LiteralPath $file -PathType Leaf) {
+            'data:image/svg+xml;base64,' + [Convert]::ToBase64String([IO.File]::ReadAllBytes($file))
+        } else { '' }
+    }
+    return $script:CardArt[$file]
+}
+
 # Whether this page serves an account's entry: its coding tool's provider is one of the script's (docs/QUEUE.md,
 # Accounts; plugins.ps1, Get-AccountProvider). A project with no provider runs nothing, and its page shows every
 # account.
@@ -1122,7 +1138,7 @@ function New-Snapshot($data) {
         $tools[$plugin.Name] = @{
             models = $list; config = $toolConfig; own = @(Get-OwnComplexities $list $toolConfig)
             view = @{
-                title = [string]$plugin.Title; hooks = @($ProviderFeatures | Where-Object { Test-ProviderHook $_ })
+                title = [string]$plugin.Title; hooks = @($ProviderFeatures | Where-Object { Test-ProviderHook $_ }); card = Get-CardArt $plugin
                 models = @($list.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($list.efforts | Where-Object { $_ })
                 compactRange = @($list.compactRange | Where-Object { $_ }); advisor = [string]$list.advisor.model
                 windows = @(@($WindowSeconds.Keys) + @($ModelWindows.Keys) | ForEach-Object {

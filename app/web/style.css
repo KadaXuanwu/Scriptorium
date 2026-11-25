@@ -505,6 +505,20 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 
 /* Accounts: a window's meter. The handle is the stop line; the part right of it the workers leave. */
 .account { row-gap: 12px; }
+/* The picture of the account's coding tool (its plugin's `card`), faint and greyed behind the card's parts. Placed out
+   of the card's grid, under its parts. */
+.account.art { position: relative; isolation: isolate; }
+.account.art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--art) center / cover no-repeat;
+  opacity: 0.14;
+  filter: saturate(0.6);
+  pointer-events: none;
+}
 /* A window of some models sits in the part of the account's last window, under its meter. */
 .window .window { margin-top: 12px; }
 /* The buttons stand in the card's last row, at its bottom, also on a card with fewer windows than its neighbour. */

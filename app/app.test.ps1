@@ -722,6 +722,12 @@ Assert-Equal "$(($bare.windows | ForEach-Object { $_.name }) -join ',') $($bare.
 Assert-Equal $bare.accounts[0].month.ContainsKey('pickUp') $false 'its only window has no pick-up limits for the page''s meter'
 Assert-Equal "'$($bare.advisor.model)' $($bare.efforts.Count) $($bare.workers[0].takes[0].model) '$($bare.workers[0].takes[0].effort)' $($bare.complexities[0].compactAt)" "'' 0 only '' 0" 'no advisor, no effort, no compact size'
 Assert-Equal "$($bare.hooks.Count) $($bare.compactRange.Count)" '0 0' 'no feature and no compact size'
+# The picture behind a tool's account cards: an SVG in the plugin's folder as a data URL, none for another name.
+$artDir = Join-Path ([IO.Path]::GetTempPath()) "queue-app-art-$PID"
+New-Item -ItemType Directory -Force $artDir | Out-Null
+[IO.File]::WriteAllText((Join-Path $artDir 'card.svg'), '<svg/>')
+Assert-Equal "$(Get-CardArt @{ Dir = $artDir; Card = 'card.svg' })|$(Get-CardArt @{ Dir = $artDir; Card = '../card.svg' })|$(Get-CardArt @{ Dir = $artDir; Card = '' })" 'data:image/svg+xml;base64,PHN2Zy8+||' 'a plugin''s card picture'
+Remove-Item -Recurse $artDir
 Assert-Equal (Get-NewAccountDir ('{"accounts":{}}' | ConvertFrom-Json) 'x' 'C:\Users\me') 'C:/Users/me/.bare-x' 'the folder of a new account'
 # With no provider the page still shows the queue: no model and no window.
 Set-Provider $null

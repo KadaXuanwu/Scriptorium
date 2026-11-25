@@ -68,7 +68,7 @@ the tasks again.
 }
 ```
 
-A provider's manifest has two more keys, `provider` and `skills` (A provider).
+A provider's manifest has three more keys, `provider`, `skills` and `card` (A provider).
 
 - `name`: lower case letters, digits and hyphens. It is the key in `scriptorium.json` and the folder name.
 - `api`: the version of this contract the plugin was written for. The base refuses a plugin with another number and
@@ -316,6 +316,11 @@ provider keeps them.
 
 `"provider": true`, and `"skills"`: the folder of a project where the tool reads skills (`.agents/skills`). Setup puts
 the ticket skill there. Left out: the project gets no ticket skill.
+
+`"card"`: the name of an SVG beside `plugin.json` (`card.svg`), drawn faint and greyed behind the page's cards of the
+tool's accounts. It covers the card, so its middle shows on a card of any shape. Keep it small (the page's state
+carries it) and draw no logo. The page's server reads it once: a new picture shows after the server restarts. Left
+out: a plain card.
 
 ## What changes the version
 
