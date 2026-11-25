@@ -150,6 +150,11 @@ Run it again after you update Scriptorium: it replaces the project's ticket skil
 skills folder) with the current one. The project's own rules for tickets go in `PROJECT.md` beside it, which setup never changes. A
 skill with no `PROJECT.md` stays as it is, and setup says how to move its rules.
 
+An update from a version whose base ran the coding tool itself (before the provider plugins): pause the workers
+first, and after the pull run setup for each project, which adds the provider. That version's page server does not
+restart by itself after this pull. Restart each project's page: `Stop-ScheduledTask "Scriptorium <name> app"`, then
+`Start-ScheduledTask "Scriptorium <name> app"`.
+
 To add another project, run step 3 with its folder; it joins the same page. Only setup and uninstall add or remove a
 project, not the page.
 

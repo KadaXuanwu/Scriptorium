@@ -11,6 +11,13 @@ function Assert-Equal($actual, $expected, [string] $what) {
     }
 }
 
+# A ticket's branch is t<N> and nothing else: the merger reads the ticket's number from it.
+Assert-Equal (Test-TicketBranch 't12') $true 'a ticket''s branch'
+Assert-Equal (Test-TicketBranch 'providers') $false 'the owner''s own branch'
+Assert-Equal (Test-TicketBranch 't12-fix') $false 'a branch that starts like a ticket''s'
+Assert-Equal (Test-TicketBranch 'shots-t12') $false 'a ticket''s pictures'
+Assert-Equal (Test-TicketBranch '') $false 'no branch'
+
 # A process is this project's only by its whole -Project argument: never another project, a path that starts with this
 # one, or a queue from before -Project. A task's process has no quotes around a path with no space.
 $bare = 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -File C:\S\worker.ps1 -Project D:\Work\App -Id 2 -Clone D:\Work\App-w2'
