@@ -119,6 +119,24 @@ function Get-Complexities($models, $config, $settings) {
     return $list
 }
 
+# What scriptorium.json says of the complexities to a provider: all of it to the project's default provider
+# ($default), whose models it names. To another provider only the project's own complexities with their descriptions:
+# the models, the advisor and the compact size of that tool are its models.json's.
+# shortcut: a project picks models for its default provider only, in scriptorium.json and on the page; give another
+# provider keys of its own when a project wants its own picks for a second coding tool.
+function Get-ProviderConfig($config, [bool] $default) {
+    if ($default -or -not $config) {
+        return $config
+    }
+    $own = [pscustomobject]@{}
+    foreach ($property in @(if ($config.complexities) { $config.complexities.PSObject.Properties })) {
+        if ($property.Value.description) {
+            Set-JsonProperty $own $property.Name ([pscustomobject]@{ description = [string]$property.Value.description })
+        }
+    }
+    return [pscustomobject]@{ complexities = $own }
+}
+
 # A pick (`model@effort`) as its model and effort: the effort after `@`, else that model's in models.json, else
 # models.json's `effort`, the one of a model not listed there (as worker.ps1, Get-RunModel).
 function Split-Pick($models, [string] $pick) {

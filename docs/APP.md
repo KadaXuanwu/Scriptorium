@@ -54,9 +54,12 @@ click elsewhere saves, Escape keeps the name. A worker's name is the page's only
 stays with a move); an empty one gives back "Worker N". Comments, pushes and dialogs keep the number. An account's name
 changes the same way (Accounts).
 
-**The coding tool.** Beside its name, each card names the coding tool that runs the worker's sessions: its project's
-provider ([PLUGINS.md](PLUGINS.md), A provider), by the plugin's title without "Scriptorium for". On a PC whose
-projects run different tools, the cards show which worker runs on which.
+**The coding tool.** Beside its name, each card names the coding tool that runs the worker's sessions: the one of its
+account ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`), by the provider plugin's title without
+"Scriptorium for". The account select lists the accounts of every tool, each with its tool while the PC has more than
+one. An account of another tool changes the worker's tool: it starts again on that tool before its next job. The
+server refuses that while the worker has a run in flight. A worker keeps its account, and so its tool, when it moves
+to another project.
 
 **Order.** A press on a card's empty space (not on a control or on text) and a drag move the card among the others:
 with a mouse at once, on a touch screen after a short hold. The order is the PC's (`order.workers`, `order.accounts`
@@ -244,11 +247,11 @@ reading of ([QUEUE.md](QUEUE.md), A model's limit), with two handles: the one un
 other the stop line for those models as advisors ("Advisor stops at").
 
 **The coding tool.** An account is one coding tool's ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`),
-and its card names the tool beside the plan. Each project gives the page the accounts of its own tool, so the list is
-every project's: the project that gave an account reads its login and takes its actions. Sign in and Ping show only on
-the card of a tool that has them (the snapshot's `hooks`), and the last tile only where some tool has a sign-in; a
-line above the cards names each tool with no sign-in from the page. A worker's account select lists the accounts of
-its own tool, and the command-line login only where that is its tool's.
+and its card names the tool beside the plan, with that tool's windows. A project's page gives the accounts of every
+tool it has a provider for (the snapshot's `tools`: each one's title, features and windows). The list is every
+project's, each account once: the project that gave an account reads its login and takes its actions. Sign in and
+Ping show only on the card of a tool that has them, and the last tile only where some tool has a sign-in; a line
+above the cards names each tool with no sign-in from the page.
 
 **The meter** shows where the workers stop. The fill is the share used. The handle is the **stop line**: drag it to set
 the share where this account's workers stop (`stopAt`). The hatched part right of it is what they leave.
@@ -266,9 +269,10 @@ Also: **Sign in**, only while the account is signed out, and **Ping**. To change
 and add one. A double-click on an account's name renames it (Workers, Names): lower-case letters, digits and dashes,
 a name no other account has. Only its key in the register changes: its folder and its records stay, as the queue's
 files know an account by its folder. A new account may not take the old name while the renamed account has the folder
-of that name. The last tile adds an account: a dialog names the coding tool it is signed in to (the
-one whose project signs accounts in; with one such tool there is none to choose), asks for its name
-and email, and the sign-in starts on this tab. The cross on a card removes an account that nothing uses: its login is signed out, and its
+of that name. The last tile adds an account: a dialog asks for its coding tool (a choice while the PC has more than
+one; else the dialog names it), its name and its email, and the sign-in starts on this tab. An account of a tool with
+no sign-in from the page is only added to the register: a worker can go on it, and the owner signs the tool in from a
+terminal. The cross on a card removes an account that nothing uses: its login is signed out, and its
 folder stays.
 
 - **The sign-in** is the provider's sign-in command, run by the server ([PLUGINS.md](PLUGINS.md), SignIn). The page
@@ -308,6 +312,8 @@ from the next run. A run in progress or on hold keeps its model, its effort and 
 - **A line when the settings set `model`:** that model goes over every pick of the block, for every run.
 - **Only what the project's coding tool has:** with no efforts, no compact size or no advisor in its `models.json`,
   the block shows no field for it.
+- **The default provider's only:** the block sets the models of the project's default provider. A worker on another
+  coding tool runs on that tool's own models ([QUEUE.md](QUEUE.md), Complexities), and its Config says so.
 
 On a phone a complexity has three lines: its name and compact size, its model and effort, then its advisor.
 
@@ -352,8 +358,8 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
 - **The mark:** while the PC has two projects or more, each worker, question, ticket and history row carries its
   project's name, in its project's colour (Details). A worker's mark is its project choice (Workers, The project
   choice).
-- **Accounts** are the PC's: one list, with the workers of every project on it, each account from a project of
-  its coding tool. **Details** has the settings of each
+- **Accounts** are the PC's: one list, with the workers of every project on it, each account from a project that
+  has a provider for its coding tool. **Details** has the settings of each
   project in a block of its own, and one info text: the common part once, and the plugins for each project.
 - **How:** the page stays at its address and loads each other project's state, steps and pictures from that project's
   own server, and it sends each action to the server of the item's project. A page on the PC uses the project's

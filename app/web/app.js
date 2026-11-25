@@ -169,15 +169,34 @@ function inline(text) {
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
 }
 
-// A project's coding tool, by its provider plugin's title without the start every plugin's title has
-// (docs/PLUGINS.md, A provider): "Scriptorium for Claude Code" is Claude Code. '' with no provider.
-const toolOf = (s) => (s?.provider || '').replace(/^Scriptorium for /, '');
-// Whether a project's provider has each of these hooks (the snapshot's `hooks`). A snapshot from before that list (the
-// last state on the device) counts as having them all, as the page showed it then.
+// A coding tool's name, from its provider plugin's title without the start every plugin's title has
+// (docs/PLUGINS.md, A provider): "Scriptorium for Claude Code" is Claude Code.
+const toolTitle = (title) => (title || '').replace(/^Scriptorium for /, '');
+// A project's default coding tool, whose models Details sets. '' with no provider.
+const toolOf = (s) => toolTitle(s?.provider);
+// Whether a coding tool's provider has each of these hooks (the snapshot's `hooks`). A snapshot from before that list
+// (the last state on the device) counts as having them all, as the page showed it then.
 const has = (s, ...hooks) => !s?.hooks || hooks.every((hook) => s.hooks.includes(hook));
-// The coding tools of the PC's projects, each once. An account is the PC's and has no tool of its own yet, so its
-// card names the tool only while there is one.
-const toolsOfPc = () => [...new Set(names.map((p) => toolOf(states[p])).filter(Boolean))];
+// The coding tool of a worker or an account, by its provider plugin's name (the snapshot's `tools`): its title, its
+// hooks and its usage windows. A worker runs on its account's tool, so one project has workers of several. A snapshot
+// from before `tools` has the project's one tool.
+const toolView = (s, name) => s?.tools?.[name] || (s?.provider ? { title: s.provider, hooks: s.hooks, windows: s.windows } : null);
+const toolName = (s, name) => toolTitle(toolView(s, name)?.title);
+// Draws with a coding tool's title, hooks and windows as the state's: an account's card is of the account's tool,
+// not of the project's default.
+function withTool(name, draw) {
+  const before = state;
+  const tool = toolView(state, name);
+  if (tool) state = { ...state, provider: tool.title, hooks: tool.hooks, windows: tool.windows };
+  try {
+    return draw();
+  } finally {
+    state = before;
+  }
+}
+// The coding tools of the PC, each once: every project's default and every tool its page serves.
+const toolsOfPc = () => [...new Set(names.flatMap((p) => [states[p]?.provider, ...Object.values(states[p]?.tools || {}).map((t) => t.title)])
+  .map(toolTitle).filter(Boolean))];
 // What a project's coding tool has of the settings Details offers, from its models.json: efforts, an advisor, a
 // compact size. A snapshot from before `compactRange` counts as having one.
 const toolHas = (s) => ({ efforts: (s?.efforts || []).length > 0, advisor: Boolean(s?.advisor?.model || s?.advisor?.base),
@@ -300,10 +319,13 @@ function workerCard(worker) {
   const on = all.filter((t) => t.on).length;
   const config = `<button class="config-open" data-config="${id}" aria-label="Config of worker ${id}">${icon('config')}Config${on < all.length ? ` <small>${on}/${all.length}</small>` : ''}</button>`;
 
+  // Its account, of any coding tool: the worker runs on its account's tool, so an account of another tool changes
+  // the worker's tool. Each account names its tool while the PC has more than one.
   const accounts = state.accounts || [];
-  const options = accounts.map((a) => `<option value="${esc(a.name)}"${a.name === worker.account ? ' selected' : ''}>${esc(a.name)}${outMark[a.status] || ''}</option>`);
+  const several = toolsOfPc().length > 1;
+  const options = accounts.map((a) => `<option value="${esc(a.name)}"${a.name === worker.account ? ' selected' : ''}>${esc(a.name)}${several ? ` · ${esc(toolName(state, a.provider))}` : ''}${outMark[a.status] || ''}</option>`);
   // A worker in no entry runs on the command-line login; offered only while no entry is that login.
-  if (!worker.account || (accounts.every((a) => a.own) && !state.loginTaken)) options.unshift(`<option value=""${worker.account ? '' : ' selected'}>command line</option>`);
+  if (!worker.account || accounts.every((a) => a.own)) options.unshift(`<option value=""${worker.account ? '' : ' selected'}>command line</option>`);
 
   // Its project, while the PC has two or more: the mark is a choice that moves it to another project (`data.move`).
   const fixed = worker.run || worker.ticket ? 'It has a ticket: disable it first, then move it'
@@ -314,7 +336,7 @@ function workerCard(worker) {
 
   const card = `worker:${worker.id}`;
   return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}" data-card="${esc(`${scope}|${worker.id}`)}"${busyAttr(card)}>
-    <div class="worker-head"><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}${toolBadge(toolOf(state))}</strong>
+    <div class="worker-head"><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}${toolBadge(toolName(state, worker.provider))}</strong>
       <span class="doing ${tone}">${icon(glyph)}${words}</span></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
@@ -342,7 +364,9 @@ function drawConfigOf(worker) {
     return `<button class="take${t.on ? ' on' : ''}" data-take="${name}" data-worker="${id}" aria-pressed="${t.on}">
       ${icon(t.on ? 'check' : 'lock')}<span><b>${name}</b>${jobs}</span></button>`;
   }).join('')}</div>
-    <p class="takes-note">Details sets the model, the effort, the compact size and the advisor of each complexity, for all workers.</p>`);
+    <p class="takes-note">${!worker.provider || toolName(state, worker.provider) === toolOf(state)
+    ? 'Details sets the model, the effort, the compact size and the advisor of each complexity, for all workers.'
+    : `This worker runs on ${esc(toolName(state, worker.provider))}. Its models are that tool's own; Details sets the models of ${esc(toolOf(state))}.`}</p>`);
 }
 
 // ---- Details: the settings
@@ -744,7 +768,7 @@ function info(s) {
       The workers use all the room you give them and stop at the lines you set (${setting('Accounts', 'accounts')}). A
       run that reaches a stop line ends at its next checkpoint, and its session goes on when the account has room again;
       a run that the plan's own limit cuts off goes on after the reset.</p>
-      ${working.length ? working.map(infoLimits).join('') : quiet('No account has a worker.')}`),
+      ${working.length ? working.map((a) => withTool(a.provider, () => infoLimits(a))).join('') : quiet('No account has a worker.')}`),
     section('In the background', `<p>Three kinds of script run on this PC as Windows tasks with no window. They start
       when you log on and need nothing from you.</p>
       ${items([
@@ -807,17 +831,27 @@ const placeIn = (kind, a, b) => {
 };
 const workerKey = ({ p, item }) => `${p}|${item.id}`;
 const workersInOrder = () => all('workers').sort((a, b) => placeIn('workers', workerKey(a), workerKey(b)) || a.item.id - b.item.id || a.p.localeCompare(b.p));
-// The PC's accounts. An account is one coding tool's, and a project gives the accounts of its own tool: the list is
-// every project's, each account once, with the project that gave it (`of`). That project's server reads the account's
-// login and takes its actions. This address's own project comes first.
+// The PC's accounts. An account is one coding tool's, and a project's page gives the accounts of each tool it has a
+// plugin for: the list is every project's, each account once, with the project that gave it (`of`). That project's
+// server reads the account's login and takes its actions. This address's own project comes first.
 const pcAccounts = () => {
   const seen = new Set();
   return [home, ...names.filter((p) => p !== home)].flatMap((p) => (states[p]?.accounts || [])
     .filter((a) => !seen.has(a.name) && seen.add(a.name)).map((a) => ({ ...a, of: p })));
 };
 const accountsInOrder = () => pcAccounts().sort((a, b) => placeIn('accounts', a.name, b.name));
-// The project whose server signs an account in: the first whose coding tool has a sign-in for the page.
-const signInProject = () => [home, ...names.filter((p) => p !== home)].find((p) => has(states[p], 'SignIn', 'ReadSignIn'));
+// The coding tools a new account can be of, each once, with a project whose server has its provider: a project's
+// default before its others, this address's project first. Each @{ project; name (its provider plugin's, '' in a
+// snapshot from before `tools`); title; signIn (it signs an account in from the page) }.
+const accountTools = () => {
+  const seen = new Set();
+  return [home, ...names.filter((p) => p !== home)].flatMap((p) => {
+    const s = states[p];
+    if (!s?.tools) return s?.provider ? [{ project: p, name: '', title: toolOf(s), signIn: has(s, 'SignIn', 'ReadSignIn') }] : [];
+    return Object.entries(s.tools).sort(([, a], [, b]) => (b.title === s.provider) - (a.title === s.provider))
+      .map(([name, t]) => ({ project: p, name, title: toolTitle(t.title), signIn: has(t, 'SignIn', 'ReadSignIn') }));
+  }).filter((t) => !seen.has(t.title) && seen.add(t.title));
+};
 
 function render() {
   const s = states[home];
@@ -900,14 +934,14 @@ function render() {
   // The accounts are the PC's, each drawn as its own project gives it (pcAccounts).
   const code = $('login-code')?.value || '';
   // Above the cards, what a card cannot say: a coding tool that has no sign-in from the page.
-  const signIn = signInProject();
-  const unsigned = [...new Set(names.filter((p) => toolOf(states[p]) && !has(states[p], 'SignIn', 'ReadSignIn')).map((p) => toolOf(states[p])))];
+  const signIn = [home, ...names.filter((p) => p !== home)].find((p) => states[p]?.login) || home;
+  const unsigned = [...new Set(names.flatMap((p) => Object.values(states[p]?.tools || {}).filter((t) => !has(t, 'SignIn', 'ReadSignIn')).map((t) => toolTitle(t.title))))];
   const toolNote = unsigned.length ? quiet(`${esc(inWords(unsigned))} ${unsigned.length > 1 ? 'have' : 'has'} no sign-in from this page: sign in from a terminal, with the tool's own command.`) : '';
-  // The sign-in in progress is on the server of the project that signs accounts in.
-  put($('login-box'), within(signIn || home, () => tagged(signIn || home, loginBox(state.login))) + toolNote);
-  // The tile only where a coding tool signs an account in from the page.
-  put($('account-list'), (accountsInOrder().map((a) => within(a.of, () => tagged(a.of, accountCard(a)))).join('') || quiet('No accounts in the settings.'))
-    + (signIn ? within(signIn, () => addTile('account', 'Add an account')) : ''));
+  // The sign-in in progress is on the server of the project that started it.
+  put($('login-box'), within(signIn, () => tagged(signIn, loginBox(state.login))) + toolNote);
+  // The tile only where the PC has a coding tool.
+  put($('account-list'), (accountsInOrder().map((a) => within(a.of, () => tagged(a.of, withTool(a.provider, () => accountCard(a))))).join('') || quiet('No accounts in the settings.'))
+    + (accountTools().length ? addTile('account', 'Add an account') : ''));
   if (code && $('login-code')) $('login-code').value = code;
 
   const merged = all('merged');
@@ -1131,13 +1165,13 @@ const inWords = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} an
 
 // One worker more, on the account the owner picks; the server gives it the lowest number that no worker of the PC has.
 async function addWorker() {
-  // Every account of the PC, each with its coding tool while the projects run more than one: a worker goes on an
-  // account of its project's tool, and the server refuses another.
+  // Every account of the PC, each with its coding tool while the PC has more than one: the worker runs on the tool
+  // of the account it gets, in any project.
   const accounts = pcAccounts();
   const several = toolsOfPc().length > 1;
-  const options = accounts.map((a) => `<option value="${esc(a.name)}">${esc(a.name)}${several ? ` · ${esc(toolOf(states[a.of]))}` : ''}${outMark[a.status] || ''}</option>`);
+  const options = accounts.map((a) => `<option value="${esc(a.name)}">${esc(a.name)}${several ? ` · ${esc(toolName(states[a.of], a.provider))}` : ''}${outMark[a.status] || ''}</option>`);
   // The command-line login, offered as on a worker's card: only while no entry is that login.
-  if (accounts.every((a) => a.own) && !names.some((p) => states[p].loginTaken)) options.unshift('<option value="">command line</option>');
+  if (accounts.every((a) => a.own)) options.unshift('<option value="">command line</option>');
   // The project it works in, while the PC has two or more: the server of that project adds it.
   const pick = names.length > 1
     ? `<label>Project<select name="project">${names.map((p) => `<option${p === home ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select></label>` : '';
@@ -1147,22 +1181,28 @@ async function addWorker() {
   if (values) await act(values.project || home, { action: 'add-worker', account: values.account || '' });
 }
 
-// One account more: its name and email, then the sign-in on this tab (loginBox).
+// One account more: its coding tool (a choice while the PC has more than one), its name and email, then the sign-in on
+// this tab (loginBox). An account of a tool with no sign-in from the page is only added: a worker can go on it, and
+// the owner signs the tool in from a terminal.
 async function addAccount() {
-  // The dialog names the coding tool the account is signed in to: the one of the project whose server signs it in.
-  // shortcut: one tool with a sign-in, so there is none to choose; add a choice when a second provider has a sign-in.
-  const of = signInProject() || home;
-  const tool = toolOf(states[of]);
-  const values = await ask(tool ? `Add a ${tool} account` : 'Add an account',
-    `${tool ? `It is signed in to ${tool}, the coding tool of ${of}. ` : ''}Then sign in as that account: this tab shows the link and a box for the code.`,
-    'Add and sign in', {
-      fields: `<label>Name<input name="account" required pattern="[a-zA-Z0-9][a-zA-Z0-9\\-]{0,30}" title="Letters, digits and dashes"
-          placeholder="e.g. temp1" autocomplete="off" autocapitalize="none"></label>
-        <label>Email (optional)<input name="email" type="email" placeholder="Its email" autocomplete="off" autocapitalize="none"></label>`,
-    });
+  const tools = accountTools();
+  if (!tools.length) return;
+  const only = tools.length === 1 ? tools[0] : null;
+  const signs = 'Then sign in as that account: this tab shows the link and a box for the code.';
+  const byHand = 'has no sign-in from this page: sign it in from a terminal, with the tool\'s own command.';
+  const text = only ? (only.signIn ? `It is signed in to ${only.title}. ${signs}` : `${only.title} ${byHand}`)
+    : 'If its coding tool signs in from this page, this tab then shows the link and a box for the code. If not, sign it in from a terminal, with the tool\'s own command.';
+  const pick = only ? '' : `<label>Coding tool<select name="tool">${tools.map((t, i) => `<option value="${i}">${esc(t.title)}</option>`).join('')}</select></label>`;
+  const email = only && !only.signIn ? '' : '<label>Email (optional)<input name="email" type="email" placeholder="Its email" autocomplete="off" autocapitalize="none"></label>';
+  const values = await ask(only ? `Add a ${only.title} account` : 'Add an account', text, only && !only.signIn ? 'Add' : only ? 'Add and sign in' : 'Add', {
+    fields: `${pick}<label>Name<input name="account" required pattern="[a-zA-Z0-9][a-zA-Z0-9\\-]{0,30}" title="Letters, digits and dashes"
+        placeholder="e.g. temp1" autocomplete="off" autocapitalize="none"></label>${email}`,
+  });
   if (!values) return;
+  const tool = only || tools[Number(values.tool)];
   const account = values.account.trim().toLowerCase();
-  if (await act(of, { action: 'login', account, email: values.email.trim(), new: true })) $('login-box').scrollIntoView({ block: 'nearest' });
+  const added = await act(tool.project, { action: 'login', account, email: (values.email || '').trim(), new: true, provider: tool.name });
+  if (added && tool.signIn) $('login-box').scrollIntoView({ block: 'nearest' });
 }
 
 // Worker `id`'s copy of `project`, for the dialogs that can delete it: its folder's name and what it holds that GitHub
@@ -1758,7 +1798,10 @@ document.addEventListener('change', async (e) => {
   } else if (data.assign) {
     e.target.blur();
     const account = e.target.value;
-    await act(project, { action: 'assign', worker: data.assign, account }, { keys: [`worker:${data.assign}`], apply: (s) => { workerOf(s, data.assign).account = account; } });
+    await act(project, { action: 'assign', worker: data.assign, account }, { keys: [`worker:${data.assign}`], apply: (s) => {
+        // The worker's coding tool follows its account's.
+        Object.assign(workerOf(s, data.assign), { account }, s.accounts.find((a) => a.name === account)?.provider && { provider: s.accounts.find((a) => a.name === account).provider });
+      } });
   } else if (data.move) {
     // The card shows the worker's own project until the move is done: the next snapshots show it in the new one.
     const target = e.target.value;

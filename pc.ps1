@@ -282,10 +282,8 @@ function Test-AccountOf($entry, [string] $provider) {
     return [bool]($entry -and $provider -and [string]$entry.provider -eq $provider)
 }
 
-# Whether the command-line login is taken from the projects of the provider named $provider: the PC's one entry with
-# no login folder is not that provider's. A worker of such a project in no entry would run on another tool's account.
-# shortcut: on a PC with no such entry, the workers of two providers that are in no entry share the record `default`;
-# give that login an entry when a PC runs so.
+# Whether the command-line login is another coding tool's than the provider named $provider: the PC's one entry with
+# no login folder is not that provider's. A worker in no entry runs on that login, so on that tool.
 function Test-LoginTaken($settings, [string] $provider) {
     if (-not $settings -or -not $settings.accounts) {
         return $false
@@ -312,8 +310,8 @@ function Set-AccountProviders($settings, [string[]] $workers, [string] $provider
 }
 
 # Puts each worker of a project ($workers: their numbers) that is on no account yet on an account of the project's
-# provider, named $provider ('' for a project with none: any account). Setup calls it. Returns whether it changed
-# $settings.
+# default provider, named $provider ('' for a project with none: any account). Setup calls it. Returns whether it
+# changed $settings.
 # - A PC with no accounts gets `main`: the command-line login, with the workers and the owner's own use.
 # - A PC from before an account had a provider: this project claims those accounts first (Set-AccountProviders).
 # - A new worker goes to the entry of the command-line login when that is this provider's. Where the PC has no such
@@ -321,7 +319,8 @@ function Set-AccountProviders($settings, [string[]] $workers, [string] $provider
 # - Where the command-line login is another coding tool's account, the worker goes to this provider's first account,
 #   or to a new one named after the provider. The new one's folder ($homeDir/.<provider>-<name>) is its key in the
 #   usage records, also for a tool that keeps its login elsewhere; the page's sign-in makes the folder.
-# - A worker on another provider's account counts as on none: the project changed its coding tool.
+# - A worker on an account stays there, whatever the account's coding tool: a worker runs on its account's tool
+#   (plugins.ps1, Get-WorkerProvider), and the owner put it there.
 function Set-WorkerAccounts($settings, [string[]] $workers, [string] $provider, [string] $homeDir) {
     $uses = @($workers | ForEach-Object { "worker:$_" })
     if (-not $settings.accounts) {
@@ -334,20 +333,10 @@ function Set-WorkerAccounts($settings, [string[]] $workers, [string] $provider, 
     }
     $changed = Set-AccountProviders $settings $workers $provider
     $own = @($settings.accounts.PSObject.Properties | Where-Object { -not $provider -or (Test-AccountOf $_.Value $provider) })
-    $claimed = @($own | ForEach-Object { $_.Value.uses })
+    $claimed = @($settings.accounts.PSObject.Properties | ForEach-Object { $_.Value.uses })
     $new = @($uses | Where-Object { $claimed -notcontains $_ })
     if (-not $new.Count) {
         return $changed
-    }
-    # A worker on another provider's account (the project changed its coding tool) leaves that account first.
-    $ownNames = @($own | ForEach-Object { $_.Name })
-    foreach ($entry in @($settings.accounts.PSObject.Properties | Where-Object { $ownNames -notcontains $_.Name })) {
-        $current = @($entry.Value.uses | Where-Object { $_ })
-        $kept = @($current | Where-Object { $new -notcontains $_ })
-        if ($kept.Count -ne $current.Count) {
-            Set-JsonProperty $entry.Value 'uses' ([object[]]$kept)
-            $changed = $true
-        }
     }
     $login = $own | Where-Object { -not $_.Value.configDir } | Select-Object -First 1
     if (-not $login -and $provider -and (Test-LoginTaken $settings $provider)) {

@@ -22,9 +22,9 @@ does](#what-the-real-antigravity-does) says so. Nothing was run with the other t
    notifications and the budget arithmetic. **Built.**
 2. Each provider is a plugin. Claude Code is the first one. **Built.**
 3. An owner who buys another tool's subscription adds its plugin and signs an account in. Workers on that account
-   build tickets like any other worker. **Built in part:** an account is one provider's
-   ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`), so projects on two tools share one PC. A project
-   still runs on one provider.
+   build tickets like any other worker. **Built:** an account is one provider's, and a worker runs on its account's
+   coding tool, in any project ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`). Not built: the page's
+   Details sets the models of a project's default provider only.
 
 ## Decided, and built
 
@@ -252,8 +252,10 @@ How each stands after the split. The owner can still decide otherwise before a s
 3. **No usage reading:** the workers run until the plan refuses, and large tickets are cut off at the limit. The base
    keeps no estimate of its own.
 4. **The rules file:** the base names none. The provider's playbook says which file its tool loads.
-5. **Which tickets go to which provider:** open. A project has one provider, so the question does not come up yet. An
-   account has a provider now; a project with two providers would also need a provider for each worker.
+5. **Which tickets go to which provider:** open. A worker runs on its account's provider, and a project can have
+   workers on two. A ticket then goes to the tool whose idle worker looks first; the owner keeps a complexity from a
+   tool with the switches of its workers ([QUEUE.md](QUEUE.md), Dispatching). A rule of its own (a label, a share
+   for each tool) is not built.
 
 ## Not checked
 

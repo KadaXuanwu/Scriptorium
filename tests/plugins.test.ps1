@@ -143,6 +143,38 @@ function Get-Word { 'two' }
     # No provider: no hook, and a model list with no model.
     Set-Provider $null
     Assert-Equal "$(Test-ProviderHook 'GetCommand') $($null -eq (Invoke-Provider 'GetCommand')) $(@((Read-Models).models.PSObject.Properties).Count)" 'False True 0' 'no provider'
+
+    # A worker runs on its account's coding tool, in any project (docs/QUEUE.md, Accounts). The providers of a
+    # project's scripts: its own, the default first, then each in the install's plugins folder that it does not name.
+    $install = Join-Path $root 'install'
+    New-Item -ItemType Directory -Force (Join-Path $install 'plugins/empty') | Out-Null
+    foreach ($name in @('bare', 'provider')) {
+        Copy-Item (Join-Path $PSScriptRoot $name) (Join-Path $install "plugins/$name") -Recurse
+    }
+    New-Plugin (Join-Path $install 'plugins') 'tool' '@{}' | Out-Null
+    $mine = Import-Plugin (Join-Path $PSScriptRoot 'provider') 'provider' $null
+    $found = Get-Providers $install @($mine)
+    Assert-Equal (($found | ForEach-Object { $_.Name }) -join ',') 'provider,bare' 'the project''s own first, then the install''s; a plugin that is no provider and a folder with no plugin are none'
+    Assert-Equal (((Get-Providers $install @()) | ForEach-Object { $_.Name }) -join ',') 'bare,provider' 'a project that names none has the install''s'
+    Assert-Equal (Get-Providers (Join-Path $root 'nowhere') @()).Count 0 'no plugins folder, no provider'
+    # The provider of an account, and of a worker: its account's.
+    $register = '{"accounts":{"main":{"provider":"bare","uses":["worker:1","personal"]},"own":{"provider":"provider","configDir":"C:/o","uses":["worker:2"]},"old":{"configDir":"C:/x","uses":["worker:4"]},"far":{"provider":"other","configDir":"C:/f","uses":["worker:5"]}}}' | ConvertFrom-Json
+    Assert-Equal "$((Get-AccountProvider $register.accounts.main $found).Name) $((Get-AccountProvider $register.accounts.old $found).Name) $((Get-AccountProvider $null $found).Name) $($null -eq (Get-AccountProvider $register.accounts.far $found))" 'bare provider provider True' 'an account''s provider; the default for one that names none; none for a tool with no plugin'
+    Assert-Equal ((@('1', '2', '3', '4', '5') | ForEach-Object { "$((Get-WorkerProvider $register $_ $found).Name)" }) -join ',') 'bare,provider,bare,provider,' 'a worker runs on its account''s tool; worker 3, in no entry, on the command-line login''s'
+    Assert-Equal (Get-WorkerProvider ('{"accounts":{"a":{"provider":"bare","configDir":"C:/a","uses":[]}}}' | ConvertFrom-Json) '3' $found).Name 'provider' 'in no entry on a PC with no entry of the command-line login: the default'
+    Assert-Equal (Get-WorkerProvider $null '3' $found).Name 'provider' 'no settings: the default'
+    # A script that serves several providers: one is set for a block, and the one from before comes back.
+    Set-Providers $found @{ Project = 'D:/p' }
+    Assert-Equal "$($script:Provider.Name) $((Get-KnownProviders).Count)" 'provider 2' 'the first of the list is set'
+    Assert-Equal "$(Use-Provider $found[1] { $script:Provider.Name }) $($script:Provider.Name) $($script:ProviderScope.Project)" 'bare provider D:/p' 'another provider for a block, with the same scope'
+    try { Use-Provider $found[1] { throw 'no' } } catch { }
+    Assert-Equal "$($script:Provider.Name) $(Use-Provider $null { $script:Provider.Name })" 'provider provider' 'the one from before comes back after an error; no provider to use changes nothing'
+    Select-Provider $found[1]
+    Assert-Equal (Invoke-Provider 'Peek') $null 'the selected provider answers: the bare one has no such hook'
+    $script:Providers = @()
+    Assert-Equal "$(((Get-KnownProviders) | ForEach-Object { $_.Name }) -join ',') $((Get-KnownProviders).Count)" 'bare 1' 'a script with one provider serves that one, as a list'
+    Set-Provider $null
+    Assert-Equal (Get-KnownProviders).Count 0 'no provider, none served'
 } finally {
     Remove-Item $root -Recurse -Force
 }

@@ -88,6 +88,11 @@ the idle worker whose account's free room most wants spending, labelled `worker:
 first that falls to itself. The arithmetic is [budget.ps1](../budget.ps1) and, for the ceiling,
 [limits.ps1](../limits.ps1), which the page reads too.
 
+A worker gives tickets only to the workers on its own coding tool (Settings, `accounts.<name>.provider`): another
+tool's account has other windows. In a project with workers on two tools, a ticket goes to the tool whose idle worker
+looks first. To keep a kind of ticket from a tool, switch its complexity off for that tool's workers (a worker's
+Config).
+
 **The budget.** It is better to reach the limit on every account than to reach a reset with room unused. The windows
 are the provider's ([PLUGINS.md](PLUGINS.md), A provider): one plan has 5 hours and a week, another a week alone,
 another a month. In each window of an account the workers may fill it to a **ceiling**: its **stop line** (the
@@ -155,6 +160,10 @@ in [project.ps1](../project.ps1)): `low`, `medium`, `high` and `design`. The pro
 `models.json` ([PLUGINS.md](PLUGINS.md), A provider). A project changes them or adds its own in `scriptorium.json`
 ([CONFIG.md](CONFIG.md), Complexities). One list, `Get-Complexities` in [project.ps1](../project.ps1), gives them to
 the worker script, the merger, setup and the page.
+
+The models that `scriptorium.json` and the page's Details name are the ones of the project's default provider, the
+first provider it lists. A worker on another coding tool (Settings, `accounts.<name>.provider`) runs each complexity
+on the models of that tool's own `models.json`, and a complexity of the project's own on that tool's `medium` models.
 
 | Complexity | For |
 | ---------- | --- |
@@ -254,19 +263,26 @@ between runs.
   login (`default` in the queue's files), shared with the owner's terminal sessions. The page adds, signs in and
   removes accounts and moves workers between them ([APP.md](APP.md), Accounts); the provider's README says how to sign
   a folder in by hand. A worker in no entry runs on the command-line login.
-- `accounts.<name>.provider`: **an account is one provider's**, the plugin's name. A project has only the accounts of
-  its own provider: its workers run on no other, its page reads and changes no other, and the server refuses another's.
-  So projects on two coding tools share the PC's list and never each other's logins or usage records.
+- `accounts.<name>.provider`: **an account is one provider's**, the plugin's name, and **a worker runs on its
+  account's coding tool**, in any project. So one project can have workers on two tools, and a worker that moves to
+  another project keeps its tool.
   - Setup and the page's Add write it.
-  - The PC has one command-line login, the entry with no `configDir`, and it is one provider's. Setup puts a new
-    worker there when it is the project's provider's. Otherwise the worker goes to that provider's first account, or
-    to a new one named after the provider, with a folder as its key in the usage records. A worker of such a project
-    that is in no entry does not run: its card says that it has no account.
-  - A project that changes its provider: run setup again. Each of its workers leaves the old provider's account and
-    goes to one of the new provider's.
+  - **Which providers a project's scripts have:** the ones its `scriptorium.json` lists, then each other one in the
+    `plugins` folder of the Scriptorium install. So a provider that setup installed for one project serves the
+    workers of every project. The first one the project lists is its **default provider**.
+  - **To change a worker's tool,** put it on an account of that tool (the worker's card). It starts again on that
+    tool before its next job. The page refuses the move while the worker has a run in flight: a session is its own
+    tool's.
+  - The PC has one command-line login, the entry with no `configDir`, and it is one provider's. A worker in no
+    entry runs on that login, so on that tool; on a PC with no such entry, on the project's default provider.
+  - Setup puts a new worker on the command-line login when that is the default provider's. Otherwise the worker goes
+    to that provider's first account, or to a new one named after the provider, with a folder as its key in the
+    usage records. A worker that is on an account already stays there.
+  - A worker whose account is of a tool with no plugin on the PC does not run: its card says so. So does a page for
+    that account: it lists only the accounts of the tools it has a plugin for.
   - An account from before this key names no provider. A project claims those accounts when one of its workers is on
-    one of them: its scripts then write its provider into each. A project that is new on the PC claims none. Until a
-    project claims it, such an account is no project's.
+    one of them: its scripts then write its default provider into each. A project that is new on the PC claims none.
+    Until then such an account counts as the default provider's of the project that reads it.
 - `accounts.<name>.stopAt`: the account's stop lines, by the provider's names of its windows, for example
   `{ "<short window>": 0.9, "<long window>": 0.8 }`: the share of each window where its workers stop. Left out: the
   provider's. In a window of some models: the share from which no new session gets one of them as its advisor (A
@@ -476,7 +492,8 @@ A worker's environment comes from the project's plugins ([PLUGINS.md](PLUGINS.md
 before each look for a job, `GetRun` and `Start` for another repo's checkout before a run, and `EndRun` after it.
 A `Start` or `GetRun` that throws starts no run: the worker's card shows the error, and the worker tries again at its
 next look. With no environment plugin, a run gets no MCP server and only the base's commands (`git`, `gh`). The
-provider is a plugin too: with none, a worker starts no run and its card says so.
+provider is a plugin too: with none, a worker starts no run and its card says so. A worker's run gets the playbook
+and the hooks of its own provider, not of another provider that the project lists.
 
 ## Working a job
 
