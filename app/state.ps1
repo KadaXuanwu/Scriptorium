@@ -192,7 +192,115 @@ function Get-NewAccountDir($settings, [string] $name, [string] $homeDir) {
     return $dir
 }
 
-# The settings' entry of a complexity (`complexities.<name>`), made empty when it has none.
+# Worker $id's own mapping for the coding tool $tool in the settings (`workers.<id>.mapping.<tool>`; docs/QUEUE.md, A
+# worker's mapping), made empty when it has none. The setters below take it as their $settings.
+function Get-MappingToEdit($settings, [string] $id, [string] $tool) {
+    if (-not $tool) {
+        throw "worker $id has no coding tool here"
+    }
+    $entry = Get-WorkerSettings $settings $id
+    if (-not $entry.mapping) {
+        Set-JsonProperty $entry 'mapping' ([pscustomobject]@{})
+    }
+    if (-not $entry.mapping.$tool) {
+        Set-JsonProperty $entry.mapping $tool ([pscustomobject]@{})
+    }
+    return $entry.mapping.$tool
+}
+
+# The coding tool of each worker the PC knows, by the worker's number: the ones with an entry or on an account, and
+# this project's ($here). '' for a tool with no plugin here.
+function Get-WorkerTools($settings, [string[]] $here, $providers) {
+    $ids = @($here) + @(if ($settings.workers) { $settings.workers.PSObject.Properties | ForEach-Object { $_.Name } }) +
+        @(if ($settings.accounts) { $settings.accounts.PSObject.Properties | ForEach-Object { $_.Value.uses } | Where-Object { $_ -like 'worker:*' } | ForEach-Object { ([string]$_).Substring(7) } })
+    $tools = @{}
+    foreach ($id in $ids | Select-Object -Unique) {
+        $tools[[string]$id] = [string](Get-WorkerProvider $settings $id $providers).Name
+    }
+    return $tools
+}
+
+# The register with worker $id's mapping for the coding tool $tool linked to worker $target's, or its own again
+# ($target ''). A link goes over any number of workers, but never back to the worker itself, and only to a worker on
+# the same tool ($toolOf: Get-WorkerTools). The linked worker keeps only its picks for the project's own complexities
+# ($own): those stay its own while the last worker of the chain is in another project (project.ps1,
+# Get-WorkerMapping). Its own again, it starts from the picks it ran on until now ($picks: Get-WorkerMapping's), so
+# the click changes no run.
+function Set-WorkerFollow($settings, [string] $id, [string] $tool, [string] $target, $toolOf, $picks, [string[]] $own = @()) {
+    if ($target) {
+        if ($target -eq $id -or -not $toolOf.ContainsKey($target)) {
+            throw "no worker $target to follow"
+        }
+        if ($toolOf[$target] -ne $tool) {
+            throw "worker $target is on another coding tool"
+        }
+        $at = $target
+        $seen = @()
+        while ($at -and $seen -notcontains $at) {
+            if ($at -eq $id) {
+                throw "worker $target follows worker $id already"
+            }
+            $seen += $at
+            $next = Get-MappingEntry $settings $at $tool
+            $at = if ($next) { [string]$next.follows } else { '' }
+        }
+    }
+    $entry = Get-MappingToEdit $settings $id $tool
+    if ($target) {
+        foreach ($name in @(if ($entry.complexities) { $entry.complexities.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { $own -notcontains $_ } })) {
+            $entry.complexities.PSObject.Properties.Remove($name)
+        }
+        $entry.PSObject.Properties.Remove('advisor')
+        Set-JsonProperty $entry 'follows' $target
+        return $settings
+    }
+    # A copy: the worker it followed keeps its own objects.
+    $copy = $picks | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+    $entry.PSObject.Properties.Remove('follows')
+    $entry.PSObject.Properties.Remove('advisor')
+    Set-JsonProperty $entry 'complexities' $(if ($copy.complexities) { $copy.complexities } else { [pscustomobject]@{} })
+    if ($copy.advisor) {
+        Set-JsonProperty $entry 'advisor' $copy.advisor
+    }
+    return $settings
+}
+
+# The register with no link to worker $id, which goes away: a worker that followed it follows the worker that $id
+# followed, so its picks stay the same. Where $id followed nobody, the worker gets $id's picks as its own.
+# shortcut: a pick of $id for a complexity of a project's own goes over the follower's own pick of that name, also
+# where the two workers are in two projects; tell them apart by project when two projects name a complexity alike.
+function Remove-MappingLinks($settings, [string] $id) {
+    if (-not $settings.workers) {
+        return $settings
+    }
+    foreach ($worker in @($settings.workers.PSObject.Properties | Where-Object { $_.Name -ne $id -and $_.Value.mapping })) {
+        foreach ($tool in @($worker.Value.mapping.PSObject.Properties | Where-Object { [string]$_.Value.follows -eq $id })) {
+            $source = Get-MappingEntry $settings $id $tool.Name
+            $entry = $tool.Value
+            if ($source -and $source.follows -and [string]$source.follows -ne $worker.Name) {
+                Set-JsonProperty $entry 'follows' ([string]$source.follows)
+                continue
+            }
+            $entry.PSObject.Properties.Remove('follows')
+            if (-not $source) {
+                continue
+            }
+            $copy = $source | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+            if (-not $entry.complexities) {
+                Set-JsonProperty $entry 'complexities' ([pscustomobject]@{})
+            }
+            foreach ($property in @(if ($copy.complexities) { $copy.complexities.PSObject.Properties })) {
+                Set-JsonProperty $entry.complexities $property.Name $property.Value
+            }
+            if ($copy.advisor) {
+                Set-JsonProperty $entry 'advisor' $copy.advisor
+            }
+        }
+    }
+    return $settings
+}
+
+# The entry of a complexity in a worker's mapping (`complexities.<name>`), made empty when it has none.
 function Get-ComplexitySettings($settings, [string] $name) {
     if (-not $settings.complexities) {
         $settings | Add-Member -NotePropertyName complexities -NotePropertyValue ([pscustomobject]@{}) -Force
@@ -203,32 +311,35 @@ function Get-ComplexitySettings($settings, [string] $name) {
     return $settings.complexities.$name
 }
 
-# The owner's pick of a complexity's model and effort on this PC (docs/QUEUE.md, Settings,
-# `complexities.<name>.model`), as `model@effort`. Only an effort of models.json's list, and a model of its list or
-# the base's own (a project may name another in scriptorium.json): a coding tool may take an effort it does not know
-# without a word. The base's own pick is not saved, so the PC follows models.json and scriptorium.json again. $complexities:
-# the list with these settings (project.ps1, Get-Complexities).
+# The owner's pick of a complexity's model and effort in a worker's mapping ($settings: Get-MappingToEdit;
+# docs/QUEUE.md, Settings, `complexities.<name>.model`), as `model@effort`. Only an effort of models.json's list, and a
+# model of its list or the base's own (a project may name another in scriptorium.json): a coding tool may take an
+# effort it does not know without a word. With a coding tool that lists no efforts, the pick is the model alone. The
+# base's own pick is not saved, so the worker follows models.json and scriptorium.json again. $complexities: the list
+# with these picks (project.ps1, Get-Complexities).
 function Set-ComplexityModel($settings, $models, $complexities, [string] $name, [string] $model, [string] $effort) {
     $entry = $complexities | Where-Object { $_.name -ceq $name } | Select-Object -First 1
     if (-not $entry) {
         throw "no complexity $name"
     }
     $base = Split-Pick $models $entry.base
-    if (@($models.models.PSObject.Properties | ForEach-Object { $_.Name }) + $base.model -cnotcontains $model -or @($models.efforts) -cnotcontains $effort) {
+    $efforts = @($models.efforts | Where-Object { $_ })
+    if (@($models.models.PSObject.Properties | ForEach-Object { $_.Name }) + $base.model -cnotcontains $model -or
+        ($efforts.Count -and $efforts -cnotcontains $effort) -or (-not $efforts.Count -and $effort)) {
         throw "models.json lists no model '$model' or no effort '$effort'"
     }
-    if ($base.model -ne $model -or $base.effort -ne $effort) {
-        Get-ComplexitySettings $settings $name | Add-Member -NotePropertyName model -NotePropertyValue "$model@$effort" -Force
+    if ($base.model -ne $model -or ($efforts.Count -and $base.effort -ne $effort)) {
+        Get-ComplexitySettings $settings $name | Add-Member -NotePropertyName model -NotePropertyValue $(if ($effort) { "$model@$effort" } else { $model }) -Force
     } elseif ($settings.complexities -and $settings.complexities.$name) {
         $settings.complexities.$name.PSObject.Properties.Remove('model')
     }
     return $settings
 }
 
-# The owner's advisor switch of a complexity and its effort without the advisor (docs/QUEUE.md, Settings,
-# `complexities.<name>.advisor`, `.advisorFallback`): $fallback is an effort of models.json's list, or '' for the
-# same effort. Each value equal to the files' (`baseAdvisor`, `baseFallback`) is not saved. $complexities: the list
-# with these settings (project.ps1, Get-Complexities).
+# The owner's advisor switch of a complexity and its effort without the advisor, in a worker's mapping ($settings:
+# Get-MappingToEdit; docs/QUEUE.md, Settings, `complexities.<name>.advisor`, `.advisorFallback`): $fallback is an
+# effort of models.json's list, or '' for the same effort. Each value equal to the files' (`baseAdvisor`,
+# `baseFallback`) is not saved. $complexities: the list with these picks (project.ps1, Get-Complexities).
 function Set-ComplexityAdvisor($settings, $models, $complexities, [string] $name, [bool] $on, [string] $fallback) {
     $entry = $complexities | Where-Object { $_.name -ceq $name } | Select-Object -First 1
     if (-not $entry) {
@@ -250,8 +361,8 @@ function Set-ComplexityAdvisor($settings, $models, $complexities, [string] $name
     return $settings
 }
 
-# The owner's pick of the advisor's model for this project (docs/QUEUE.md, Settings, `advisor.model`): a model of
-# models.json's list. models.json's own `advisor.model` is not saved.
+# The owner's pick of the advisor's model in a worker's mapping ($settings: Get-MappingToEdit; docs/QUEUE.md,
+# Settings, `advisor.model`): a model of models.json's list. models.json's own `advisor.model` is not saved.
 function Set-AdvisorModel($settings, $models, [string] $model) {
     if (@($models.models.PSObject.Properties | ForEach-Object { $_.Name }) -cnotcontains $model) {
         throw "models.json lists no model '$model'"
@@ -593,9 +704,10 @@ function Test-PrOff($pr, $issues, $settings, [string] $worker) {
 # and for a ticket whose model has a window of its own it must be under that window's start line.
 # Of those: first a worker whose ticket in work holds an area of this one (the two would change the same files), then a
 # free one, then the most room in the shortest window, then in the longest, then the run that started last (it loses the least
-# work). Returns @{ worker; stops; title; busy }: `stops` and `title` are the ticket of the run that ends at its next
-# checkpoint (0 for a free worker); `busy` are this ticket's areas that other tickets in flight still hold. With no
-# such worker: @{ why }.
+# work). Returns @{ worker; stops; title; busy; able }: `stops` and `title` are the ticket of the run that ends at its
+# next checkpoint (0 for a free worker); `busy` are this ticket's areas that other tickets in flight still hold; `able`
+# are all the workers that can take it, each with the same four fields, in that order: the owner may pick another one,
+# as each worker runs the ticket on the models of its own mapping. With no such worker: @{ why }.
 function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $accounts = @()) {
     $complexity = Get-Label $ticket 'complexity:'
     if (-not $complexity) {
@@ -660,13 +772,16 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
     if ($ranked.Count -eq 0) {
         return @{ why = $(if ($noModel -eq $able.Count) { "no account has the model of a $complexity ticket left" } else { "no account has room for a size $size ticket now" }) }
     }
-    $best = @($ranked | Sort-Object @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
+    $order = @($ranked | Sort-Object @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
         @{ Expression = { $_.short }; Descending = $true }, @{ Expression = { $_.long }; Descending = $true },
-        @{ Expression = { $_.started }; Descending = $true }, @{ Expression = { [int]$_.view.id } })[0]
-    $view = $best.view
-    $stops = if ($view.activity -eq 'running') { [int]$view.ticket } else { 0 }
-    $busy = @(Get-Clashes $areas (Get-BusyAreas $issues $(if ($best.works) { $stops } else { 0 })) | ForEach-Object { $_ -replace '^area:', '' })
-    return @{ worker = [string]$view.id; stops = $stops; title = $(if ($stops) { [string]$view.title } else { '' }); busy = $busy }
+        @{ Expression = { $_.started }; Descending = $true }, @{ Expression = { [int]$_.view.id } })
+    $able = @(foreach ($one in $order) {
+        $view = $one.view
+        $stops = if ($view.activity -eq 'running') { [int]$view.ticket } else { 0 }
+        $busy = @(Get-Clashes $areas (Get-BusyAreas $issues $(if ($one.works) { $stops } else { 0 })) | ForEach-Object { $_ -replace '^area:', '' })
+        @{ worker = [string]$view.id; stops = $stops; title = $(if ($stops) { [string]$view.title } else { '' }); busy = $busy }
+    })
+    return $able[0] + @{ able = $able }
 }
 
 # Tickets not yet claimed, in the dispatcher's order (docs/QUEUE.md, Dispatching), each with why it waits; and the parked
@@ -963,28 +1078,41 @@ function Get-PushUrl($views, [string] $own, [string] $click) {
 # names for Now), control, usage,
 # settings, runs, gh (issues, prs, merged, titles, questions; $null until the first fetch), appUrl, logins, login,
 # name and projects (this project's name and the PC's projects, Get-ProjectViews),
-# complexities (project.ps1, Get-Complexities; models.json's alone when left out) and config (scriptorium.json, for
-# the complexities of another provider than the default). The provider that is set is the project's default.
+# complexities (project.ps1, Get-Complexities, with no worker's picks; models.json's alone when left out) and config
+# (scriptorium.json, for each worker's complexities on its coding tool). The provider that is set is the project's
+# default.
 function New-Snapshot($data) {
     $now = [long]$data.now
     $models = Read-Models
     $complexities = if ($data.complexities) { @($data.complexities) } else { Get-Complexities $models $null }
-    # Each coding tool this page serves, by its provider plugin's name: its models and complexities for a worker's
-    # card, and what the page draws of it (`view`: its title, the features it has by their hooks' names, and its
+    # Each coding tool this page serves, by its provider plugin's name: its models, what scriptorium.json says to it
+    # (`config`) and the project's own complexities there (`own`) for a worker's mapping, and what the page draws of it
+    # (`view`: its title, the features it has by their hooks' names, what a mapping offers on it (its models and
+    # efforts, the compact sizes it takes, its advisor's model; each empty where the tool has none), and its
     # windows for an account's card, the account's own first: each @{ name; title; models (it holds only some
     # models); keep (it holds the guards); seconds }).
     $default = $script:Provider
     $known = Get-KnownProviders
     $tools = @{}
+    # Each model's name on the page, where a models.json gives one (`title`): of every tool, as a run's tag names its
+    # model on any card.
+    $titles = @{}
     foreach ($plugin in $known) {
         Select-Provider $plugin
         $own = $plugin.Name -eq $default.Name
         $list = if ($own) { $models } else { Read-Models }
+        $toolConfig = Get-ProviderConfig $data.config $own
+        foreach ($entry in $list.models.PSObject.Properties) {
+            if ($entry.Value.title -and -not $titles.ContainsKey($entry.Name)) {
+                $titles[$entry.Name] = [string]$entry.Value.title
+            }
+        }
         $tools[$plugin.Name] = @{
-            models = $list
-            complexities = $(if ($own) { $complexities } else { @(Get-Complexities $list (Get-ProviderConfig $data.config $false)) })
+            models = $list; config = $toolConfig; own = @(Get-OwnComplexities $list $toolConfig)
             view = @{
                 title = [string]$plugin.Title; hooks = @($ProviderFeatures | Where-Object { Test-ProviderHook $_ })
+                models = @($list.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($list.efforts | Where-Object { $_ })
+                compactRange = @($list.compactRange | Where-Object { $_ }); advisor = [string]$list.advisor.model
                 windows = @(@($WindowSeconds.Keys) + @($ModelWindows.Keys) | ForEach-Object {
                     @{ name = $_; title = [string]$WindowTitles[$_]; models = $ModelWindows.Contains($_); keep = ($_ -eq $KeepWindow)
                         seconds = $(if ($ModelWindows.Contains($_)) { [long]$ModelWindows[$_].seconds } else { [long]$WindowSeconds[$_] }) }
@@ -994,6 +1122,8 @@ function New-Snapshot($data) {
     }
     Select-Provider $default
     $workers = @()
+    # The workers of this project: a complexity of the project's own follows only one of them (Get-WorkerMapping).
+    $here = @($data.workers | ForEach-Object { [string]$_.id })
     foreach ($worker in @($data.workers | Sort-Object { [int]$_.id })) {
         $s = $worker.state
         $id = [string]$worker.id
@@ -1006,16 +1136,33 @@ function New-Snapshot($data) {
         # The worker's coding tool: its account's (plugins.ps1, Get-WorkerProvider), by its provider plugin's name.
         $plugin = Get-WorkerProvider $data.settings $id $known
         $view.provider = $(if ($plugin) { [string]$plugin.Name } else { '' })
-        $tool = if ($plugin) { $tools[$plugin.Name] } else { @{ models = $models; complexities = $complexities } }
+        $tool = if ($plugin) { $tools[$plugin.Name] } else { @{ models = $models; config = $data.config; own = @(Get-OwnComplexities $models $data.config) } }
         $toolModels = $tool.models
+        # The worker's mapping on its coding tool (project.ps1, Get-WorkerMapping): the worker it follows ('' for
+        # none), the last worker of that chain, and the advisor's model with models.json's (`baseAdvisor`).
+        $mapping = Get-WorkerMapping $data.settings $id $view.provider $tool.own $here
+        $list = @(Get-Complexities $toolModels $tool.config $mapping.picks)
+        $rule = Get-AdvisorRule $toolModels $list $mapping.picks
+        $view.mapping = @{ follows = $mapping.follows; end = $mapping.end; advisor = [string]$rule.model; baseAdvisor = [string]$toolModels.advisor.model }
         # The settings' `model` names a model of the default provider.
         $override = if ($data.settings -and $data.settings.model -and (-not $plugin -or $plugin.Name -eq $default.Name)) { [string]$data.settings.model } else { '' }
-        # The worker's complexity switches (limits.ps1): each with the model and effort its runs use on its coding
-        # tool (the settings' `model`, else the complexity's first candidate) and the PR jobs it holds while it is off.
-        $view.takes = @($tool.complexities | ForEach-Object {
+        # The worker's complexities, each a row of its mapping and a switch (limits.ps1): its description; `own`, a
+        # complexity of the project's own; `linked`, its picks are those of the worker it follows; the model and
+        # effort its runs use on its coding tool (the settings' `model`, else the complexity's first candidate) and
+        # the same without the owner's pick (`base`); its advisor (none for a run on the advisor's own model), the
+        # advisor switch (`advisorOn`) and fallback effort with the files' (`baseAdvisor`, `baseFallback`); its
+        # compact size; and the PR jobs it holds while it is off.
+        $view.takes = @($list | ForEach-Object {
             $pick = if ($override) { $override } else { [string]@($_.models)[0] }
             $run = Split-Pick $toolModels $pick
-            @{ name = $_.name; on = -not (Test-ComplexityOff $_.name $data.settings $id); model = $run.model; effort = $run.effort; jobs = 0 }
+            @{ name = $_.name; description = $_.description; own = [bool]$_.own
+                linked = [bool]($mapping.follows -and $mapping.kept -notcontains $_.name)
+                on = -not (Test-ComplexityOff $_.name $data.settings $id); model = $run.model; effort = $run.effort
+                base = Split-Pick $toolModels ([string]$_.base)
+                advisor = $(if ($_.advisor -and $rule.model -and $rule.model -ne $run.model) { $rule.model } else { '' })
+                advisorOn = [bool]$_.advisor; advisorFallback = [string]$_.advisorFallback
+                baseAdvisor = [bool]$_.baseAdvisor; baseFallback = [string]$_.baseFallback
+                compactAt = $_.compactAt; jobs = 0 }
         })
         # A run in flight: working, or waiting in paused.json for a limit reset, for room under the workers' limit
         # (it ended at a checkpoint there), for its account, or for the owner to set the paused worker active
@@ -1236,12 +1383,6 @@ function New-Snapshot($data) {
     }
 
     $color = [string]$(if ($data.settings) { $data.settings.color })
-    $titles = @{}
-    foreach ($entry in $models.models.PSObject.Properties) {
-        if ($entry.Value.title) {
-            $titles[$entry.Name] = [string]$entry.Value.title
-        }
-    }
     $snapshot = @{
         now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; login = $data.login; github = [bool]$data.gh
         # The coding tools of the workers and the accounts ($tools above, each one's `view`), by provider name.
@@ -1252,14 +1393,15 @@ function New-Snapshot($data) {
         order = @{ workers = @($data.settings.order.workers | Where-Object { $_ }); accounts = @($data.settings.order.accounts | Where-Object { $_ }) }
         questions = @(); stuck = @(); held = @(); queued = @(); parked = @(); merged = @(); runs = @()
         left = @{ count = 0; seconds = 0; cost = 0.0 }
-        # The advisor rule (docs/QUEUE.md, Models), with models.json's model as `base`, for the Details tab.
-        advisor = (Get-AdvisorRule $models $complexities $data.settings) + @{ base = [string]$models.advisor.model }
-        # The models and efforts that Details offers for a complexity: models.json's two lists. And each model's name
-        # on the page, where models.json gives one (`title`).
+        # The advisor rule of the files (docs/QUEUE.md, Models), with models.json's model as `base`, for the info text:
+        # a worker's own is in its `mapping`.
+        advisor = (Get-AdvisorRule $models $complexities $null) + @{ base = [string]$models.advisor.model }
+        # The models and efforts of the default provider: models.json's two lists. And each model's name
+        # on the page, where a models.json gives one (`title`).
         models = @($models.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($models.efforts | Where-Object { $_ })
         modelTitles = $titles
-        # The project's default provider (its plugin's title; '' with none), whose models Details sets, and its
-        # windows as in `tools`.
+        # The project's default provider (its plugin's title; '' with none), whose models scriptorium.json names, and
+        # its windows as in `tools`.
         provider = $(if ($script:Provider) { [string]$script:Provider.Title } else { '' })
         # The features the default provider has (plugins.ps1, $ProviderFeatures), by their hooks' names: Details
         # says what the coding tool gives. And the compact sizes it takes.
@@ -1273,15 +1415,16 @@ function New-Snapshot($data) {
         color = $(if ($color -match '^#[0-9a-fA-F]{6}\z') { $color.ToLowerInvariant() } else { '' })
         # The owner is away (docs/QUEUE.md, No blocking): the PC's switch, the same in every project's snapshot.
         away = [bool]$(if ($data.settings) { $data.settings.away })
-        # The settings' `model`, which goes over every pick of Details for every run; '' without one.
+        # The settings' `model`, which goes over every worker's mapping for every run on the default provider; ''
+        # without one.
         settingsModel = $(if ($data.settings -and $data.settings.model) { [string]$data.settings.model } else { '' })
-        # Every complexity with its description, models, the first one's model and effort, the same without the owner's
-        # pick (`base`), its advisor (none for a run on the advisor's own model), the owner's advisor switch
-        # (`advisorOn`) and fallback effort, the two without the owner's settings (`baseAdvisor`, `baseFallback`) and
-        # its compact size.
+        # Every complexity as the files give it on the default provider, with no worker's picks (a worker's own are its
+        # `takes`): its description, models, the first one's model and effort (`base` is the same), its advisor (none
+        # for a run on the advisor's own model), the advisor switch (`advisorOn`) and fallback effort, and its compact
+        # size.
         complexities = @($complexities | ForEach-Object {
             $run = Split-Pick $models ([string]@($_.models)[0])
-            $rule = Get-AdvisorRule $models @($_) $data.settings
+            $rule = Get-AdvisorRule $models @($_) $null
             @{ name = $_.name; description = $_.description; models = @($_.models); model = $run.model; effort = $run.effort
                 base = Split-Pick $models ([string]$_.base)
                 advisor = $(if ($rule.complexities.Count -and $rule.model -ne $run.model) { $rule.model } else { '' }); advisorFallback = $_.advisorFallback

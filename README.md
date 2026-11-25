@@ -212,7 +212,7 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
 - On macOS and Linux, the pictures of a question go up at full size: the small copy needs Windows.
 - GitHub only. Two providers are listed, for Claude Code and for Antigravity. A worker runs on the coding tool of
   its account, so one project can have workers on two tools ([docs/QUEUE.md](docs/QUEUE.md), Settings,
-  `accounts.<name>.provider`); the page's Details sets the models of a project's default provider only. The
+  `accounts.<name>.provider`), and each worker has its own models for each complexity, on any tool. The
   Antigravity provider is new: one small ticket has run through it, on Windows. Its README says what is proven.
 - GitHub builds and tests nothing: a run's own checks are the gate.
 

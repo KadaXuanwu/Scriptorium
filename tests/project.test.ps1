@@ -101,9 +101,10 @@ Assert-Equal "$($rule.model) $($rule.complexities -join ',') $($rule.fallback.re
 Assert-Equal (Get-FallbackEffort $rule 'review' 'main-1' 'high' $false) 'xhigh' 'the project''s fallback effort'
 Assert-Equal ((Get-FollowUpLabels @('area:api') "**Complexity:** review" @() @($list | ForEach-Object { $_.name })) -join ',') 'area:api,complexity:review' 'a follow-up of the project''s complexity'
 Assert-Equal ((Get-FollowUpLabels @('area:api') "**Complexity:** review") -join ',') 'area:api' 'not without the project''s list'
-$snapshot = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); complexities = $list
+$snapshot = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); complexities = $list; config = $own
     workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
 Assert-Equal (($snapshot.workers[0].takes | ForEach-Object { $_.name }) -join ',') 'low,medium,high,review,tidy,design' 'a worker takes each'
+Assert-Equal (($snapshot.workers[0].takes | Where-Object { $_.own } | ForEach-Object { $_.name }) -join ',') 'review,tidy' 'the project''s own are marked'
 $review = $snapshot.complexities | Where-Object { $_.name -eq 'review' }
 Assert-Equal "$($review.description)|$($review.model)|$($review.effort)|$($review.advisor)" 'A second look at a change|main-1|high|deep-1' 'the page gets each complexity'
 $threw = $false
@@ -151,16 +152,21 @@ Assert-Equal "$((Get-ComplexityModels $alone 'tidy') -join ',') $((Get-Complexit
 # A pick as its model and effort: after `@`, else the model's in models.json, xhigh for a model not listed.
 Assert-Equal ((@('main-1@high', 'main-1', 'x') | ForEach-Object { $run = Split-Pick $models $_; "$($run.model)=$($run.effort)" }) -join ' ') 'main-1=high main-1=medium x=xhigh' 'a pick as its model and effort'
 # The page offers models.json's two lists, and nothing else is saved: they hold every model and effort that
-# models.json itself names.
-$view = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); complexities = $picked
-    workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
+# models.json itself names. The picks are a worker's (its mapping for its coding tool): the settings' own
+# `complexities` and `advisor`, the project's picks of before, change nothing.
+$mapped = '{ "complexities": { "medium": { "model": "deep-1@max" } }, "advisor": { "model": "main-1" },
+    "workers": { "1": { "mapping": { "test": { "complexities": { "medium": { "model": "small-1@low" }, "review": { "model": "deep-1@max" } } } } } } }' | ConvertFrom-Json
+$view = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); complexities = $list; config = $own; settings = $mapped
+    workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }, @{ id = '2'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
 $named = @($models.complexities.PSObject.Properties | ForEach-Object { $_.Value.models }) + @($models.windows.deep.after) +
     @($models.models.PSObject.Properties | ForEach-Object { $_.Name }) | ForEach-Object { Split-Pick $models $_ }
-Assert-Equal "$($named.Count -gt 8) $(@($named | Where-Object { $view.models -cnotcontains $_.model -or $view.efforts -cnotcontains $_.effort }).Count)" 'True 0' 'the two lists hold every model and effort that models.json names'
-$medium = $view.complexities | Where-Object { $_.name -eq 'medium' }
-Assert-Equal "$($medium.model) $($medium.effort) $($medium.base.model) $($medium.base.effort)" 'small-1 low mid-1 high' 'the page gets the pick and the base'
-Assert-Equal ($view.workers[0].takes | Where-Object { $_.name -eq 'medium' }).model 'small-1' 'a worker runs on the pick'
-Assert-Equal "$($medium.advisor)|$(($view.complexities | Where-Object { $_.name -eq 'review' }).advisor)|" 'deep-1||' 'no advisor for a run on the advisor''s own model'
+Assert-Equal "$($named.Count -gt 8) $(@($named | Where-Object { $view.tools.test.models -cnotcontains $_.model -or $view.tools.test.efforts -cnotcontains $_.effort }).Count)" 'True 0' 'the two lists hold every model and effort that models.json names'
+$medium = $view.workers[0].takes | Where-Object { $_.name -eq 'medium' }
+Assert-Equal "$($medium.model) $($medium.effort) $($medium.base.model) $($medium.base.effort)" 'small-1 low mid-1 high' 'a worker''s card gets its pick and the base'
+Assert-Equal "$($medium.advisor)|$(($view.workers[0].takes | Where-Object { $_.name -eq 'review' }).advisor)|" 'deep-1||' 'no advisor for a run on the advisor''s own model'
+$other = $view.workers[1].takes | Where-Object { $_.name -eq 'medium' }
+Assert-Equal "$($other.model) $($other.effort) $($view.workers[1].mapping.advisor) $($view.advisor.model)" 'mid-1 high deep-1 deep-1' 'a worker with no pick runs on the files'', whatever the project''s picks of before say'
+Assert-Equal ($view.complexities | Where-Object { $_.name -eq 'medium' }).model 'mid-1' 'the project''s list has no worker''s pick'
 # The pick as a change to the settings: saved as model@effort beside what is there; the base's own pick takes it away
 # and makes no entry.
 $file = '{ "complexities": { "low": { "compactAt": 300000 } } }' | ConvertFrom-Json
@@ -218,6 +224,71 @@ foreach ($bad in 'main-0', 'main', '') {
     $threw = $false
     try { Set-AdvisorModel $file $models $bad | Out-Null } catch { $threw = $true }
     Assert-Equal $threw $true "no advisor model: '$bad'"
+}
+# A coding tool that lists no efforts (tests/bare): a pick is its model alone, and an effort is refused.
+$bareModels = Get-Content (Join-Path $baseDir 'tests/bare/models.json') -Raw | ConvertFrom-Json
+$bareList = Get-Complexities $bareModels $null
+Assert-Equal ((Set-ComplexityModel ('{}' | ConvertFrom-Json) $bareModels $bareList 'low' 'only' '') | ConvertTo-Json -Compress) '{}' 'a tool with no efforts takes a model alone'
+$threw = $false
+try { Set-ComplexityModel ('{}' | ConvertFrom-Json) $bareModels $bareList 'low' 'only' 'high' | Out-Null } catch { $threw = $true }
+Assert-Equal $threw $true 'and no effort'
+
+# A worker's mapping (docs/QUEUE.md, A worker's mapping): its picks for each coding tool it was on, or a link to
+# another worker's. Worker 3 follows worker 2, which follows worker 1; worker 4 is on another tool.
+$register = '{ "accounts": { "a": { "provider": "test", "uses": ["worker:1", "worker:2", "worker:3"] }, "b": { "provider": "bare", "configDir": "C:/b", "uses": ["worker:4"] } },
+    "workers": { "1": { "mapping": { "test": { "complexities": { "low": { "model": "small-1@max" }, "review": { "model": "deep-1@max" } }, "advisor": { "model": "main-1" } },
+                                     "bare": { "complexities": { "low": { "compactAt": 5 } } } } },
+                 "2": { "mapping": { "test": { "follows": "1", "complexities": { "review": { "model": "mid-1@low" } } } } },
+                 "3": { "mapping": { "test": { "follows": "2" } } }, "4": {} } }'
+function Mapped([string] $worker, [string] $tool, [string[]] $here, $settings = ($register | ConvertFrom-Json)) {
+    $mapping = Get-WorkerMapping $settings $worker $tool @('review', 'tidy') $here
+    return "$($mapping.follows)>$($mapping.end) $($mapping.kept -join ',') $($mapping.picks.complexities | ConvertTo-Json -Depth 6 -Compress) $($mapping.picks.advisor.model)"
+}
+$all = @('1', '2', '3')
+Assert-Equal (Mapped '1' 'test' $all) '>1  {"low":{"model":"small-1@max"},"review":{"model":"deep-1@max"}} main-1' 'a worker''s own picks'
+Assert-Equal (Mapped '1' 'bare' $all) '>1  {"low":{"compactAt":5}} ' 'its picks on another tool are kept apart'
+Assert-Equal (Mapped '3' 'test' $all) '2>1  {"low":{"model":"small-1@max"},"review":{"model":"deep-1@max"}} main-1' 'a link over two workers gives the last one''s picks'
+Assert-Equal (Mapped '2' 'test' @('2', '3')) '1>1 review,tidy {"low":{"model":"small-1@max"},"review":{"model":"mid-1@low"}} main-1' 'the last worker is in another project: the project''s own complexities stay the worker''s'
+Assert-Equal (Mapped '3' 'test' @('2', '3')) '2>1 review,tidy {"low":{"model":"small-1@max"}} main-1' 'and a worker with no pick of its own runs them on the files'''
+Assert-Equal (Mapped '4' 'bare' @('4')) '>4  {} ' 'no mapping: the files'
+Assert-Equal (Mapped '1' '' $all) '>1  {} ' 'no coding tool, no picks'
+$looped = $register | ConvertFrom-Json
+Set-JsonProperty $looped.workers.'1'.mapping.test 'follows' '3'
+Assert-Equal ((Mapped '3' 'test' $all $looped) -replace ' .*') '2>1' 'a loop that a hand edit made ends where it closes'
+Assert-Equal ((Get-ComplexityModels (Get-Complexities $models $own (Get-WorkerMapping ($register | ConvertFrom-Json) '3' 'test' @('review', 'tidy') $all).picks) 'low') -join ',') 'small-1@max' 'the worker runs on the picks it follows'
+# The link as a change: only to a worker on the same tool, never back to the worker itself.
+$bare = Import-Plugin (Join-Path $baseDir 'tests/bare') 'bare' $null
+$settings = $register | ConvertFrom-Json
+$toolOf = Get-WorkerTools $settings $all @($script:Provider, $bare)
+Assert-Equal (($toolOf.Keys | Sort-Object | ForEach-Object { "$_=$($toolOf[$_])" }) -join ' ') '1=test 2=test 3=test 4=bare' 'each worker''s coding tool'
+function Refused([string] $worker, [string] $target) {
+    try { Set-WorkerFollow ($register | ConvertFrom-Json) $worker 'test' $target $toolOf $null | Out-Null } catch { return "$_" }
+    return ''
+}
+Assert-Equal (Refused '1' '3') 'worker 3 follows worker 1 already' 'no loop'
+Assert-Equal (Refused '1' '4') 'worker 4 is on another coding tool' 'not a worker on another tool'
+Assert-Equal "$(Refused '1' '1') | $(Refused '1' '9')" 'no worker 1 to follow | no worker 9 to follow' 'not itself, and no worker the PC does not know'
+# Its own again: it starts from the picks it ran on, as a copy.
+$picks = (Get-WorkerMapping $settings '2' 'test' @('review') @('2', '3')).picks
+$settings = Set-WorkerFollow $settings '2' 'test' '' $toolOf $picks @('review')
+Assert-Equal ($settings.workers.'2'.mapping.test | ConvertTo-Json -Depth 6 -Compress) '{"complexities":{"low":{"model":"small-1@max"},"review":{"model":"mid-1@low"}},"advisor":{"model":"main-1"}}' 'its own again, with the picks it ran on'
+$settings.workers.'2'.mapping.test.complexities.low.model = 'mid-1@low'
+Assert-Equal $settings.workers.'1'.mapping.test.complexities.low.model 'small-1@max' 'a change of its own leaves the worker it followed'
+$settings = Set-WorkerFollow $settings '2' 'test' '1' $toolOf $null @('review')
+Assert-Equal ($settings.workers.'2'.mapping.test | ConvertTo-Json -Depth 6 -Compress) '{"complexities":{"review":{"model":"mid-1@low"}},"follows":"1"}' 'a link keeps only the picks of the project''s own complexities'
+# A worker that goes away: its followers keep its picks.
+$settings = Remove-MappingLinks ($register | ConvertFrom-Json) '2'
+Assert-Equal "$($settings.workers.'3'.mapping.test.follows) $(Mapped '3' 'test' $all $settings)" '1 1>1  {"low":{"model":"small-1@max"},"review":{"model":"deep-1@max"}} main-1' 'the worker in the middle goes: its follower follows the next'
+$settings = Remove-MappingLinks ($register | ConvertFrom-Json) '1'
+Assert-Equal ($settings.workers.'2'.mapping.test | ConvertTo-Json -Depth 6 -Compress) '{"complexities":{"low":{"model":"small-1@max"},"review":{"model":"deep-1@max"}},"advisor":{"model":"main-1"}}' 'the last worker goes: its follower gets its picks'
+Assert-Equal $settings.workers.'3'.mapping.test.follows '2' 'and a link to another worker stays'
+# A pick is seven names deep in the PC's file: the save keeps it (a depth too small writes it as text, without a word).
+$saved = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-mapping-test-$PID.json"
+try {
+    Save-JsonFile $saved ($register | ConvertFrom-Json)
+    Assert-Equal (Read-JsonFile $saved).workers.'1'.mapping.test.complexities.low.model 'small-1@max' 'a saved pick reads back'
+} finally {
+    Remove-Item $saved -ErrorAction SilentlyContinue
 }
 # The project's colour: #rrggbb in lower case; '' takes it away.
 $file = Set-ProjectColor $file '#A0b1C2'

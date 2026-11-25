@@ -100,8 +100,38 @@ or Runs do not start.
 worker's (`workers.<id>.complexity`) and saves at once. Press it to switch the complexity off or on again. Off: this
 worker takes no new ticket of that complexity and leaves the answers and rebases of its PRs of it, and the switch
 counts those PR jobs. A ticket already started goes on. While a complexity is off, the Config button counts the ones
-the worker takes. The model, the effort, the compact size and the advisor are the same for all workers of a project:
-Details sets them.
+the worker takes.
+
+**The mapping** is the rest of the config: how this worker runs each complexity ([QUEUE.md](QUEUE.md), Models, A
+worker's mapping). Each change saves at once in the PC's settings (`workers.<id>.mapping`) and counts from the
+worker's next run. A run in progress or on hold keeps its model, its effort and its advisor.
+
+- **Mapping,** the list at the top: Its own, or Same as another worker on the same coding tool, in any project. A
+  worker whose own links lead back to this one is not in the list. The page asks before a link, because the worker's
+  own picks for this tool go away. Its own again, the worker starts from the picks it ran on.
+- **A linked worker** shows the other worker's values, greyed, and a line that names the worker to change them on.
+  Its switches stay its own.
+- **A row for each complexity,** with its switch, its name and an (i) button that shows its description:
+  - **Model and effort** are two lists: the models and the efforts of the coding tool's `models.json`
+    (`complexities.<name>.model`). A pick that is not the base's shows the base's under it as Default. Pick the
+    default pair again, and the worker follows `models.json` and `scriptorium.json` again.
+  - **Compacts near** is the compact size of the complexity in thousands of tokens (`complexities.<name>.compactAt`;
+    [CONFIG.md](CONFIG.md), The compact size).
+  - **Advisor** is a switch (`complexities.<name>.advisor`), and the list beside it is the effort of a run that has
+    no advisor left (`complexities.<name>.advisorFallback`): an effort, or the same effort. A value that differs from
+    the files shows theirs under it as Default. A complexity that runs on the advisor's own model has no advisor: the
+    row says so.
+- **The advisor's model** (`advisor.model`): a list of the models of `models.json`, with the default under it when the
+  pick differs.
+- **Only what the worker's coding tool has:** with no efforts, no compact size or no advisor in its `models.json`,
+  the rows show no field for it. A tool with none of the three has a model for each complexity and nothing else.
+- **Two groups:** the rows the worker has in every project come first. A project's own complexities stand apart
+  below them, under "Only in" and the project's mark: the worker has these rows only in this project, and their picks
+  wait here when it moves away. When the worker follows a worker of another project, these rows stay its own.
+- **A line when the settings set `model`:** that model goes over the mapping, for every run of the project on its
+  default coding tool.
+
+On a phone a complexity has three lines: its name and compact size, its model and effort, then its advisor.
 
 Each card has two slots:
 
@@ -162,7 +192,7 @@ first, in the page's one dialog.
 
 **The project choice.** While the PC has two projects or more, the project mark after "Worker N" is a choice. A pick
 asks first, then moves the worker to that project with its number. Its account, its status (active, paused or
-disabled) and its complexity switches stay. The account, `enabled` and the switches are the PC's settings, and the
+disabled), its complexity switches and its mapping stay. The account, `enabled`, the switches and the mapping are the PC's settings, and the
 move does not change them; a pause is in the old project's `control.json`, and the server carries it over. Its copy
 of the old project stays on the PC, unless the owner ticks the box in the dialog (Add and remove, Delete the copy). It
 has no state file there, so the other workers of the old project take its open PRs, and its claimed tickets with no PR
@@ -229,6 +259,9 @@ The repo may be private, so the server fetches each one once with the owner's `g
   - Of those, the first is a worker whose ticket in work holds an area of this one. Then a free worker, then the
     account with the most room in its shortest window, then in its longest, then the run that started last.
   - The page asks first. It names the worker, the run that ends, and the areas that another ticket still holds.
+  - With two such workers or more, the dialog lists them, the server's pick first, each with the model and effort it
+    would run the ticket on (its own mapping) and whether it is free. The owner can choose another one; the text is
+    then that worker's.
   - With no such worker the button is off, and its tooltip says why.
   - A pause or a disable of the worker ends a Now that still waits.
 - **On hold:** a ticket labelled `needs-owner` with no question on it.
@@ -288,35 +321,13 @@ Recent merges in every repo; recent runs with model, duration and cost.
 
 ### Details
 
-The settings that are the same for all workers of a project, then the info text. An older address `#info` opens this
-tab. No push opens it.
+Each project's colour, then the info text. An older address `#info` opens this tab. No push opens it.
 
-**The settings:** one block for each project, in the order of the projects. With one project on the PC the block has no
-head. Each change saves at once in the project's `.queue/settings.json` ([QUEUE.md](QUEUE.md), Settings) and counts
-from the next run. A run in progress or on hold keeps its model, its effort and its advisor. A block holds:
-
-- **The head:** the project's mark and its colour (`color`). The colour field picks one; Default colour goes back to
-  the colour from the project's name. The mark, a worker's project choice and the Queue's select, set to the project, show this colour.
-- **A row for each complexity,** with its name and an (i) button that shows its description:
-  - **Model and effort** are two lists: the models and the efforts of [models.json](../models.json)
-    (`complexities.<name>.model`; [QUEUE.md](QUEUE.md), Models, The owner's pick). A pick that is not the base's shows
-    the base's under it as Default. Pick the default pair again, and the project follows `models.json` and
-    `scriptorium.json` again.
-  - **Compacts near** is the compact size of the complexity in thousands of tokens (`complexities.<name>.compactAt`;
-    [CONFIG.md](CONFIG.md), The compact size).
-  - **Advisor** is a switch (`complexities.<name>.advisor`), and the list beside it is the effort of a run that has
-    no advisor left (`complexities.<name>.advisorFallback`): an effort, or the same effort. A value that differs from
-    the files shows theirs under it as Default. A complexity that runs on the advisor's own model has no advisor: the
-    row says so.
-- **The advisor's model** (`advisor.model`): a list of the models of `models.json`, with the default under it when the
-  pick differs.
-- **A line when the settings set `model`:** that model goes over every pick of the block, for every run.
-- **Only what the project's coding tool has:** with no efforts, no compact size or no advisor in its `models.json`,
-  the block shows no field for it.
-- **The default provider's only:** the block sets the models of the project's default provider. A worker on another
-  coding tool runs on that tool's own models ([QUEUE.md](QUEUE.md), Complexities), and its Config says so.
-
-On a phone a complexity has three lines: its name and compact size, its model and effort, then its advisor.
+**The colour:** one head for each project, in the order of the projects: the project's mark and its colour (`color`).
+The colour field picks one, and saves at once in the project's `.queue/settings.json` ([QUEUE.md](QUEUE.md),
+Settings); Default colour goes back to the colour from the project's name. The mark, a worker's project choice and
+the Queue's select, set to the project, show this colour. With one project on the PC there is no head: nothing shows
+a colour. The models of a complexity are each worker's, in its Config (Workers).
 
 **The info:** what the queue does and what to expect, for someone who does not know it, in plain sections: In short,
 What needs you, How a ticket goes through, Who builds what, Complexities, Coding tool (for each project: the tool and
@@ -360,8 +371,8 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
   project's name, in its project's colour (Details). A worker's mark is its project choice (Workers, The project
   choice).
 - **Accounts** are the PC's: one list, with the workers of every project on it, each account from a project that
-  has a provider for its coding tool. **Details** has the settings of each
-  project in a block of its own, and one info text: the common part once, and the plugins for each project.
+  has a provider for its coding tool. **Details** has the colour of each
+  project, and one info text: the common part once, and the plugins for each project.
 - **How:** the page stays at its address and loads each other project's state, steps and pictures from that project's
   own server, and it sends each action to the server of the item's project. A page on the PC uses the project's
   address on the PC; a page on a Tailscale device uses its Tailscale address (Setup).

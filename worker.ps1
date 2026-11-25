@@ -73,8 +73,7 @@ if ($providers.Count -and -not $missing.Count) {
 # accounts and windows. It is the one of the worker's account (plugins.ps1, Get-WorkerProvider), so a worker runs on
 # its coding tool in any project. Without one the worker starts no run.
 $provider = Get-WorkerProvider (Read-ProjectSettings $Project) "$Id" $providers
-# scriptorium.json's models and the owner's picks on the page are the default provider's (project.ps1,
-# Get-ProviderConfig).
+# scriptorium.json's models are the default provider's (project.ps1, Get-ProviderConfig).
 $isDefault = [bool]($provider -and $provider.Name -eq $providers[0].Name)
 # The worker's plugins: the project's, without the other providers. Their playbooks and hooks are no part of its runs.
 $plugins = @($projectPlugins | Where-Object { -not $_.Provider -or ($provider -and $_.Name -eq $provider.Name) })
@@ -288,8 +287,8 @@ function Get-Accounts {
 }
 
 # A worker's settings, its own entry over the shared one; its login is the account the register gives it, else the
-# Windows user's command-line login. `model` is the shared one only: every worker of a project runs on the same
-# models. It names a model of the default provider, so a worker on another coding tool leaves it.
+# Windows user's command-line login. `model` is the shared one only: the project's override of every worker's
+# mapping. It names a model of the default provider, so a worker on another coding tool leaves it.
 function Get-RunSettings([int] $worker) {
     $settings = @{ model = $null; configDir = $null; sizes = $null; ghConfigDir = $null; assignedOnly = $null }
     $json = Read-Settings
@@ -611,18 +610,18 @@ function Get-Out([string] $configDir) {
     return $record
 }
 
-# The owner's picks on the page (models, advisor, compact sizes): the settings for a worker on the project's default
-# provider, none for a worker on another coding tool (project.ps1, Get-ProviderConfig).
-function Read-Picks {
-    if ($isDefault) {
-        return Read-Settings
-    }
+# The owner's picks on a worker's card (models, advisor, compact sizes): the worker's mapping for this coding tool
+# (project.ps1, Get-WorkerMapping). $worker: this worker, or another of this tool that the dispatcher judges.
+function Read-Picks([string] $worker = "$Id") {
+    $toolConfig = Get-ProviderConfig $config $isDefault
+    $here = @(Get-ChildItem (Join-Path $mainQueueDir 'worker-*.json') | ForEach-Object { $_.BaseName.Substring(7) })
+    return (Get-WorkerMapping (Read-Settings) $worker ([string]$provider.Name) (Get-OwnComplexities (Read-Models) $toolConfig) $here).picks
 }
 
 # The ticket complexities (project.ps1, Get-Complexities): the provider's models with the project's over them, and
-# the models and compact sizes the owner set on the page.
-function Get-ProjectComplexities {
-    return Get-Complexities (Read-Models) (Get-ProviderConfig $config $isDefault) (Read-Picks)
+# the models and compact sizes of the worker's mapping.
+function Get-ProjectComplexities([string] $worker = "$Id") {
+    return Get-Complexities (Read-Models) (Get-ProviderConfig $config $isDefault) (Read-Picks $worker)
 }
 
 
@@ -697,12 +696,13 @@ function Set-ModelRefused([string] $account, [string] $model) {
 # Whether an account has a model for a ticket complexity now: the owner's override, else a candidate of the
 # complexity, that the plan did not refuse in the last day and whose window is not at its limit (Test-ModelRefused).
 # Without one a run only gets refused: no dispatcher gives a worker on that account a ticket of the complexity, and the
-# ticket waits for another account, the next day (the model is tried again) or the window's reset.
-function Test-ModelLeft([string] $complexity, $settings, [string] $account) {
+# ticket waits for another account, the next day (the model is tried again) or the window's reset. $worker: the worker
+# whose mapping names the candidates, as two workers on one account can run a complexity on two models.
+function Test-ModelLeft([string] $complexity, $settings, [string] $account, [string] $worker = "$Id") {
     if (-not $complexity) {
         $complexity = 'medium'
     }
-    $picks = if ($settings.model) { @([string]$settings.model) } else { Get-ComplexityModels (Get-ProjectComplexities) $complexity }
+    $picks = if ($settings.model) { @([string]$settings.model) } else { Get-ComplexityModels (Get-ProjectComplexities $worker) $complexity }
     return [bool]($picks | Where-Object { -not (Test-ModelRefused $account ($_ -split '@')[0]) })
 }
 
@@ -972,7 +972,7 @@ function Get-NextJob {
                 continue
             }
             # Only an account whose plan has a model for the complexity now (Test-ModelLeft).
-            $takers = @($takers | Where-Object { Test-ModelLeft $complexity $_.Settings $_.Account })
+            $takers = @($takers | Where-Object { Test-ModelLeft $complexity $_.Settings $_.Account "$($_.Worker)" })
             if ($takers.Count -eq 0) {
                 $waiting["$($ticket.number)"] = "no idle worker's account has a model for complexity $complexity now (a plan without it, or the model's window at its limit)"
                 continue

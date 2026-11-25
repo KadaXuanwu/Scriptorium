@@ -24,8 +24,9 @@ does](#what-the-real-antigravity-does) says so. Nothing was run with the other t
 2. Each provider is a plugin. Claude Code is the first one. **Built.**
 3. An owner who buys another tool's subscription adds its plugin and signs an account in. Workers on that account
    build tickets like any other worker. **Built:** an account is one provider's, and a worker runs on its account's
-   coding tool, in any project ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`). Not built: the page's
-   Details sets the models of a project's default provider only.
+   coding tool, in any project ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`). The owner's picks of
+   models are each worker's, on any tool ([QUEUE.md](QUEUE.md), Models, A worker's mapping). Not built:
+   `scriptorium.json` names models for a project's default provider only.
 
 ## Decided, and built
 

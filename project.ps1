@@ -45,15 +45,24 @@ function Read-Models {
     return Get-Content (Join-Path $script:Provider.Dir 'models.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 }
 
+# The names of the project's own complexities for a provider: the ones scriptorium.json ($config, as Get-ProviderConfig
+# gives it to that provider) adds to the base's and to the provider's own.
+function Get-OwnComplexities($models, $config) {
+    $base = @($BaseComplexities.Keys) + @($models.complexities.PSObject.Properties | ForEach-Object { $_.Name })
+    return @(if ($config -and $config.complexities) { $config.complexities.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { $base -notcontains $_ } })
+}
+
 # The ticket complexities (docs/CONFIG.md, Complexities), the one list every script and the page read: the base's with
 # the provider's models.json over them, and scriptorium.json's `complexities` over those, in this order: low, medium,
 # high, the provider's and the project's own, design. Each
-# @{ name; description; models; base; advisor; advisorFallback; baseAdvisor; baseFallback; compactAt }. A complexity of
-# the project's own needs a description; with no models it runs on medium's. The model the owner picked on the page
-# ($settings: the project's settings.json, `complexities.<name>.model`) is its one candidate, and `base` is the first
-# candidate without that pick. The owner's advisor switch and fallback effort (`complexities.<name>.advisor`,
-# `.advisorFallback`) go over the files' too, and `baseAdvisor` and `baseFallback` keep the files' values. Its compact
-# size (docs/CONFIG.md, The compact size) is the one the owner set on the page (`complexities.<name>.compactAt`), else
+# @{ name; description; own; models; base; advisor; advisorFallback; baseAdvisor; baseFallback; compactAt }; `own`
+# marks a complexity of the project's own. Such a
+# complexity needs a description; with no models it runs on medium's. $settings: the owner's picks of one worker
+# (Get-WorkerMapping, `picks`), in the form `complexities.<name>` = @{ model; advisor; advisorFallback; compactAt }.
+# The model picked there is the complexity's one candidate, and `base` is the first
+# candidate without that pick. The picked advisor switch and fallback effort
+# go over the files' too, and `baseAdvisor` and `baseFallback` keep the files' values. Its compact
+# size (docs/CONFIG.md, The compact size) is the picked one, else
 # its own in scriptorium.json, else the project's, else models.json's; 0 with a provider that has none. Throws for a
 # missing description, a name that is no label or a compact size out of range.
 function Get-Complexities($models, $config, $settings) {
@@ -63,14 +72,14 @@ function Get-Complexities($models, $config, $settings) {
     $paged = if ($settings -and $settings.complexities) { $settings.complexities } else { [pscustomobject]@{} }
     $base = @($BaseComplexities.Keys) + @($models.complexities.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { -not $BaseComplexities.Contains($_) })
     $changes = if ($config -and $config.complexities) { $config.complexities } else { [pscustomobject]@{} }
-    $own = @($changes.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { $base -notcontains $_ })
+    $own = @(Get-OwnComplexities $models $config)
     $names = @($base | Where-Object { $_ -ne 'design' }) + $own + @($base | Where-Object { $_ -eq 'design' })
     $list = @()
     foreach ($name in $names) {
         if ($name -cnotmatch '^[a-z0-9][a-z0-9-]*$') {
             throw "complexity '$name': lower-case letters, digits and hyphens only"
         }
-        $entry = @{ name = $name; description = [string]$BaseComplexities[$name]; models = @(); base = ''; advisor = $false; advisorFallback = ''; compactAt = $compactAt }
+        $entry = @{ name = $name; description = [string]$BaseComplexities[$name]; own = ($own -contains $name); models = @(); base = ''; advisor = $false; advisorFallback = ''; compactAt = $compactAt }
         foreach ($source in @($models.complexities.$name, $changes.$name)) {
             if (-not $source) {
                 continue
@@ -119,11 +128,64 @@ function Get-Complexities($models, $config, $settings) {
     return $list
 }
 
+# A worker's own mapping for a coding tool in the settings (`workers.<id>.mapping.<tool>`, the PC's); $null without one.
+function Get-MappingEntry($settings, [string] $worker, [string] $tool) {
+    if (-not $tool -or -not $settings -or -not $settings.workers -or -not $settings.workers.$worker -or -not $settings.workers.$worker.mapping) {
+        return $null
+    }
+    return $settings.workers.$worker.mapping.$tool
+}
+
+# A worker's mapping (docs/QUEUE.md, A worker's mapping): the owner's picks for the worker's runs on the coding tool
+# named $tool (a provider plugin's name), which the worker's card sets. Each worker has one for each tool it was on, so a
+# worker that goes back to a tool finds its picks again. `follows` in it names another worker whose mapping this one
+# uses, over any number of workers: the picks are those of the last worker of the chain. A chain that comes back to a
+# worker it passed ends there, so a loop that a hand edit made does not hang a script.
+# A complexity of the project's own ($own: Get-OwnComplexities) follows only a worker of this project ($here: the
+# numbers of its workers): the last worker of a chain in another project has no row of it to set, so the worker's own
+# pick counts.
+# Returns @{ picks; follows; end; kept }: `picks` in the form Get-Complexities and Get-AdvisorRule take as settings
+# (`complexities`, `advisor`); `follows`, the worker it follows ('' for none); `end`, the last worker of the chain (the
+# worker itself without a link); `kept`, the complexities that are the worker's own though it follows.
+function Get-WorkerMapping($settings, [string] $worker, [string] $tool, [string[]] $own = @(), [string[]] $here = @()) {
+    $mine = Get-MappingEntry $settings $worker $tool
+    $end = $worker
+    $seen = @($worker)
+    while ($true) {
+        $entry = Get-MappingEntry $settings $end $tool
+        $next = if ($entry) { [string]$entry.follows } else { '' }
+        if (-not $next -or $seen -contains $next) {
+            break
+        }
+        $seen += $next
+        $end = $next
+    }
+    $linked = $end -ne $worker
+    $source = Get-MappingEntry $settings $end $tool
+    $kept = @(if ($linked -and $here -notcontains $end) { $own })
+    $complexities = [pscustomobject]@{}
+    foreach ($property in @(if ($source -and $source.complexities) { $source.complexities.PSObject.Properties })) {
+        if ($kept -notcontains $property.Name) {
+            Set-JsonProperty $complexities $property.Name $property.Value
+        }
+    }
+    foreach ($name in $kept) {
+        if ($mine -and $mine.complexities -and $mine.complexities.$name) {
+            Set-JsonProperty $complexities $name $mine.complexities.$name
+        }
+    }
+    return @{
+        picks = [pscustomobject]@{ complexities = $complexities; advisor = $(if ($source) { $source.advisor }) }
+        follows = $(if ($linked) { [string]$mine.follows } else { '' }); end = $end; kept = $kept
+    }
+}
+
 # What scriptorium.json says of the complexities to a provider: all of it to the project's default provider
 # ($default), whose models it names. To another provider only the project's own complexities with their descriptions:
 # the models, the advisor and the compact size of that tool are its models.json's.
-# shortcut: a project picks models for its default provider only, in scriptorium.json and on the page; give another
-# provider keys of its own when a project wants its own picks for a second coding tool.
+# shortcut: a project's file names models for its default provider only; give another provider keys of its own there
+# when a project wants its own defaults for a second coding tool. The owner's picks are each worker's, for any tool
+# (Get-WorkerMapping).
 function Get-ProviderConfig($config, [bool] $default) {
     if ($default -or -not $config) {
         return $config
@@ -182,8 +244,8 @@ function Get-TicketComplexity([string[]] $labels, $complexities) {
 }
 
 # The advisor rule for limits.ps1 (Get-Advisor, Get-FallbackEffort): the advisor's model (the owner's pick in the
-# project's settings, `advisor.model`, else models.json's), the complexities whose runs get it, and the effort each
-# gets instead where the account has no advisor left.
+# worker's mapping, `advisor.model` of $settings as Get-Complexities takes them, else models.json's), the complexities
+# whose runs get it, and the effort each gets instead where the account has no advisor left.
 function Get-AdvisorRule($models, $complexities, $settings) {
     $fallback = @{}
     foreach ($entry in @($complexities | Where-Object { $_.advisor -and $_.advisorFallback })) {

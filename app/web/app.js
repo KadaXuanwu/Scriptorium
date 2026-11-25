@@ -30,7 +30,8 @@ const busyClass = (key) => (ops.has(`${scope}|${key}`) ? ' busy' : '');
 const busyAttr = (key) => (ops.has(`${scope}|${key}`) ? ' inert aria-busy="true"' : '');
 const workerOf = (s, id) => s.workers.find((w) => w.id === id);
 const accountOf = (s, name) => s.accounts.find((a) => a.name === name);
-const complexityOf = (s, name) => (s.complexities || []).find((c) => c.name === name);
+// A worker's complexity: its switch and the row of its mapping (the snapshot's `takes`).
+const takeOf = (s, worker, name) => workerOf(s, worker)?.takes?.find((t) => t.name === name);
 const rowOf = (s, number) => [...s.queued, ...s.parked].find((row) => row.number === number);
 
 // Redraws a list only when it changed and holds no field in use, so typing, the phone keyboard and open folds
@@ -172,7 +173,7 @@ function inline(text) {
 // A coding tool's name, from its provider plugin's title without the start every plugin's title has
 // (docs/PLUGINS.md, A provider): "Scriptorium for Claude Code" is Claude Code.
 const toolTitle = (title) => (title || '').replace(/^Scriptorium for /, '');
-// A project's default coding tool, whose models Details sets. '' with no provider.
+// A project's default coding tool, whose models scriptorium.json names. '' with no provider.
 const toolOf = (s) => toolTitle(s?.provider);
 // Whether a coding tool's provider has each of these hooks (the snapshot's `hooks`). A snapshot from before that list
 // (the last state on the device) counts as having them all, as the page showed it then.
@@ -197,10 +198,13 @@ function withTool(name, draw) {
 // The coding tools of the PC, each once: every project's default and every tool its page serves.
 const toolsOfPc = () => [...new Set(names.flatMap((p) => [states[p]?.provider, ...Object.values(states[p]?.tools || {}).map((t) => t.title)])
   .map(toolTitle).filter(Boolean))];
-// What a project's coding tool has of the settings Details offers, from its models.json: efforts, an advisor, a
+// What a project's default coding tool has of what a mapping sets, from its models.json: efforts, an advisor, a
 // compact size. A snapshot from before `compactRange` counts as having one.
 const toolHas = (s) => ({ efforts: (s?.efforts || []).length > 0, advisor: Boolean(s?.advisor?.model || s?.advisor?.base),
   compact: !s?.compactRange || s.compactRange.length === 2 });
+// The same of one coding tool (toolView), for a worker's mapping. A snapshot from before a tool had these lists has
+// none of the three: its rows show the model alone.
+const mappingHas = (tool) => ({ efforts: (tool?.efforts || []).length > 0, advisor: Boolean(tool?.advisor), compact: tool?.compactRange?.length === 2 });
 const toolBadge = (tool) => (tool ? `<span class="badge tool" title="The coding tool that runs here">${esc(tool)}</span>` : '');
 // The accounts as the options of a select, each by its name alone, so the closed select shows the name. While the PC
 // has more than one coding tool, the list is in groups, one for each tool. `tool` gives an account's tool by name.
@@ -352,92 +356,127 @@ function workerCard(worker) {
     <div class="slot next"><span class="slot-label">Next</span><div class="slot-body">${nextBody}</div>${force}</div></article>`;
 }
 
-// A worker's config, the dialog its Config button opens: a switch for each complexity (docs/QUEUE.md, Settings,
-// `workers.<id>.complexity`). Off, the worker takes no new ticket of the complexity and leaves the answers and rebases
-// of its PRs of it (`jobs`) until it is on again. What is the same for every worker of the project is on Details.
+// A worker's config, the dialog its Config button opens (docs/APP.md, Workers, Config): its mapping (docs/QUEUE.md, A
+// worker's mapping) and a switch for each complexity (`workers.<id>.complexity`). Off, the worker takes no new ticket
+// of the complexity and leaves the answers and rebases of its PRs of it (`jobs`) until it is on again.
+// The mapping is the worker's own, for the coding tool it is on, or another worker's that it follows: a row for each
+// complexity with its model and effort, its compact size, its advisor switch and its effort without the advisor. The
+// lists are the tool's models.json's (toolView), with the value in use always among them: a list without it would
+// show its first entry. The models have the base's own too (`base`, which a project may name outside the list), so
+// the way back is always there. A pick that is not the base's shows the base's under it. A row that the worker
+// follows is not a field. Each field has a fallback for an older snapshot.
+const pickList = (list, value, label) => [...new Set([...list, value])].filter(Boolean)
+  .map((v) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label(v))}</option>`).join('');
+// At most 17 letters: a phone cuts a longer entry in its list (168 px wide at 375 px).
+const fallbackName = (effort) => `${effort || 'same'} without it`;
+const workerLabel = (w) => w.name || `Worker ${w.id}`;
+// Every worker of the PC, each with its project: a mapping can follow a worker of another project.
+const pcWorkers = () => names.flatMap((p) => (states[p]?.workers || []).map((w) => ({ ...w, of: p })));
+
 let configOf = null;
 function drawConfig() {
   const worker = configOf && states[configOf.project] && workerOf(states[configOf.project], configOf.id);
   if (!worker) { $('config').close(); return; }
   within(configOf.project, () => drawConfigOf(worker));
 }
+
+function mappingRow(worker, t, tool, has) {
+  const id = esc(worker.id);
+  const name = esc(t.name);
+  const key = `mapping:${worker.id}:${t.name}`;
+  const locked = t.linked ? ' disabled' : '';
+  const on = t.advisorOn ?? Boolean(t.advisor);
+  const fallback = t.advisorFallback || '';
+  const notes = [t.base && (t.base.model !== t.model || (has.efforts && t.base.effort !== t.effort))
+    && `Default: ${esc(modelName(t.base.model))}${has.efforts ? ` · ${esc(t.base.effort)}` : ''}`,
+  has.advisor && t.baseAdvisor != null && (t.baseAdvisor !== on || (t.baseFallback || '') !== fallback)
+    && `Default: ${t.baseAdvisor ? `advisor, ${esc(fallbackName(t.baseFallback))}` : 'no advisor'}`].filter(Boolean);
+  // Only what the coding tool has (mappingHas): with no efforts or no compact size the field keeps its place, unseen;
+  // with no advisor the row has none.
+  const advisor = !has.advisor ? '' : t.model === worker.mapping?.advisor
+    ? '<small>No advisor: the run is on the advisor\'s model.</small>'
+    : `<button class="take${on ? ' on' : ''}" data-advisor="${name}" data-worker="${id}" aria-pressed="${on}" aria-label="Advisor of a ${name} run"${locked}>${icon(on ? 'check' : 'lock')}<span><b>Advisor</b></span></button>
+      <select data-fallback="${name}" data-worker="${id}" aria-label="Effort of a ${name} run without the advisor"${on && !t.linked ? '' : ' disabled'}>${
+  ['', ...(tool?.efforts || [])].map((e) => `<option value="${esc(e)}"${e === fallback ? ' selected' : ''}>${esc(fallbackName(e))}</option>`).join('')}</select>`;
+  const [least, most] = has.compact ? tool.compactRange : [0, 0];
+  const jobs = !t.on && t.jobs ? `<small>holds ${t.jobs} PR job${t.jobs === 1 ? '' : 's'}</small>` : '';
+  // The description is behind an (i) button: a popover that a tap outside closes, so a phone keeps the row short.
+  const about = esc(`about-${scope}-${worker.id}-${t.name}`);
+  return `<div class="config-row${busyClass(key)}"${busyAttr(key)}>
+    <span class="config-name switch"><button class="take${t.on ? ' on' : ''}" data-take="${name}" data-worker="${id}" aria-pressed="${t.on}" title="${t.on ? 'It takes' : 'It takes no'} ${name} tickets">
+      ${icon(t.on ? 'check' : 'lock')}<span><b>${name}</b>${jobs}</span></button>${t.description ? `<button class="about" popovertarget="${about}" aria-label="What ${name} is">${icon('info')}</button>
+      <span class="pop about-text" id="${about}" popover>${esc(t.description)}</span>` : ''}</span>
+    <select data-run-model="${name}" data-worker="${id}" aria-label="Model of a ${name} run"${locked}>${pickList([...(tool?.models || []), t.base?.model], t.model, modelName)}</select>
+    <select data-run-effort="${name}" data-worker="${id}" aria-label="Effort of a ${name} run"${has.efforts ? locked : ' class="none" disabled'}>${pickList(tool?.efforts || [], t.effort, (v) => v)}</select>
+    <label class="compact${has.compact ? '' : ' none'}"><input type="number"${has.compact && !t.linked ? '' : ' disabled'} inputmode="numeric" min="${Math.round(least / 1000)}" max="${Math.round(most / 1000)}" step="1" value="${Math.round((t.compactAt || 0) / 1000)}"
+      data-compact="${name}" data-worker="${id}" aria-label="Thousands of tokens at which a ${name} run compacts its context">k tokens</label>
+    ${notes.length ? `<small>${notes.join(' · ')}</small>` : ''}${advisor}</div>`;
+}
+
+// Whose mapping a worker uses: its own, or that of another worker on the same coding tool, in any project. Not a
+// worker whose own chain of links leads back here: the link would close a loop (the server refuses one too). The
+// worker it follows now stays in the list also when that worker went to another tool.
+function followOptions(worker, all) {
+  const byId = Object.fromEntries(all.map((w) => [w.id, w]));
+  const leadsHere = (w) => {
+    for (let at = w, n = 0; at && n < 50; at = byId[at.mapping?.follows], n += 1) if (at.id === worker.id) return true;
+    return false;
+  };
+  const follows = worker.mapping?.follows || '';
+  const offered = all.filter((w) => w.id !== worker.id && (w.id === follows || (w.provider === worker.provider && !leadsHere(w))));
+  const label = (w) => `Same as ${workerLabel(w)}${w.of !== scope ? ` · ${w.of}` : ''}${w.provider !== worker.provider ? ' · on another tool now' : ''}`;
+  return `<option value=""${follows ? '' : ' selected'}>Its own</option>${offered.map((w) => `<option value="${esc(w.id)}"${w.id === follows ? ' selected' : ''}>${esc(label(w))}</option>`).join('')}${
+    follows && !byId[follows] ? `<option value="${esc(follows)}" selected>Same as worker ${esc(follows)}</option>` : ''}`;
+}
+
 function drawConfigOf(worker) {
   const id = esc(worker.id);
-  $('config-title').textContent = `Worker ${worker.id}${names.length > 1 ? ` on ${scope}` : ''}: config`;
-  put($('config-body'), `<div class="takes">${(worker.takes || []).map((t) => {
-    const name = esc(t.name);
-    const jobs = !t.on && t.jobs ? `<small>holds ${t.jobs} PR job${t.jobs === 1 ? '' : 's'}</small>` : '';
-    return `<button class="take${t.on ? ' on' : ''}" data-take="${name}" data-worker="${id}" aria-pressed="${t.on}">
-      ${icon(t.on ? 'check' : 'lock')}<span><b>${name}</b>${jobs}</span></button>`;
-  }).join('')}</div>
-    <p class="takes-note">${!worker.provider || toolName(state, worker.provider) === toolOf(state)
-    ? 'Details sets the model, the effort, the compact size and the advisor of each complexity, for all workers.'
-    : `This worker runs on ${esc(toolName(state, worker.provider))}. Its models are that tool's own; Details sets the models of ${esc(toolOf(state))}.`}</p>`);
+  $('config-title').textContent = `${workerLabel(worker)}${names.length > 1 ? ` on ${scope}` : ''}: config`;
+  const tool = toolView(state, worker.provider);
+  const has = mappingHas(tool);
+  const mapping = worker.mapping || {};
+  const takes = worker.takes || [];
+  // The project's own complexities stand apart: the worker has them only in this project.
+  const shared = takes.filter((t) => !t.own);
+  const own = takes.filter((t) => t.own);
+  const rows = (list) => list.map((t) => mappingRow(worker, t, tool, has)).join('');
+  const all = pcWorkers();
+  const end = all.find((w) => w.id === mapping.end);
+  const endName = esc(end ? workerLabel(end) : `worker ${mapping.end}`);
+  const linkNote = !mapping.follows ? '' : `<small>The models${has.efforts ? ', efforts' : ''}${has.compact ? ', compact sizes' : ''}${has.advisor ? ' and advisor' : ''} below are ${endName}'s: change them there. The switches are this worker's own.${
+    end && end.provider !== worker.provider ? ` ${endName} is on another coding tool now; its picks for ${esc(toolName(state, worker.provider))} still count.` : ''}</small>`;
+  const advisorKey = `mapping:${worker.id}:`;
+  const advisorRow = has.advisor ? `<div class="config-row${busyClass(advisorKey)}"${busyAttr(advisorKey)}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
+    <select data-advisor-model data-worker="${id}" aria-label="Model of the advisor"${mapping.follows ? ' disabled' : ''}>${pickList(tool.models || [], mapping.advisor, modelName)}</select>
+    ${mapping.baseAdvisor && mapping.baseAdvisor !== mapping.advisor ? `<small>Default: ${esc(modelName(mapping.baseAdvisor))}</small>` : ''}</div>` : '';
+  // The settings' `model` goes over the mapping of every worker on the project's default coding tool.
+  const [model, effort] = (!worker.provider || toolName(state, worker.provider) === toolOf(state) ? state.settingsModel || '' : '').split('@');
+  const override = model ? `<p class="takes-note">settings.json sets ${esc(modelName(model))}${effort ? ` · ${esc(effort)}` : ''}
+    for every run of ${esc(scope)}: the models and efforts above are not in use.</p>` : '';
+  const ownNote = mapping.follows && own.some((t) => !t.linked) ? ` ${endName} is in another project, so these are this worker's own.` : '';
+  const followKey = `mapping:${worker.id}`;
+  put($('config-body'), `<div class="mapping-of${busyClass(followKey)}"${busyAttr(followKey)}>
+      <label>Mapping<select data-follow="${id}" aria-label="Whose mapping worker ${id} uses">${followOptions(worker, all)}</select></label>
+      ${toolBadge(toolName(state, worker.provider))}${linkNote}</div>
+    ${own.length ? '<h3 class="config-group">In every project</h3>' : ''}
+    <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide${has.efforts ? '' : ' none'}">Effort</span><span${has.compact ? '' : ' class="none"'}>Compacts near</span></div>
+    ${rows(shared)}${advisorRow}
+    ${own.length ? `<h3 class="config-group project">Only in ${mark() || esc(scope)}</h3>
+      <p class="takes-note">${own.length > 1 ? 'Complexities' : 'A complexity'} of this project alone. In another project the worker has no such row; its pick here is kept for its return.${ownNote}</p>
+      ${rows(own)}` : ''}
+    ${override}
+    <p class="takes-note">The switch before a complexity says whether this worker takes its tickets. A pick counts from the worker's next run; a run in progress or on hold keeps its model, effort and advisor.</p>`);
 }
 
 // ---- Details: the settings
 
-// The settings that are the same for all workers of a project (docs/APP.md, Details), one block for each project,
-// drawn in its scope. A row for each complexity: its model and effort (`complexities.<name>.model`), its compact size
-// (`.compactAt`), its advisor switch (`.advisor`) and its effort without the advisor (`.advisorFallback`). The lists
-// are models.json's, with the value in use always among them: a list without it would show its first entry. The
-// models have the base's own too (`base`, which a project may name outside the list), so the way back is always
-// there. A pick that is not the base's shows the base's under it. Each field has a fallback for an older snapshot.
-const pickList = (list, value, label) => [...new Set([...list, value])].filter(Boolean)
-  .map((v) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label(v))}</option>`).join('');
-// At most 17 letters: a phone cuts a longer entry in its list (168 px wide at 375 px).
-const fallbackName = (effort) => `${effort || 'same'} without it`;
-
-function complexityRow(c) {
-  const name = esc(c.name);
-  const key = `complexity:${c.name}`;
-  const advisorModel = state.advisor?.model;
-  const on = c.advisorOn ?? Boolean(c.advisor);
-  const fallback = c.advisorFallback || '';
-  const notes = [c.base && (c.base.model !== c.model || c.base.effort !== c.effort)
-    && `Default: ${esc(modelName(c.base.model))} · ${esc(c.base.effort)}`,
-  c.baseAdvisor != null && (c.baseAdvisor !== on || (c.baseFallback || '') !== fallback)
-    && `Default: ${c.baseAdvisor ? `advisor, ${esc(fallbackName(c.baseFallback))}` : 'no advisor'}`].filter(Boolean);
-  // Only what the coding tool has (toolHas): with no efforts or no compact size the field keeps its place, unseen;
-  // with no advisor the row has none.
-  const tool = toolHas(state);
-  const advisor = !tool.advisor ? '' : c.model === advisorModel
-    ? '<small>No advisor: the run is on the advisor\'s model.</small>'
-    : `<button class="take${on ? ' on' : ''}" data-advisor="${name}" aria-pressed="${on}" aria-label="Advisor of a ${name} run">${icon(on ? 'check' : 'lock')}<span><b>Advisor</b></span></button>
-      <select data-fallback="${name}" aria-label="Effort of a ${name} run without the advisor"${on ? '' : ' disabled'}>${
-  ['', ...(state.efforts || [])].map((e) => `<option value="${esc(e)}"${e === fallback ? ' selected' : ''}>${esc(fallbackName(e))}</option>`).join('')}</select>`;
-  // The compact sizes the coding tool takes (the snapshot's `compactRange`); an older snapshot has none.
-  const [least, most] = state.compactRange?.length === 2 ? state.compactRange : [67000, 967000];
-  // The description is behind an (i) button: a popover that a tap outside closes, so a phone keeps the row short.
-  const about = esc(`about-${scope}-${c.name}`);
-  return `<div class="config-row${busyClass(key)}"${busyAttr(key)}>
-    <span class="config-name"><b>${name}<button class="about" popovertarget="${about}" aria-label="What ${name} is">${icon('info')}</button></b>
-      <span class="pop about-text" id="${about}" popover>${esc(c.description)}</span></span>
-    <select data-run-model="${name}" aria-label="Model of a ${name} run">${pickList([...(state.models || []), c.base?.model], c.model, modelName)}</select>
-    <select data-run-effort="${name}" aria-label="Effort of a ${name} run"${tool.efforts ? '' : ' class="none" disabled'}>${pickList(state.efforts || [], c.effort, (v) => v)}</select>
-    <label class="compact${tool.compact ? '' : ' none'}"><input type="number"${tool.compact ? '' : ' disabled'} inputmode="numeric" min="${Math.round(least / 1000)}" max="${Math.round(most / 1000)}" step="1" value="${Math.round(c.compactAt / 1000)}"
-      data-compact="${name}" aria-label="Thousands of tokens at which a ${name} run compacts its context">k tokens</label>
-    ${notes.length ? `<small>${notes.join(' · ')}</small>` : ''}${advisor}</div>`;
-}
-
+// A project's settings that are the same for all its workers (docs/APP.md, Details): its colour, drawn in its scope.
+// The colour shows only on the marks, so a PC with one project has no block. A worker's models are its own (its
+// Config).
 function settingsBlock() {
-  const advisor = state.advisor || {};
-  const base = advisor.base || advisor.model;
-  // The colour shows only on the marks, and a PC with one project shows none.
-  const head = names.length > 1 ? `<div class="settings-head${busyClass('color')}"${busyAttr('color')}><h2>${mark()}</h2>
+  return names.length > 1 ? `<section class="settings"><div class="settings-head${busyClass('color')}"${busyAttr('color')}><h2>${mark()}</h2>
     <input type="color" value="${colorOf(scope)}" data-color="${esc(scope)}" aria-label="Colour of ${esc(scope)}">
-    ${ownColor(state) ? '<button data-color-reset>Default colour</button>' : ''}</div>` : '';
-  const [model, effort] = (state.settingsModel || '').split('@');
-  const override = model ? `<p class="settings-note">settings.json sets ${esc(modelName(model))}${effort ? ` · ${esc(effort)}` : ''}
-    for every run: the models and efforts above are not in use.</p>` : '';
-  const tool = toolHas(state);
-  return `<section class="settings">${head}
-    <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide${tool.efforts ? '' : ' none'}">Effort</span><span${tool.compact ? '' : ' class="none"'}>Compacts near</span></div>
-    ${(state.complexities || []).map(complexityRow).join('')}
-    ${tool.advisor ? `<div class="config-row${busyClass('advisor-model')}"${busyAttr('advisor-model')}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
-      <select data-advisor-model aria-label="Model of the advisor">${pickList(state.models || [], advisor.model, modelName)}</select>
-      ${base && base !== advisor.model ? `<small>Default: ${esc(modelName(base))}</small>` : ''}</div>` : ''}
-    ${override}</section>`;
+    ${ownColor(state) ? '<button data-color-reset>Default colour</button>' : ''}</div></section>` : '';
 }
 
 // ---- Questions
@@ -465,7 +504,8 @@ function prioritySelect(row) {
   return `<select data-priority="${row.number}" aria-label="Priority">${options.join('')}</select>`;
 }
 
-// Now: the worker that does the ticket at once is the server's pick (row.now); without one, the button says why.
+// Now: the worker that does the ticket at once is the server's pick (row.now), or another of its list that the owner
+// chooses in the dialog (row.now.able); without one, the button says why.
 const nowButton = (row) => (row.now
   ? `<button data-now="${row.number}"${row.now.worker ? '' : ` disabled title="${esc(row.now.why)}"`}>Now</button>` : '');
 // Drop: only a parked row has `blocks` (the tickets that wait on it), and only a parked row gets the cross.
@@ -738,8 +778,9 @@ function info(s) {
         then the larger size (L, M, S), then the older ticket. A ticket with no priority is Parked: no worker takes it.
         Its cross drops it: it closes on GitHub as not planned, and a ticket "Blocked by" it stops waiting.</li>
       <li><b>Now</b> gives a queued ticket to one worker at once: first a worker whose ticket in work changes the same
-        files, then a free worker, then the worker whose account has the most room. A worker in a run ends it at the
-        next checkpoint, and that ticket goes back to the queue.</li>
+        files, then a free worker, then the worker whose account has the most room. Its dialog lists every worker that
+        can take the ticket, each with the model it would run on: pick another one there. A worker in a run ends it at
+        the next checkpoint, and that ticket goes back to the queue.</li>
       <li>A free worker takes, in order: the answers and rebases of its own PRs, its own ticket, the first queued ticket
         its account has room for (Limits).</li>
       <li>Two tickets of the same area (the same files) never run at the same time. A ticket "Blocked by" others waits
@@ -757,15 +798,18 @@ function info(s) {
         then stays stopped until you set the worker active. Disabled takes none, other workers take its
         ticket, and its plugins close what they opened for it. Force (the arrow on Next) gives a free worker its next
         ticket now, past the limits.</p>
-      <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes.${per.length > 1
+      <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes and how it runs each.${per.length > 1
         ? ` The project on a worker's ${setting('card', 'workers')} moves the worker to another project.` : ''}</p>`),
     section('Complexities', `<p>A ticket's complexity chooses the model; its size (S, M, L) only says how much usage it
       takes. A ticket with no complexity label is medium.</p>
       ${toolHas(s).compact ? `<p>Compacts near: at this context size, the coding tool replaces the older part of a run with a summary. A larger
         size keeps more in view and uses more each turn.</p>` : ''}
-      <p>${setting('Details', 'details')} (above) sets each complexity's model, effort, compact size and advisor for all
-        workers${per.length > 1 ? ' of its project' : ''}, from the next run. A run in progress or on hold keeps its
-        model, effort and advisor.</p>
+      <p>A worker's ${setting('Config', 'workers')} holds its mapping: each complexity's model, with the effort, the
+        compact size and the advisor where its coding tool has them. A worker keeps one mapping for each coding tool
+        it was on${per.length > 1 ? ' and takes it along to another project' : ''}; a complexity of a project's own
+        has its row only in that project. A worker can use another worker's mapping instead: a change there then
+        counts for both. A pick counts from the worker's next run. A run in progress or on hold keeps its model,
+        effort and advisor.</p>
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
         not see the advice. A run keeps its advisor to the end, but past the stop line of the advisor's own window
         (Limits) new runs start without it.</p>` : ''}`),
@@ -807,7 +851,7 @@ function info(s) {
       `${setting('Questions', 'questions')}: decisions for you, blocking first.`,
       `${setting('Queue', 'queue')}: Up next with why each ticket waits, Stuck, On hold and Parked.`,
       `${setting('History', 'history')}: merged PRs, and each run with its model, time and cost.`,
-      `${setting('Details', 'details')}: each project's settings for all its workers${per.length > 1 ? ' and its colour' : ''}, then this text.`,
+      `${setting('Details', 'details')}: ${per.length > 1 ? 'each project\'s colour, then this text' : 'this text'}.`,
     ])),
   ].join('');
 }
@@ -1328,15 +1372,15 @@ const answer = (project, key, text) => act(project, { action: 'answer', key, tex
   done: (s) => !s.questions.some((q) => q.key === key),
 });
 
-// The advisor of a complexity (Details): its switch and its effort without it, saved as one pick, as the model and
-// effort are.
-function setAdvisor(project, row, name, on) {
+// The advisor of a complexity in a worker's mapping (its Config): its switch and its effort without it, saved as one
+// pick, as the model and effort are.
+function setAdvisor(project, row, worker, name, on) {
   const fallback = row.querySelector('[data-fallback]').value;
-  const same = (c) => c.advisorOn === on && (c.advisorFallback || '') === fallback;
-  return act(project, { action: 'advisor', complexity: name, on, fallback }, {
-    keys: [`complexity:${name}`],
-    apply: (s) => { Object.assign(complexityOf(s, name), { advisorOn: on, advisorFallback: fallback }); },
-    done: (s) => same(complexityOf(s, name)),
+  const same = (t) => t && t.advisorOn === on && (t.advisorFallback || '') === fallback;
+  return act(project, { action: 'advisor', worker, complexity: name, on, fallback }, {
+    keys: [`mapping:${worker}:${name}`],
+    apply: (s) => { Object.assign(takeOf(s, worker, name), { advisorOn: on, advisorFallback: fallback }); },
+    done: (s) => same(takeOf(s, worker, name)),
   });
 }
 
@@ -1454,8 +1498,8 @@ document.addEventListener('click', async (e) => {
   } else if (data.take) {
     const on = target.getAttribute('aria-pressed') !== 'true';
     await act(project, { action: 'complexity', worker: data.worker, complexity: data.take, on }, {
-      keys: [`worker:${data.worker}`],
-      apply: (s) => { workerOf(s, data.worker).takes.find((t) => t.name === data.take).on = on; },
+      keys: [`worker:${data.worker}`, `mapping:${data.worker}:${data.take}`],
+      apply: (s) => { takeOf(s, data.worker, data.take).on = on; },
     });
   } else if (data.away !== undefined) {
     // What waits now goes on at once and cannot be taken back, so the owner confirms it.
@@ -1471,7 +1515,7 @@ document.addEventListener('click', async (e) => {
       done: (s) => Boolean(s.away) === on,
     });
   } else if (data.advisor) {
-    await setAdvisor(project, target.closest('.config-row'), data.advisor, target.getAttribute('aria-pressed') !== 'true');
+    await setAdvisor(project, target.closest('.config-row'), data.worker, data.advisor, target.getAttribute('aria-pressed') !== 'true');
   } else if (data.colorReset !== undefined) {
     await setColor(project, '');
   } else if (data.how) {
@@ -1487,14 +1531,25 @@ document.addEventListener('click', async (e) => {
     const row = rowOf(states[project], number);
     const pick = row?.now;
     if (!pick?.worker) return;
-    const how = pick.stops
-      ? `Worker ${pick.worker} ends its run of "${pick.title}" at its next checkpoint and takes this ticket. That ticket goes back to the queue and starts fresh from its handoff comment.`
-      : `Worker ${pick.worker} is free and takes it at its next poll, before its other jobs.`;
-    const busy = pick.busy?.length ? ` ${inWords(pick.busy)} ${pick.busy.length > 1 ? 'are' : 'is'} busy with another ticket: the two can change the same files.` : '';
-    if (!(await ask(`Do "${row.title}" now?`, `${how} Its run does not stop at the account's stop line.${busy}`, 'Do it now'))) return;
-    await act(project, { action: 'now', number }, {
+    // Every worker that can take it, the server's pick first. Each runs the ticket on the model of its own mapping.
+    const able = pick.able?.length ? pick.able : [pick];
+    const named = (p) => workerLabel(workerOf(states[project], p.worker) || { id: p.worker });
+    const how = (p) => `${p.stops
+      ? `${named(p)} ends its run of "${p.title}" at its next checkpoint and takes this ticket. That ticket goes back to the queue and starts fresh from its handoff comment.`
+      : `${named(p)} is free and takes it at its next poll, before its other jobs.`} Its run does not stop at the account's stop line.${
+      p.busy?.length ? ` ${inWords(p.busy)} ${p.busy.length > 1 ? 'are' : 'is'} busy with another ticket: the two can change the same files.` : ''}`;
+    const runOn = (p) => within(project, () => runModel(takeOf(states[project], p.worker, row.complexity) || {}));
+    const fields = able.length > 1 ? `<label>Worker<select name="worker">${able.map((p, i) => `<option value="${esc(p.worker)}"${i ? '' : ' selected'}>${
+      esc([named(p), runOn(p), p.stops ? 'in a run' : 'free'].filter(Boolean).join(' · '))}</option>`).join('')}</select></label>` : '';
+    const asked = ask(`Do "${row.title}" now?`, how(pick), 'Do it now', { fields });
+    // The text is of the worker that the list shows.
+    $('ask-fields').querySelector('select')?.addEventListener('change', (ev) => { $('ask-text').textContent = how(able.find((p) => p.worker === ev.target.value)); });
+    const values = await asked;
+    if (!values) return;
+    const chosen = able.find((p) => p.worker === values.worker) || pick;
+    await act(project, { action: 'now', number, worker: chosen.worker }, {
       keys: [`ticket:${number}`],
-      apply: (s) => { const r = rowOf(s, number); if (r) Object.assign(r, { taken: pick.worker, now: null, reason: `worker ${pick.worker} does it now` }); },
+      apply: (s) => { const r = rowOf(s, number); if (r) Object.assign(r, { taken: chosen.worker, now: null, reason: `worker ${chosen.worker} does it now` }); },
       done: (s) => !rowOf(s, number) || !!rowOf(s, number).taken,
     });
   } else if (data.drop) {
@@ -1815,7 +1870,7 @@ document.addEventListener('change', async (e) => {
     const target = e.target.value;
     e.target.value = project;
     e.target.blur();
-    const text = `It keeps its number, its account, its status and its complexities. Its copy of ${target} is made at its first move there. `
+    const text = `It keeps its number, its account, its status, its complexities and its mapping. Its copy of ${target} is made at its first move there. `
       + `Its copy of ${project} stays on the PC, and the other workers of ${project} take its open PRs.`;
     const values = await ask(`Move worker ${data.move} to ${target}?`, text, 'Move', { fields: deleteChoice(await copyOf(project, data.move)) });
     if (values) await act(target, { action: 'move-worker', worker: data.move, from: project, deleteCopy: !!values.deleteCopy });
@@ -1848,45 +1903,63 @@ document.addEventListener('change', async (e) => {
       keys: [`account:${data.account}`],
       apply: (s) => { accountOf(s, data.account)[data.window].pickUp[data.pick] = value; },
     });
+  } else if (data.follow) {
+    // Whose mapping a worker uses (its Config): another worker's, or its own again, which starts from the picks it
+    // ran on. A link takes the worker's own picks for this tool away, so the owner confirms it.
+    e.target.blur();
+    const worker = data.follow;
+    const target = e.target.value;
+    const before = workerOf(states[project], worker)?.mapping?.follows || '';
+    const other = pcWorkers().find((w) => w.id === target);
+    if (target && !before && !(await ask(`Use the mapping of ${other ? workerLabel(other) : `worker ${target}`}?`,
+      'This worker then runs on that worker\'s models, efforts, compact sizes and advisor, from its next run. Its own picks for this coding tool go away; its switches stay.', 'Use it'))) {
+      e.target.value = before;
+      return;
+    }
+    await act(project, { action: 'follow', worker, target }, {
+      keys: [`mapping:${worker}`],
+      apply: (s) => { const w = workerOf(s, worker); w.mapping = { ...w.mapping, follows: target }; },
+      done: (s) => (workerOf(s, worker)?.mapping?.follows || '') === target,
+    });
   } else if (data.compact) {
-    // The compact size of a complexity (Details): typed in thousands of tokens, saved in tokens.
+    // The compact size of a complexity in a worker's mapping: typed in thousands of tokens, saved in tokens.
     e.target.blur();
     const name = data.compact;
     const value = Math.round(Number(e.target.value));
     if (!(value >= e.target.min && value <= e.target.max)) {
       toast(`Between ${e.target.min}k and ${e.target.max}k tokens`);
-      e.target.value = Math.round(complexityOf(states[project], name).compactAt / 1000);
+      e.target.value = Math.round(takeOf(states[project], data.worker, name).compactAt / 1000);
       return;
     }
-    await act(project, { action: 'compact-at', complexity: name, value: value * 1000 }, {
-      keys: [`complexity:${name}`],
-      apply: (s) => { complexityOf(s, name).compactAt = value * 1000; },
-      done: (s) => complexityOf(s, name).compactAt === value * 1000,
+    await act(project, { action: 'compact-at', worker: data.worker, complexity: name, value: value * 1000 }, {
+      keys: [`mapping:${data.worker}:${name}`],
+      apply: (s) => { takeOf(s, data.worker, name).compactAt = value * 1000; },
+      done: (s) => takeOf(s, data.worker, name)?.compactAt === value * 1000,
     });
   } else if (data.runModel || data.runEffort) {
-    // The model and effort of a complexity (Details): the two lists of its row, saved as one pick.
+    // The model and effort of a complexity in a worker's mapping: the two lists of its row, saved as one pick.
     e.target.blur();
     const name = data.runModel || data.runEffort;
     const row = e.target.closest('.config-row');
     const pick = { model: row.querySelector('[data-run-model]').value, effort: row.querySelector('[data-run-effort]').value };
-    const same = (a) => a.model === pick.model && a.effort === pick.effort;
-    await act(project, { action: 'model', complexity: name, ...pick }, {
-      keys: [`complexity:${name}`],
-      apply: (s) => { Object.assign(complexityOf(s, name), pick); },
-      done: (s) => same(complexityOf(s, name)),
+    const same = (t) => t && t.model === pick.model && (t.effort || '') === pick.effort;
+    await act(project, { action: 'model', worker: data.worker, complexity: name, ...pick }, {
+      keys: [`mapping:${data.worker}:${name}`],
+      apply: (s) => { Object.assign(takeOf(s, data.worker, name), pick); },
+      done: (s) => same(takeOf(s, data.worker, name)),
     });
   } else if (data.fallback) {
     e.target.blur();
-    const c = complexityOf(states[project], data.fallback);
-    await setAdvisor(project, e.target.closest('.config-row'), data.fallback, c.advisorOn ?? Boolean(c.advisor));
+    const t = takeOf(states[project], data.worker, data.fallback);
+    await setAdvisor(project, e.target.closest('.config-row'), data.worker, data.fallback, t.advisorOn ?? Boolean(t.advisor));
   } else if (data.advisorModel !== undefined) {
-    // The advisor's model of the project (Details).
+    // The advisor's model in a worker's mapping.
     e.target.blur();
     const model = e.target.value;
-    await act(project, { action: 'advisor-model', model }, {
-      keys: ['advisor-model'],
-      apply: (s) => { s.advisor = { ...s.advisor, model }; },
-      done: (s) => s.advisor?.model === model,
+    await act(project, { action: 'advisor-model', worker: data.worker, model }, {
+      keys: [`mapping:${data.worker}:`],
+      apply: (s) => { const w = workerOf(s, data.worker); w.mapping = { ...w.mapping, advisor: model }; },
+      done: (s) => workerOf(s, data.worker)?.mapping?.advisor === model,
     });
   } else if (data.color) {
     e.target.blur();
