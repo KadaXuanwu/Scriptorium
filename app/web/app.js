@@ -202,6 +202,13 @@ const toolsOfPc = () => [...new Set(names.flatMap((p) => [states[p]?.provider, .
 const toolHas = (s) => ({ efforts: (s?.efforts || []).length > 0, advisor: Boolean(s?.advisor?.model || s?.advisor?.base),
   compact: !s?.compactRange || s.compactRange.length === 2 });
 const toolBadge = (tool) => (tool ? `<span class="badge tool" title="The coding tool that runs here">${esc(tool)}</span>` : '');
+// The accounts as the options of a select, each by its name alone, so the closed select shows the name. While the PC
+// has more than one coding tool, the list is in groups, one for each tool. `tool` gives an account's tool by name.
+function accountOptions(accounts, tool, selected) {
+  const option = (a) => `<option value="${esc(a.name)}"${a.name === selected ? ' selected' : ''}>${esc(a.name)}${outMark[a.status] || ''}</option>`;
+  if (toolsOfPc().length < 2) return accounts.map(option).join('');
+  return [...new Set(accounts.map(tool))].map((name) => `<optgroup label="${esc(name)}">${accounts.filter((a) => tool(a) === name).map(option).join('')}</optgroup>`).join('');
+}
 
 const badges = (items) => (items || []).filter(Boolean).map((a) => `<span class="badge">${esc(a)}</span>`).join('');
 // A ticket's tags stand in one order on every tab: kind, repo, areas, size, then the model and effort of its run (Now,
@@ -320,12 +327,11 @@ function workerCard(worker) {
   const config = `<button class="config-open" data-config="${id}" aria-label="Config of worker ${id}">${icon('config')}Config${on < all.length ? ` <small>${on}/${all.length}</small>` : ''}</button>`;
 
   // Its account, of any coding tool: the worker runs on its account's tool, so an account of another tool changes
-  // the worker's tool. Each account names its tool while the PC has more than one.
+  // the worker's tool. The accounts stand under their tools while the PC has more than one (accountOptions).
   const accounts = state.accounts || [];
-  const several = toolsOfPc().length > 1;
-  const options = accounts.map((a) => `<option value="${esc(a.name)}"${a.name === worker.account ? ' selected' : ''}>${esc(a.name)}${several ? ` · ${esc(toolName(state, a.provider))}` : ''}${outMark[a.status] || ''}</option>`);
   // A worker in no entry runs on the command-line login; offered only while no entry is that login.
-  if (!worker.account || accounts.every((a) => a.own)) options.unshift(`<option value=""${worker.account ? '' : ' selected'}>command line</option>`);
+  const options = (!worker.account || accounts.every((a) => a.own) ? `<option value=""${worker.account ? '' : ' selected'}>command line</option>` : '')
+    + accountOptions(accounts, (a) => toolName(state, a.provider), worker.account);
 
   // Its project, while the PC has two or more: the mark is a choice that moves it to another project (`data.move`).
   const fixed = worker.run || worker.ticket ? 'It has a ticket: disable it first, then move it'
@@ -340,7 +346,7 @@ function workerCard(worker) {
       <span class="doing ${tone}">${icon(glyph)}${words}</span></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
-    <div class="worker-tools"><label>${icon('accounts')}<select data-assign="${id}" aria-label="Account of worker ${id}">${options.join('')}</select></label>
+    <div class="worker-tools"><label>${icon('accounts')}<select data-assign="${id}" aria-label="Account of worker ${id}">${options}</select></label>
       ${config}<button data-steps="${id}">${icon('steps')}Steps</button></div>
     <div class="slot now"><span class="slot-label">Now</span><div class="slot-body">${now}</div></div>
     <div class="slot next"><span class="slot-label">Next</span><div class="slot-body">${nextBody}</div>${force}</div></article>`;
@@ -1165,18 +1171,17 @@ const inWords = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} an
 
 // One worker more, on the account the owner picks; the server gives it the lowest number that no worker of the PC has.
 async function addWorker() {
-  // Every account of the PC, each with its coding tool while the PC has more than one: the worker runs on the tool
-  // of the account it gets, in any project.
+  // Every account of the PC, under its coding tool while the PC has more than one (accountOptions): the worker runs
+  // on the tool of the account it gets, in any project.
   const accounts = pcAccounts();
-  const several = toolsOfPc().length > 1;
-  const options = accounts.map((a) => `<option value="${esc(a.name)}">${esc(a.name)}${several ? ` · ${esc(toolName(states[a.of], a.provider))}` : ''}${outMark[a.status] || ''}</option>`);
   // The command-line login, offered as on a worker's card: only while no entry is that login.
-  if (accounts.every((a) => a.own)) options.unshift('<option value="">command line</option>');
+  const options = (accounts.every((a) => a.own) ? '<option value="">command line</option>' : '')
+    + accountOptions(accounts, (a) => toolName(states[a.of], a.provider));
   // The project it works in, while the PC has two or more: the server of that project adds it.
   const pick = names.length > 1
     ? `<label>Project<select name="project">${names.map((p) => `<option${p === home ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select></label>` : '';
   const values = await ask('Add a worker', 'It starts as Active. It takes tickets when its copy of the repo is made and its environment is ready.', 'Add worker', {
-    fields: `${pick}<label>Account<select name="account">${options.join('')}</select></label>`,
+    fields: `${pick}<label>Account<select name="account">${options}</select></label>`,
   });
   if (values) await act(values.project || home, { action: 'add-worker', account: values.account || '' });
 }
