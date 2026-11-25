@@ -511,17 +511,16 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 /* The buttons stand in the card's last row, at its bottom, also on a card with fewer windows than its neighbour. */
 .account .buttons { align-self: end; grid-row-end: -1; }
 /* A part of the card where a neighbour has a window this account has not (a shorter window, one of some models, the
-   guards) is hatched, with no text: a whole row of its own, or what the row leaves under the last meter, 12px under it.
-   A row of its own is hatched 6px in from each end: a card with no neighbour still has a few pixels there (the page's
-   gap and the card's differ), and a hatch of no height draws nothing. */
+   guards) gets a short dashed line in its middle, with no text: a whole row of its own, or what the row leaves under
+   the last meter. A part under 14px high draws none: a card with no neighbour still has a few pixels there (the page's
+   gap and the card's differ). */
 .account > .window { display: flex; flex-direction: column; }
 .account > .window::after, .account > .empty {
   content: '';
   flex: 1 0 0;
-  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 25%, transparent) 0 2px, transparent 2px 6px)
-    0 12px / 100% calc(100% - 12px) no-repeat;
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--muted) 60%, transparent) 0 6px, transparent 6px 10px)
+    center / 46px clamp(0px, 100% - 12px, 2px) no-repeat;
 }
-.account > .empty { background-position: 0 50%; }
 .account.bad { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
 .account-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 16px; }
 .account-head .chip { margin-left: auto; }
