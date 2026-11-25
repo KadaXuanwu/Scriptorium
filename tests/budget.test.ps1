@@ -195,14 +195,26 @@ Assert-Same (($OutKinds | Sort-Object) -join ',') 'login,start,subscription' 'th
 Assert-Same "$(@($WindowSeconds.Keys) -join ',') $ShortWindow $LongWindow $KeepWindow $(@($ModelWindows.Keys) -join ',')" 'short,long short long long deep' 'the windows of the test provider'
 Assert-Same "$(Get-ModelWindow 'deep-1')|$(Get-ModelWindow 'main-1')|$(Get-ModelWindow '')" 'deep||' 'the window that covers a model'
 Assert-Same "$($ModelWindows.deep.after) $($WindowTitles.deep)" 'main-1@xhigh Deep week' 'a window''s model after it and its title'
-# A provider with one window that neither keeps nor has pick-up limits: nothing is kept, a ticket of any size is taken
-# under the ceiling, and no model has a window of its own.
+# A provider with one window that neither keeps nor names pick-up limits: nothing is kept, the window has the base's
+# pick-up limits, and no model has a window of its own.
 Set-Provider (Import-Plugin (Join-Path $baseDir 'tests/bare') 'bare' $null)
 Assert-Same "$(@($WindowSeconds.Keys) -join ',') $ShortWindow $LongWindow '$KeepWindow' $($ModelWindows.Count)" "month month month '' 0" 'one window'
 Assert-Near (Get-Reserve 0.14 $day) 0.0 'no window keeps: no reserve'
 Assert-Near (Get-Ceiling 0.0 'month') 1.0 'a window with no stop line of its own stops at the whole'
-Assert-Same (Get-PickUp $null 'month') $null 'no pick-up limits'
-Assert-Same "$(Get-Fit 'L' @{ month = @{ used = 0.99; ceiling = 1.0; pickUp = $null } }) $(Get-Fit 'S' @{ month = @{ used = 1.0; ceiling = 1.0; pickUp = $null } })" 'True False' 'only the ceiling holds a ticket back'
+$month = Get-PickUp $null 'month'
+Assert-Same "$($month.S) $($month.M) $($month.L)" "$($BasePickUp.S) $($BasePickUp.M) $($BasePickUp.L)" 'the only window has the base''s pick-up limits'
+Assert-Same (Get-PickUp ('{"month":{"L":0.3}}' | ConvertFrom-Json) 'month').L 0.3 'an account sets its own over the base''s'
+$at = { param($used) @{ month = @{ used = $used; ceiling = 1.0; pickUp = $month } } }
+Assert-Same "$(Get-Fit 'L' (& $at ($BasePickUp.L - 0.01))) $(Get-Fit 'L' (& $at $BasePickUp.L)) $(Get-Fit 'S' (& $at $BasePickUp.L))" 'True False True' 'the base''s limits hold a big ticket back first'
+# Which window has the base's limits: the shortest of the whole account, and only where the provider gave it none.
+Set-Windows ('{"day":{"seconds":86400},"week":{"seconds":604800,"keep":true},"deep":{"seconds":3600,"models":"deep-*"}}' | ConvertFrom-Json)
+Assert-Same "$((@((Get-PickUp $null 'day').Keys) | Sort-Object) -join ',') $($null -eq (Get-PickUp $null 'week')) $($null -eq (Get-PickUp $null 'deep'))" 'L,M,S True True' 'the shortest window of the account, not a longer one and not one of some models'
+$before = "$($BasePickUp.S) $($BasePickUp.M) $($BasePickUp.L)"
+$DefaultPickUp.day.L = 0.02
+Set-Windows ('{"day":{"seconds":86400,"pickUp":{"S":0.6,"M":0.4,"L":0.2}},"week":{"seconds":604800}}' | ConvertFrom-Json)
+Assert-Same "$((Get-PickUp $null 'day').L) $($null -eq (Get-PickUp $null 'week'))" '0.2 True' 'the provider''s own limits stay'
+Assert-Same "$($BasePickUp.S) $($BasePickUp.M) $($BasePickUp.L)" $before 'a window''s limits are a copy: the base''s table is not changed'
+Set-Provider (Import-Plugin (Join-Path $baseDir 'tests/bare') 'bare' $null)
 Assert-Same (Get-ReadingKey @{ month = @{ used = 0.5; resetsAt = 9 } }) '0.5@9||' 'a reading of one window'
 # No provider: no window, so every ticket fits and nothing is kept.
 Set-Provider $null

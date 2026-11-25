@@ -706,6 +706,7 @@ Remove-Item $log
 $bare = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = ('{"accounts":{"a":{"provider":"bare","configDir":"C:/a","uses":["worker:1","personal"]}}}' | ConvertFrom-Json)
     workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }); logins = @{ 'C:/a' = @{ signedIn = $true } } }
 Assert-Equal "$(($bare.windows | ForEach-Object { $_.name }) -join ',') $($bare.accounts[0].month.ceiling) $($bare.accounts[0].month.ContainsKey('guards')) $($bare.accounts[0].status)" 'month 1 False ready' 'one window, nothing kept'
+Assert-Equal ((@($bare.accounts[0].month.pickUp.Keys) | Sort-Object) -join ',') 'L,M,S' 'its only window has the base''s pick-up limits for the page''s meter'
 Assert-Equal "'$($bare.advisor.model)' $($bare.efforts.Count) $($bare.workers[0].takes[0].model) '$($bare.workers[0].takes[0].effort)' $($bare.complexities[0].compactAt)" "'' 0 only '' 0" 'no advisor, no effort, no compact size'
 Assert-Equal "$($bare.hooks.Count) $($bare.compactRange.Count)" '0 0' 'no feature and no compact size'
 Assert-Equal (Get-NewAccountDir ('{"accounts":{}}' | ConvertFrom-Json) 'x' 'C:\Users\me') 'C:/Users/me/.bare-x' 'the folder of a new account'
