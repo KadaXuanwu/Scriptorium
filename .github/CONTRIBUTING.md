@@ -5,8 +5,10 @@ Thank you for the help. Read this before you open a pull request.
 ## A pull request to the base
 
 1. One topic for each pull request.
-2. The base stays free of environments. It knows git, GitHub and Claude Code, nothing else: no engine, no build tool,
-   no test runner. What an environment needs goes into a plugin ([docs/PLUGINS.md](../docs/PLUGINS.md)).
+2. The base stays free of coding tools and of environments. It knows git, GitHub and the queue, nothing else: no
+   model, no command line of a tool, no engine, no build tool, no test runner. What a coding tool needs goes into its
+   provider plugin, what an environment needs into a plugin of its own ([docs/PLUGINS.md](../docs/PLUGINS.md)). The
+   base's tests use the test providers in `tests/provider` and `tests/bare`, never a real tool's.
 3. Every change to a queue rule has a test (`*.test.ps1`) and the change to its doc in the same pull request:
    [docs/QUEUE.md](../docs/QUEUE.md), [docs/APP.md](../docs/APP.md), [PLAYBOOK.md](../PLAYBOOK.md) or the info text on the
    page's Details tab.
@@ -38,5 +40,6 @@ A pull request that adds a plugin to [plugins.json](../plugins.json) adds one en
 4. `plugin.json` sets `api` to the contract version it was written for.
 5. `plugin.ps1` only defines functions when it loads: it starts nothing and changes nothing.
 6. `detect`, if the entry has it, matches only files of that environment.
+7. A provider's entry says `"provider": true`, and its repo has a `models.json`.
 
 A listed plugin stays its author's: its issues and pull requests go to its own repo.

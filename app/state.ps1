@@ -1177,9 +1177,9 @@ function New-Snapshot($data) {
                 advisorOn = [bool]$_.advisor; baseAdvisor = [bool]$_.baseAdvisor; baseFallback = [string]$_.baseFallback
                 compactAt = $_.compactAt }
         })
-        # The project's plugins (name, title, version, description) for the Details tab: none for a plain git repo.
+        # The project's plugins (name, title, version, description, and whether it is the provider) for the Details tab.
         plugins = @($data.plugins | Where-Object { $_ } | ForEach-Object {
-            @{ name = $_.Name; title = $_.Title; version = $_.Version; description = $_.Description }
+            @{ name = $_.Name; title = $_.Title; version = $_.Version; description = $_.Description; provider = [bool]$_.Provider }
         })
     }
     $gh = $data.gh

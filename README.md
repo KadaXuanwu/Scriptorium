@@ -1,12 +1,17 @@
 # Scriptorium
 
-A work queue for Claude Code. You write tickets as GitHub issues. Workers (headless Claude Code runs on your PC) each
-build one ticket in their own copy of the repo and open a pull request. A merger merges them. One web page shows what
-runs, what waits, what it costs and what only you can decide.
+A work queue for coding agents. You write tickets as GitHub issues. Workers (headless runs of a coding tool on your PC,
+on your own subscription) each build one ticket in their own copy of the repo and open a pull request. A merger merges
+them. One web page shows what runs, what waits, what it costs and what only you can decide.
 
-It runs on Windows, macOS and Linux and works on any git repo on GitHub. Plugins add an environment, for example
-[Scriptorium for Unity](https://github.com/KadaXuanwu/Scriptorium-Unity): one Unity editor for each worker (Windows
-only).
+It runs on Windows, macOS and Linux and works on any git repo on GitHub. The base knows no coding tool and no
+environment: plugins add them.
+
+- **A provider** runs the coding tool. [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-Claude)
+  runs Claude Code on a Claude plan.
+- **An environment plugin** prepares what a run builds in, for example
+  [Scriptorium for Unity](https://github.com/KadaXuanwu/Scriptorium-Unity): one Unity editor for each worker (Windows
+  only).
 
 ## How it works
 
@@ -49,7 +54,7 @@ only).
 
 ### Budget and models
 
-- **Your Claude plan, never an API key.** One or several accounts, shared by workers or one each.
+- **Your plan, never an API key.** One or several accounts, shared by workers or one each.
 - **Limits you set:** where each account's workers stop, how late a large ticket may start, and a share kept for your
   own use.
 - **Nothing lost at a limit:** a held run resumes in the same session.
@@ -57,7 +62,8 @@ only).
 
 ### Plugins and projects
 
-- **Plugins** prepare an environment (an engine, a build tool) and give runs its tools and rules.
+- **Plugins** run the coding tool (a provider) and prepare an environment (an engine, a build tool), and give runs
+  its tools and rules.
 - **Several projects** on one PC, on one page.
 - **A project playbook** tells every run how your project works.
 
@@ -65,28 +71,18 @@ only).
 
 | | What | How |
 | - | ---- | --- |
-| 🆕 | Fresh session per job | Each job starts clean; Claude Code compacts when the context grows large. No handoffs between runs. |
-| 🚫 | Unused tools blocked | Tools a run never needs are not loaded. |
-| 🧩 | No unused skills | Claude Code's built-in and account skills are off; the project's and plugins' skills stay. |
+| 🆕 | Fresh session per job | Each job starts clean; the coding tool compacts when the context grows large. No handoffs between runs. |
 | 🔌 | No stray MCP servers | A run only gets the servers its plugins give it. |
 | 🎛️ | No accidental advisor | The advisor is set per run, never inherited from a login's settings. |
 | ⚡ | Environment ready first | Plugins open the editor or server before the run starts, so no turn waits. |
 | 🗜️ | Compact before a hold | A paused run is compacted while its cache is still warm, so the resume is cheap. |
-| ⏯️ | Resume, don't restart | A held run continues in the same session with its context and work. |
-| ⏰ | Fewer cut-off runs | Large tickets are not started late in a usage window. |
-| 🔀 | Fewer rebases | Tickets that change the same files never run at once. |
-| 📍 | Start where the last left off | Each checkpoint writes what is done and what is next. |
-| ✅ | Answers that need no run | Accepting a default merges or closes without starting a run. |
-| 📖 | Short playbook | Rarely needed parts are separate files, read only when needed. |
-| ✂️ | Short tool output | Runs read files in parts and keep command output short. |
-| 📏 | Cheap usage reading | Usage comes from the run's own log, with a tiny request only when there is none. |
-| 🤖 | No model outside runs | Dispatcher, merger, page and notifications are plain scripts. |
 | 🔁 | No retry loops | Failing tickets are parked; follow-ups of follow-ups are capped. |
-| 🧪 | Trial: no PowerShell tool | Runs use Bash only. |
 | 🧪 | Trial: batched commands | Independent commands go out in one message. |
 
+A provider adds its own for its tool (tools and skills a run never needs, for example): its README lists them.
+
 The model, effort, advisor and compact size of each complexity are yours to set on the page, and a per-run cost cap
-in `models.json`. `report.ps1` prints each run's cost and token numbers ([docs/QUEUE.md](docs/QUEUE.md)).
+in the provider's `models.json`. `report.ps1` prints each run's cost and token numbers ([docs/QUEUE.md](docs/QUEUE.md)).
 
 ## In the background
 
@@ -108,7 +104,9 @@ it.
 - Windows 10 or 11 (Windows PowerShell 5.1 is built in), or macOS or Linux with
   [PowerShell 7.4 or later](https://aka.ms/powershell) (`pwsh`). Linux needs systemd.
 - [git](https://git-scm.com) and the [GitHub CLI](https://cli.github.com), signed in with write access to the repo.
-- [Claude Code](https://claude.com/claude-code), signed in with a Claude Pro or Max plan.
+- A provider's coding tool, signed in with a subscription. The listed one,
+  [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-Claude), needs
+  [Claude Code](https://claude.com/claude-code) with a Claude Pro or Max plan.
 - Optional: [Tailscale](https://tailscale.com) for the page on your phone, and [ntfy](https://ntfy.sh) for
   notifications.
 
@@ -148,14 +146,14 @@ it.
 Setup adds `scriptorium.json`, the ticket skill, the GitHub labels, one worker and the logon tasks, then prints the
 page address and the ntfy topic. Add `-WhatIf` to preview. It is safe to run again.
 
-Run it again after you update Scriptorium: it replaces the project's ticket skill (`.claude/skills/ticket/SKILL.md`)
-with the current one. The project's own rules for tickets go in `PROJECT.md` beside it, which setup never changes. A
+Run it again after you update Scriptorium: it replaces the project's ticket skill (`ticket/SKILL.md` in the provider's
+skills folder) with the current one. The project's own rules for tickets go in `PROJECT.md` beside it, which setup never changes. A
 skill with no `PROJECT.md` stays as it is, and setup says how to move its rules.
 
 To add another project, run step 3 with its folder; it joins the same page. Only setup and uninstall add or remove a
 project, not the page.
 
-Or paste [PROMPT.md](docs/PROMPT.md) into Claude Code in your project.
+Or paste [PROMPT.md](docs/PROMPT.md) into your coding tool in your project.
 
 Then open the page, add workers and accounts, and file your first ticket.
 
@@ -170,7 +168,7 @@ On macOS or Linux: `pwsh -NoProfile -File ~/Work/Scriptorium/uninstall.ps1 -Proj
 It ends the project's page, merger and workers, removes their logon tasks, takes the workers out of the PC's settings,
 deletes the worker copies, takes the page off Tailscale and deletes the project's `.queue` folder. A worker copy that
 holds work GitHub does not have stays, and uninstall names it: an editor often leaves changed files in a copy, so
-expect to delete some copies by hand. Tickets, pull requests, branches and Claude accounts are
+expect to delete some copies by hand. Tickets, pull requests, branches and the accounts' logins are
 never touched.
 
 - `-Repo` also deletes the labels setup made on GitHub (tickets lose their `P0`, `size:S` and other labels),
@@ -187,7 +185,8 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
   run a ticket there yet: setup, the page, a run and the sign-in from the page are untested. On macOS the login is
   read from the keychain, which may ask once for access. Tell us what breaks.
 - On macOS and Linux, the pictures of a question go up at full size: the small copy needs Windows.
-- Claude Code and GitHub only.
+- GitHub only. One provider is listed, for Claude Code, and a project runs on one provider at a time
+  ([docs/PROVIDERS.md](docs/PROVIDERS.md)).
 - GitHub builds and tests nothing: a run's own checks are the gate.
 
 ## Docs
@@ -195,8 +194,8 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
 - [docs/QUEUE.md](docs/QUEUE.md): labels, dispatching, budget, models, settings.
 - [docs/APP.md](docs/APP.md): the page.
 - [docs/CONFIG.md](docs/CONFIG.md): `scriptorium.json`.
-- [docs/PLUGINS.md](docs/PLUGINS.md): writing a plugin.
-- [docs/PROVIDERS.md](docs/PROVIDERS.md): the plan for AI tools other than Claude Code. Not built.
+- [docs/PLUGINS.md](docs/PLUGINS.md): writing a plugin, a provider too.
+- [docs/PROVIDERS.md](docs/PROVIDERS.md): what six coding tools share, and what a second provider still needs.
 - [PLAYBOOK.md](PLAYBOOK.md): what a run does.
 - [CONTRIBUTING.md](.github/CONTRIBUTING.md): sending a change.
 

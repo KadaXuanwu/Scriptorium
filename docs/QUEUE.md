@@ -7,10 +7,10 @@ their pull requests. The owner talks only to the front desk and to the page.
 
 | Name | What | Uses a model |
 | ---- | ---- | ------------ |
-| Front desk | The owner's own Claude Code session in the main checkout, with the ticket skill (`.claude/skills/ticket`: `SKILL.md` is Scriptorium's, `PROJECT.md` holds the project's own rules). It files tickets, reports the queue and passes answers on. Also any work by hand | yes |
+| Front desk | The owner's own session of the coding tool in the main checkout, with the ticket skill (in the provider's skills folder: `SKILL.md` is Scriptorium's, `PROJECT.md` holds the project's own rules). It files tickets, reports the queue and passes answers on. Also any work by hand | yes |
 | Worker 1 to N | A copy of the repo (`<main>-w1`, `-w2` and on, beside the main checkout), its environment (the plugins) and its worker script. Each can be disabled (Settings, `enabled`). The page adds and removes workers ([APP.md](APP.md), Workers) | no |
 | Worker script | [worker.ps1](../worker.ps1), one for each worker. It has the plugins make the environment ready (Start), dispatches (Dispatching; the scripts share a lock, so never the same ticket twice), starts a run, and checks that it ended in a PR, a question or a pause. However a run ends, the plugins leave the environment clean (EndRun) | no |
-| Run | One headless Claude Code session that does one job in a worker's copy, with what the plugins give it (GetRun); fresh for each job. Each turn reads the whole context again, so the cost of a turn grows with the context. Claude Code compacts it at the compact size of the ticket's complexity: at 250k with the default of `models.json` ([CONFIG.md](CONFIG.md), The compact size). A run never hands off to a fresh session: that read 24 turns again, a compaction 7. The tools no run uses are blocked (`$UnusedTools` in the worker script): 4,750 tokens less on every turn, 1,977 for `Workflow`, 275 for `Glob`, and 3,800 for `PowerShell` (a trial: the run's one shell is Bash, and PowerShell goes through it, [PLAYBOOK.md](../PLAYBOOK.md), One shell). The run's settings file (`.queue/run-settings.json`, the same for the run and for the compaction of its session) turns off Claude Code's own skills and the claude.ai account's (`disableBundledSkills`, `syncClaudeAiSkills`): 6,077 tokens less on every turn. The project's and the plugins' skills stay | yes |
+| Run | One headless session of the provider's coding tool ([PLUGINS.md](PLUGINS.md), A provider) that does one job in a worker's copy, with what the plugins give it (GetRun); fresh for each job. Each turn reads the whole context again, so the cost of a turn grows with the context. Where the provider can, the tool compacts it at the compact size of the ticket's complexity ([CONFIG.md](CONFIG.md), The compact size). A run never hands off to a fresh session: that read 24 turns again, a compaction 7. What a run gets from the tool itself (its tools, its settings, its skills) is the provider's choice, and its README says it | yes |
 | Page | [APP.md](APP.md): one web page on the owner's PC and phone with each worker's status and tickets, the questions for the owner, the queue with what is left, and the accounts with their stop lines; ntfy pushes | no |
 | Merger | [merge.ps1](../merge.ps1): squash-merges every worker PR that GitHub can merge, oldest first. It labels a conflicting one `needs-rebase`, and one with an owner's comment that its run never marked read `answered`, for its worker ([comments.ps1](../comments.ps1)). It sends a PR whose open question or asking follow-up has no banner picture back the same way, once, with a comment; the second time it merges. It files a merged PR's follow-ups and open questions, each with its generation, a soft cap from 2 ([followup.ps1](../followup.ps1)). While the owner is away, it hands back what waits on the owner (No blocking) | no |
 
@@ -87,78 +87,82 @@ the idle worker whose account's free room most wants spending, labelled `worker:
 first that falls to itself. The arithmetic is [budget.ps1](../budget.ps1) and, for the ceiling,
 [limits.ps1](../limits.ps1), which the page reads too.
 
-**The budget.** It is better to reach the limit on every account than to reach a weekly reset with room unused. In
-each window of an account the workers may fill it to a **ceiling**: its **stop line** (by default the week at 100 %,
-since a run that reaches the weekly limit pauses until the reset, and the 5-hour window at 98 %, since readings come in
-whole per cent and lag), less a **reserve**. The owner moves an account's stop lines on the page (Settings, `stopAt`).
-The reserve is only in the week, and only on an account that the register (Settings, `accounts`) gives a human use,
+**The budget.** It is better to reach the limit on every account than to reach a reset with room unused. The windows
+are the provider's ([PLUGINS.md](PLUGINS.md), A provider): one plan has 5 hours and a week, another a week alone,
+another a month. In each window of an account the workers may fill it to a **ceiling**: its **stop line** (the
+provider's default, for example a short window at 98 %, since readings come in whole per cent and lag, and a long one
+at 100 %, since a run that reaches its limit pauses until the reset), less a **reserve**. The owner moves an account's
+stop lines on the page (Settings, `stopAt`). The reserve is only in the one window that the provider marks to keep it
+(`keep`, as a rule the longest), and only on an account that the register (Settings, `accounts`) gives a human use,
 `frontdesk` or `personal`. Each human use has a **usage guard**:
 
-- The owner sets its share of a whole week on the account (Settings, `keep`).
-- Its reserve is that share times the share of the week left: three days after a reset it keeps 4/7 of the share. The
-  part for the days gone is free for the workers.
+- The owner sets its share of that whole window on the account (Settings, `keep`).
+- Its reserve is that share times the share of the window left: three days after the reset of a week it keeps 4/7 of
+  the share. The part for the time gone is free for the workers.
 - The reserve is an offset below the stop line: a lower stop line moves the ceiling down with it. The ceiling is never
   below 0.
 
+A provider that reads no usage has no budget: its workers run until the plan refuses, and then wait for the reset.
+
 More rules:
 
-- **Pick-up limits:** an account has one for each ticket size, in the 5-hour window only: the share of the window from
-  which its workers take no new ticket of that size (Settings, `pickUp`). A bigger ticket stops being taken earlier, so
-  a run seldom reaches the stop line. Defaults: S 90 %, M 75 %, L 50 %. The week has none: there only the ceiling holds
-  a new ticket back.
+- **Pick-up limits:** an account has one for each ticket size, in each window that the provider gives them (as a rule
+  the shortest): the share of the window from which its workers take no new ticket of that size (Settings, `pickUp`). A
+  bigger ticket stops being taken earlier, so a run seldom reaches the stop line. The defaults are the provider's. A
+  window with none holds a new ticket back only at its ceiling.
 - **Complexity switches:** the owner switches a complexity off and on for each worker (Settings,
   `workers.<id>.complexity`; the worker's Config). Off: that worker takes no new ticket of it, forced or not, and the
   answers and rebases of its PRs of it wait. A ticket already started goes on, also a held run that resumes. The test is
   `Test-ComplexityOff` ([limits.ps1](../limits.ps1)), the same for the workers and the page.
-- **Fits:** an account takes a new ticket while its 5-hour usage is under the pick-up limit of the ticket's size and
-  both windows are under their ceilings (`Get-Fit`). A worker's own PR or ticket and a forced ticket do not use the
-  pick-up limits.
-- **Best fit:** of the idle workers whose accounts take the ticket, the one whose free weekly room most wants spending:
-  room per hour left before the weekly reset loses it; then the most 5-hour room. A ticket that nobody takes waits; the
-  next one that somebody takes goes ahead of it.
-- **Over the ceiling:** a worker whose account is at its ceiling in either window takes no job, not even its own PR's
+- **Fits:** an account takes a new ticket while its usage is under the pick-up limit of the ticket's size, in each
+  window that has them, and every window is under its ceiling (`Get-Fit`). A worker's own PR or ticket and a forced
+  ticket do not use the pick-up limits.
+- **Best fit:** of the idle workers whose accounts take the ticket, the one whose free room in the longest window most
+  wants spending: room per hour left before the reset loses it; then the most room in the shortest window. A ticket
+  that nobody takes waits; the next one that somebody takes goes ahead of it.
+- **Over the ceiling:** a worker whose account is at its ceiling in any window takes no job, not even its own PR's
   answers. It looks again every poll, as the ceiling rises toward the reset. A run that reaches it ends at its next
   checkpoint (The usage limit).
-- **History:** `.queue/history.jsonl` keeps the dollar cost of every run (a resumed run's less the part before its
-  pause) and its rise in each window, from its log's first and last usage reading. The page shows typical times and
-  costs from it; the dispatcher does not read it. Each line also has the run's numbers from its log
-  ([usage.ps1](../usage.ps1)): `requests`, `toolCalls`, `commands` (the tool calls, a Bash call counted as the commands
-  it chains: a run batches its work in one Bash call, so `commands` for each request shows it and `toolCalls` does not),
-  `first` (the tokens of the first request), `ctxMean` and
-  `ctxMax` (the context), `read` and `write` (tokens from and to the cache), `compactions`, `advisorCalls` and
-  `advisorCost` (the dollars of the advisor's model; a resumed run's less the part before its pause, which `paused.json`
-  keeps as `AdvisorCost`; 0 when the advisor is the run's own model, because the log has one cost for each model).
-  `resumed` says that the run went on in a held session.
-  [report.ps1](../report.ps1) `-Project <main>` prints their medians for each complexity and
-  model, of the whole-ticket runs. Then it prints the same for the parts of interrupted tickets, the resumed parts
-  apart: `First` of a resumed part is what the resume reads again at full price. `-Logs <folder>` prints the tools that the runs of the folder's logs were given and
-  how often they called each: run it after a Claude Code update to keep the block list (`$UnusedTools`) right.
+- **History:** `.queue/history.jsonl` keeps the cost of every run, where the provider reads one (a resumed run's less
+  the part before its pause), and its rise in each window, from its log's first and last usage reading. The page shows
+  typical times and costs from it; the dispatcher does not read it. Each line also has the run's numbers as the
+  provider reads them from its log ([PLUGINS.md](PLUGINS.md), ReadRun), for example `requests`, `toolCalls`,
+  `commands` (a shell call counted as the commands it chains: a run batches its work in one call, so `commands` for
+  each request shows it and `toolCalls` does not), `first` (the tokens of the first request), `ctxMean` and `ctxMax`
+  (the context), `read` and `write` (tokens from and to the cache), `compactions`, `advisorCalls` and `advisorCost` (the
+  cost of the advisor's model; a resumed run's less the part before its pause, which `paused.json` keeps as
+  `AdvisorCost`). `resumed` says that the run went on in a held session.
+  [report.ps1](../report.ps1) `-Project <main>` prints their medians for each complexity and model, of the whole-ticket
+  runs. Then it prints the same for the parts of interrupted tickets, the resumed parts apart: `First` of a resumed
+  part is what the resume reads again at full price.
 - **Usage:** per account in the PC's `usage.json` (Settings, The PC's files), from the runs' logs. When it is older
-  than 30 minutes, the script reads it again with a one-word Haiku request with no tools or settings and a one-line
-  system prompt, about 900 tokens, the same as the page's Ping (`$BareRequestArgs` in [limits.ps1](../limits.ps1)).
-  That reading is the account's, so the front desk's and the owner's own use
-  count too. Each reading keeps the login's email; when a login folder is signed in to another account, its reading
-  counts as none. A save keeps a window from the stored reading where that one has a later reset. A share can fall
-  before its reset (a limit that was reset early), so a lower reading of the same window replaces the stored one; only
-  a used-up Fable window stays until its reset. A run that waits on a long task has only an old event in its log: its
-  worker saves a reading only when the log has a new event (`Get-ReadingKey` in [budget.ps1](../budget.ps1)).
+  than 30 minutes, the script reads it again with a probe: the provider's cheapest request, the same as the page's
+  Ping. That reading is the account's, so the front desk's and the owner's own use count too. Each reading keeps the
+  login's email; when a login folder is signed in to another account, its reading counts as none. A save keeps a window
+  from the stored reading where that one has a later reset. A share can fall before its reset (a limit that was reset
+  early), so a lower reading of the same window replaces the stored one; only a used-up window of some models stays
+  until its reset (A model's limit). A run that waits on a long task has only an old reading in its log: its worker
+  saves a reading only when the log has a new one (`Get-ReadingKey` in [budget.ps1](../budget.ps1)).
 - **Idle:** each worker script writes its state to `.queue/worker-<N>.json` (a running one also its account, ticket size
   and the usage it started from). An idle state older than two polls is a stopped script, left out. A worker whose
   account is out is not idle and gets no ticket (An account that is out).
 
 ## Complexities
 
-A ticket's `complexity:<name>` label picks the model and effort of its run. Scriptorium has four, in
-[models.json](../models.json): `low`, `medium`, `high` and `design`. A project changes them or adds its own in
-`scriptorium.json` ([CONFIG.md](CONFIG.md), Complexities). One list, `Get-Complexities` in
-[project.ps1](../project.ps1), gives them to the worker script, the merger, setup and the page.
+A ticket's `complexity:<name>` label picks the model and effort of its run. Scriptorium has four (`$BaseComplexities`
+in [project.ps1](../project.ps1)): `low`, `medium`, `high` and `design`. The provider gives each its models, in its
+`models.json` ([PLUGINS.md](PLUGINS.md), A provider). A project changes them or adds its own in `scriptorium.json`
+([CONFIG.md](CONFIG.md), Complexities). One list, `Get-Complexities` in [project.ps1](../project.ps1), gives them to
+the worker script, the merger, setup and the page.
 
-| Complexity | For | Model |
-| ---------- | --- | ----- |
-| `low` | Clear what to do: a doc, a number, a rename, more of a pattern | Opus 5.5 at medium effort |
-| `medium` | Judgement within known patterns: a feature or a bug in one part | Opus 5.5 at high effort, with the advisor |
-| `high` | Hard to get right: core rules, work across parts, a bug nobody can explain | Opus 5.5 at xhigh effort, with the advisor |
-| `design` | The ticket does not give the shape of the solution: the worker finds it, and the choice stays | Fable 5.2 at high effort |
+| Complexity | For |
+| ---------- | --- |
+| `low` | Clear what to do: a doc, a number, a rename, more of a pattern |
+| `medium` | Judgement within known patterns: a feature or a bug in one part |
+| `high` | Hard to get right: core rules, work across parts, a bug nobody can explain |
+| `design` | The ticket does not give the shape of the solution: the worker finds it, and the choice stays |
+
+The page's Details tab shows the model and effort of each.
 
 `design` is how a feature works, a final look, or a code structure that is expensive to change later. The test: if the
 ticket names the structure and the rule, and the work is to build them, it is not `design`. Judgement at a few points is
@@ -167,51 +171,40 @@ a pattern.
 
 ## Models
 
-[models.json](../models.json), in git: each model's effort and its API price per million tokens (input, output), the
-efforts a run can have (`efforts`), and for each complexity its candidates, best first (answer and rebase jobs run on
-their ticket's complexity). A run takes the
-first candidate that its account was not refused. A start that the plan refuses ("requires usage credits") costs
-nothing, goes into the PC's `access.json` for a day, and the job starts again on the next candidate. After the day the
-model is tried again, so a plan that gains it finds it. With no candidate left, the ticket waits in the queue for that
-day (An account that is out).
+The provider's `models.json`, in its plugin's repo ([PLUGINS.md](PLUGINS.md), A provider): each model's effort and
+name, the efforts a run can have (`efforts`), and for each complexity its candidates, best first (answer and rebase
+jobs run on their ticket's complexity). A run takes the first candidate that its account was not refused. A start that
+the plan refuses for its model costs nothing, goes into the PC's `access.json` for a day, and the job starts again on
+the next candidate. After the day the model is tried again, so a plan that gains it finds it. With no candidate left,
+the ticket waits in the queue for that day (An account that is out).
 
-A run gets `--model` and `--effort` and names both in its PR. The effort is the model's own in `models`, or the one a
-candidate names after `@` (`claude-opus-5-5@high`). `afterFable` is the model for the rest of a job whose account
-reached the Fable limit (The Fable limit). Runs use the plan logins, never an API key, so no script reads `price`: it is
-there for the front desk, which weighs a model's cost with it. A pick-up limit is the same for every model: a Fable
-ticket costs about 2.5 times an Opus one of its size, so it reaches the stop line sooner.
+A run gets its model and effort and names both in its PR. The effort is the model's own in `models`, or the one a
+candidate names after `@` (`<model>@high`). Runs use the plan logins, never an API key. A pick-up limit is the same for
+every model: a ticket on a dearer model reaches the stop line sooner.
 
 **The owner's pick:** the page's Details tab picks the model and effort of a complexity for the project
 ([APP.md](APP.md), Details; Settings, `complexities.<name>.model`). The pick is then the complexity's one candidate,
 from the next run. The page offers the models of `models` and the efforts of `efforts`, and the server saves nothing
-else: Claude Code refuses a model it does not know, but it takes an effort it does not know without a word. A model
-that `scriptorium.json` names for the complexity stays a valid pick. Two things do not follow the pick: a held run
-resumes on the model it started on, and a run without its advisor takes the complexity's `advisorFallback` effort
-(Without the advisor).
+else: a coding tool may take an effort it does not know without a word. A model that `scriptorium.json` names for the
+complexity stays a valid pick. Two things do not follow the pick: a held run resumes on the model it started on, and a
+run without its advisor takes the complexity's `advisorFallback` effort (Without the advisor).
 
-**The advisor:** a run of a complexity with `advisor` gets `advisor.model` (Fable 5.2) as its advisor
-(`Get-AdvisorRule` in [project.ps1](../project.ps1), `Get-Advisor` in [limits.ps1](../limits.ps1)). Details sets the
-switch and the fallback effort of each complexity and the advisor's model for the project, over the files (Settings,
-`complexities.<name>.advisor`, `.advisorFallback`, `advisor.model`). The run calls it
-when it decides to, inside its own turn; the advisor reads the whole session, uncached. A run on the advisor's own model
-gets none, nor does a run with the Fable advisor while its account has no Fable (The Fable limit). The worker script
-sets it for each run:
-`advisorModel` in the run's settings file, else `CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1`, so a login's own settings do not
-count. A session keeps its advisor through a hold, a resume and a compaction.
+**The advisor,** with a provider that has one (`advisor.model` in its `models.json`): a run of a complexity with
+`advisor` gets that model as its advisor (`Get-AdvisorRule` in [project.ps1](../project.ps1), `Get-Advisor` in
+[limits.ps1](../limits.ps1)). Details sets the switch and the fallback effort of each complexity and the advisor's
+model for the project, over the files (Settings, `complexities.<name>.advisor`, `.advisorFallback`, `advisor.model`).
+The run calls it when it decides to, inside its own turn. A run on the advisor's own model gets none, nor does a run
+whose account has the advisor's model no longer (A model's limit). The worker script names the advisor of each run to
+the provider, which switches it on for that run alone. A session keeps its advisor through a hold, a resume and a
+compaction.
 
 **Without the advisor:** a new run of a complexity with the advisor, on an account that cannot give it now, takes the
 complexity's `advisorFallback` effort, where one is set (`Get-FallbackEffort`), and keeps it through a resume.
 
-**The cap of a run:** `runCap`, in dollars at the API's price as Claude Code counts them (60). The worker script gives
-each run `--max-budget-usd` with it, but not the compaction of its session. It counts the cost of one process, so a
-resumed session starts at zero again. A run that reaches it ends with the `subtype` `error_max_budget_usd`. That is
-never an account's refusal (`Get-Refusal`), and the run is not held: it is parked like a run without a PR, and the
-comment names the cap. The next run finds its pushed and its uncommitted work ([PLAYBOOK.md](../PLAYBOOK.md), step 1).
-The cap is insurance: the largest session in the logs to 2026-11-19 cost 47.30 dollars. Without `runCap` a run has no
-cap.
-
-The front desk keeps `models.json` current: a new model or price, a plan change, or the owner's verdict on PRs by model.
-The run costs by model are in `.queue/history.jsonl`. Change `updated` with it.
+**The cap of a run,** with a provider that has one (`runCap` in its `models.json`): the worker script gives each run
+the cap, but not the compaction of its session. A run that reaches it is never an account's refusal, and the run is
+not held: it is parked like a run without a PR, and the comment names the cap. The next run finds its pushed and its
+uncommitted work ([PLAYBOOK.md](../PLAYBOOK.md), step 1). The cap is insurance. Without `runCap` a run has no cap.
 
 ## Settings
 
@@ -229,14 +222,14 @@ the first ones.
 {
   "accounts": {
     "main": { "uses": ["worker:1", "frontdesk", "personal"] },
-    "second": { "configDir": "C:/Users/<you>/.claude-second", "uses": ["worker:2"] }
+    "second": { "configDir": "C:/Users/<you>/.<provider>-second", "uses": ["worker:2"] }
   },
   "workers": { "2": { "ghConfigDir": "..." } }
 }
 ```
 
 ```json
-{ "model": "claude-sonnet-5-5", "plugins": { "unity": { "editors": "D:/Unity" } } }
+{ "model": "<a model id>", "plugins": { "unity": { "editors": "D:/Unity" } } }
 ```
 
 **The PC's files.** The same folder holds the accounts' records, which the workers of every project write:
@@ -255,18 +248,19 @@ between runs.
 - `accounts` (the PC's): **the account register**, which login each use runs on: `worker:N` (several workers may share one),
   `frontdesk`, `personal`. To move a use, move its entry: a worker runs on the account listed with it from its next run
   (a paused run resumes on the one it started on). For `frontdesk` and `personal`, the owner signs that login in where
-  they work, and the entry tells the budget which account keeps room for them. `configDir` is a Claude Code config
-  folder with its own login (`CLAUDE_CONFIG_DIR`). Left out: the Windows user's command-line login (`default` in the
-  queue's files), shared with the owner's terminal sessions. The page adds, signs in and removes accounts and moves
-  workers between them ([APP.md](APP.md), Accounts). By hand: `$env:CLAUDE_CONFIG_DIR = '<folder>'; claude auth login`.
-  A worker in no entry runs on the command-line login.
-- `accounts.<name>.stopAt`: the account's stop lines, for example `{ "five_hour": 0.9, "seven_day": 0.8 }`: the share of
-  each window where its workers stop. Left out: 0.98 and 1. `seven_day_overage_included`: the Fable week's, from which
-  no new session gets the Fable advisor (The Fable limit; left out: 0.98). The page's meters set it.
-- `accounts.<name>.pickUp`: the account's pick-up limits, for example `{ "five_hour": { "L": 0.6 } }`. Left out: S 0.9,
-  M 0.75, L 0.5. `seven_day_overage_included.design`: the Fable week's design line, from which no new `design` ticket
-  starts (The Fable limit; left out: 0.9). The page's meters set it.
-- `keep` (the PC's): the share of a whole week that each human use's usage guard holds on its account, for example
+  they work, and the entry tells the budget which account keeps room for them. `configDir` is a folder of the
+  coding tool with its own login, which the provider names to the tool for each run. Left out: the user's command-line
+  login (`default` in the queue's files), shared with the owner's terminal sessions. The page adds, signs in and
+  removes accounts and moves workers between them ([APP.md](APP.md), Accounts); the provider's README says how to sign
+  a folder in by hand. A worker in no entry runs on the command-line login.
+- `accounts.<name>.stopAt`: the account's stop lines, by the provider's names of its windows, for example
+  `{ "<short window>": 0.9, "<long window>": 0.8 }`: the share of each window where its workers stop. Left out: the
+  provider's. In a window of some models: the share from which no new session gets one of them as its advisor (A
+  model's limit). The page's meters set it.
+- `accounts.<name>.pickUp`: the account's pick-up limits, for example `{ "<short window>": { "L": 0.6 } }`. Left out:
+  the provider's. In a window of some models, under the name the provider gave its one limit: the start line, from
+  which no new run starts on those models (A model's limit). The page's meters set it.
+- `keep` (the PC's): the share of the whole window that each human use's usage guard holds on its account, for example
   `{ "frontdesk": 0.1, "personal": 0.15 }` (the defaults). The guard keeps the part of it for the time left; 0 keeps
   nothing. The page's guard sliders set it.
 - `away` (the PC's): `true` while the owner is away: nothing that waits on the owner stops the work (No blocking). Left out:
@@ -275,7 +269,7 @@ between runs.
   `{ "design": { "compactAt": 250000 } }`, over `scriptorium.json`'s ([CONFIG.md](CONFIG.md), The compact size). It is
   the same for every worker. Details sets it.
 - `complexities.<name>.model`: the owner's pick of a complexity's model and effort in the project, as `model@effort`,
-  for example `{ "medium": { "model": "claude-sonnet-5-5@high" } }`, over the complexity's candidates (Models, The
+  for example `{ "medium": { "model": "<a model id>@high" } }`, over the complexity's candidates (Models, The
   owner's pick). It is the same for every worker. Details sets it, and takes it away when the pick is the base's own.
 - `complexities.<name>.advisor`: the owner's advisor switch of a complexity, `true` or `false`, over the files'
   `advisor` (Models, The advisor). Details sets it, and takes it away when it equals the files' value.
@@ -286,8 +280,8 @@ between runs.
   Details sets it, and takes it away for `models.json`'s own.
 - `color`: the project's colour on the page, `#rrggbb` ([APP.md](APP.md), Details). Left out: a colour from the
   project's name. Details sets it.
-- `model`: overrides the complexities' models for every run: a full id, at its effort in `models.json` (xhigh if it is
-  not listed). It goes over the page's pick too, and Details then says so. Left out: the complexity picks.
+- `model`: overrides the complexities' models for every run: a full id, at its effort in `models.json` (`models.json`'s
+  `effort` if it is not listed). It goes over the page's pick too, and Details then says so. Left out: the complexity picks.
 - `ghConfigDir`: a `gh` login folder (`GH_CONFIG_DIR`) signed in as a GitHub bot account for the worker. Its comments,
   PRs, pushes and commits are the bot's, so GitHub notifies the owner of them. Sign a folder in once:
   `$env:GH_CONFIG_DIR = '<folder>'; gh auth login`, in a browser signed in as the bot. Left out, or not signed in: the
@@ -318,8 +312,8 @@ note for the run (`limit.md`). The run ends at its next checkpoint, with its wor
 no PR ([PLAYBOOK.md](../PLAYBOOK.md), Usage limit). The script withdraws the note if the account has room again before
 the run ends.
 
-The script then compacts the session at once (`claude -p /compact --resume`), while its cache is warm: at the resume the
-cache is gone, and a whole session would be read again at full price. It holds the ticket (`paused.json`, `AtLimit`),
+Where the provider can, the script then has it compact the session at once, while its cache is warm: at the resume
+the cache is gone, and a whole session would be read again at full price. It holds the ticket (`paused.json`, `AtLimit`),
 comments on it, and resumes the same session when the account takes an S ticket again. It looks every poll and a minute
 after each window reset.
 
@@ -327,30 +321,33 @@ A run that the plan's own limit cuts off before its checkpoint is paused, not pa
 its session, a comment on the ticket says when it resumes, and after the reset the script resumes that same session,
 with its context and uncommitted work. Close the ticket to drop it.
 
-## The Fable limit
+## A model's limit
 
-The plan has a weekly window for Fable alone: the CLI's rate limit events name it `seven_day_overage_included`, and its
-message says "Fable limit". Only Fable requests carry it, not a run on another model with the Fable advisor. It stops
-Fable, not the account, so it is not one of the budget's windows.
+A plan can have a window for some models alone, apart from the account's own: the provider names it in its
+`models.json` with the models it covers ([PLUGINS.md](PLUGINS.md), A provider). Only runs on those models carry it, not
+a run on another model with one of them as its advisor. It stops those models, not the account, so it is not one of
+the budget's windows.
 
-- **The reading:** only a Fable run or a refusal updates it; no probe reads it. The page shows its share
+- **The reading:** only a run on its models or a refusal updates it; a probe may not read it. The page shows its share
   ([APP.md](APP.md), Accounts).
-- **Two lines,** each the account's own (the page's Fable week meter), else a default in [limits.ps1](../limits.ps1)
-  (`Get-FableLines`, `Test-FableOut`). The PC's `usage.json` keeps the window's last reading. Both hold until the reset.
-  - **The design line** (`pickUp.seven_day_overage_included.design`, 90 %): no new Fable run starts on the account, so
-    no dispatcher gives a worker on it a `design` ticket, and the Queue tab gives the reason. A PR's job of a `design`
-    ticket still runs on Fable. The line is below the stop line, so the Fable runs in flight end under it and the
-    advisor goes on all week.
-  - **The stop line** (`stopAt.seven_day_overage_included`, 98 %): no new session on the account gets the Fable
-    advisor, and a PR's job of a `design` ticket starts on `afterFable`. A session keeps the advisor it started with.
-    The design line is never above the stop line. A refusal for the Fable limit writes a reading of 100 %.
-- **A ticket that no run began** goes back to the queue, for a worker whose account has Fable.
-- **A run cut off by it:** the script resumes the same session at once on `afterFable` (Models), with an instruction in
-  the job's message. The run decides whether the decisions that the ticket is on Fable for are made. If they are, it
-  finishes and names both models in its PR. If not, it pushes its work, posts a handoff comment with the decisions still
-  open, writes `handoff.md` in its queue folder and ends without a PR. The script then puts the ticket back in the
-  queue, and a worker whose account has Fable starts it fresh from the comment.
-- **A PR's job** (answers, rebase) goes on with `afterFable`: the PR already holds the ticket's decisions.
+- **Two lines,** each the account's own (the window's meter on the page), else the provider's
+  ([limits.ps1](../limits.ps1): `Get-ModelLines`, `Test-WindowOut`). The PC's `usage.json` keeps the window's last
+  reading. Both hold until the reset.
+  - **The start line** (the window's pick-up limit, `pickUp.<window>.<its name>`): no new run starts on the window's
+    models on the account, so no dispatcher gives a worker on it a ticket that runs on one of them, and the Queue tab
+    gives the reason. A PR's job of such a ticket still runs on its model. The line is below the stop line, so the runs
+    in flight end under it and the advisor goes on.
+  - **The stop line** (`stopAt.<window>`): no new session on the account gets one of the models as its advisor, and a
+    PR's job of such a ticket starts on the window's `after` model. A session keeps the advisor it started with. The
+    start line is never above the stop line. A refusal for the window's limit writes a reading of 100 %.
+- **A ticket that no run began** goes back to the queue, for a worker whose account has the model left.
+- **A run cut off by it:** the script resumes the same session at once on the window's `after` model, with an
+  instruction in the job's message. The run decides whether the decisions that the ticket is on its first model for
+  are made. If they are, it finishes and names both models in its PR. If not, it pushes its work, posts a handoff
+  comment with the decisions still open, writes `handoff.md` in its queue folder and ends without a PR. The script then
+  puts the ticket back in the queue, and a worker whose account has the model left starts it fresh from the comment.
+- **A PR's job** (answers, rebase) goes on with the `after` model: the PR already holds the ticket's decisions.
+- **A window with no `after` model:** a ticket goes back to the queue, and a PR's job is parked for the owner.
 
 ## An account that is out
 
@@ -358,10 +355,11 @@ An account is out when it takes no runs: a subscription that ends, a sign-out wh
 account's, not a ticket's: the PC's `out.json` holds it for every worker of every project and for the page, per account the kind, the
 service's text and the time of the last test.
 
-- **Kinds** (`Get-Refusal` in [limits.ps1](../limits.ps1), checked with real result lines): `login` (the account is
+- **Kinds** (`$OutKinds` in [limits.ps1](../limits.ps1); the provider reads them from a run's log,
+  [PLUGINS.md](PLUGINS.md), ReadRun): `login` (the account is
   signed out), `subscription` (a payment past due, a subscription that ended) and `start` (a run did no work and its
-  first request failed, for a cause the text does not name: the service is down, a wrong model name). `start` catches
-  every wording the list does not know.
+  first request failed, for a cause the provider cannot name: the service is down, a wrong model name). `start` catches
+  every wording the provider does not know.
 - **What puts an account out:** a run that ends with `login` or `subscription`, or the usage reading's probe when the
   account refuses it for one of them. A `start` is tested first, because a record stops every worker on the account:
   the worker sends the account a probe. If the account refuses the probe too, the account is out.
@@ -373,7 +371,7 @@ service's text and the time of the last test.
 - **A plan with no model for a complexity** (Models): when the plan refuses the last candidate of a ticket's
   complexity, the ticket goes back to the queue. No dispatcher gives a ticket of that complexity to a worker on that
   account while the refusal is less than a day old (`Test-ModelLeft`); the Queue tab gives the reason. A PR's job and a
-  resumed run are parked. The Fable limit has its own rules.
+  resumed run are parked. A model's limit has its own rules.
 - **Not an account's failure:** a run that ended before its first request (a session to resume that is gone) is its own
   failure and is parked.
 - **The run:** a run that did work, or a PR's job, is held with its session (`paused.json`, `LoggedOut`), without a
@@ -381,7 +379,8 @@ service's text and the time of the last test.
 - **The worker:** it starts no run and takes no ticket. Its tickets that no run holds and that have no PR go back to the
   queue, for a worker on another account (`Remove-Claims`), so the ticket and its areas do not wait with the account.
 - **The test:** every 10 minutes, and within 30 seconds after the folder's login changes (a sign-in), a worker sends the
-  account a probe: one word from Haiku, which costs nothing when refused. When the account answers, the record goes, a
+  account a probe (the provider's cheapest request, which costs nothing when refused; with a provider that has
+  none, the next run is the test). When the account answers, the record goes, a
   held run resumes its session and the worker takes tickets again.
 - **A switch of account:** within 30 seconds the worker drops a run held for the old account and starts its ticket
   fresh on the new one. A session cannot follow to another login.
@@ -447,7 +446,8 @@ writes the ticket to that worker's force file with `now` (`.queue/force-<N>.json
   - The run is in the history as a part.
 - **The Now run** is a forced run: it does not stop at the workers' ceiling. The server checks the account's room only
   when the owner clicks.
-- **The model:** the server reads the Fable week of the account, not the models that its plan refused (`access.json`).
+- **The model:** the server reads the window of the ticket's model on the account (A model's limit), not the models
+  that its plan refused (`access.json`).
   The plan can therefore refuse the start of a Now run. The ticket then goes back to the queue (Models).
 - **The Now ends** without a run in these cases, and the worker deletes the file:
   - The ticket left the queue: closed, claimed by another worker, or its complexity is off for the worker.
@@ -461,7 +461,8 @@ writes the ticket to that worker's force file with `now` (`.queue/force-<N>.json
 A worker's environment comes from the project's plugins ([PLUGINS.md](PLUGINS.md)). The worker script calls `Start`
 before each look for a job, `GetRun` and `Start` for another repo's checkout before a run, and `EndRun` after it.
 A `Start` or `GetRun` that throws starts no run: the worker's card shows the error, and the worker tries again at its
-next look. With no plugin, a run gets no MCP server and only the base's tools.
+next look. With no environment plugin, a run gets no MCP server and only the base's commands (`git`, `gh`). The
+provider is a plugin too: with none, a worker starts no run and its card says so.
 
 ## Working a job
 
@@ -469,9 +470,9 @@ The run follows [PLAYBOOK.md](../PLAYBOOK.md), then each plugin's playbook, then
 `scriptorium.json`). Before each run, the worker script copies the first two into `.queue/playbooks` of the worker's
 copy and names them in the run's first message; the project's own the run reads from `origin/main`. A run gets no
 folder of Scriptorium or of a plugin, so it cannot change the code that runs it. The parts of `PLAYBOOK.md` that few
-runs need (`PLAYBOOK-*.md`: follow-ups, another repository, pictures, the answered and the rebase job, the Fable limit)
+runs need (`PLAYBOOK-*.md`: follow-ups, another repository, pictures, the answered and the rebase job, a model's limit)
 are copied beside it, and `PLAYBOOK.md` says when a run reads each. The message of an answered or a rebase job, of a
-job in another repository and of a resume at the Fable limit names its part. Each run holds the base playbook in its
+job in another repository and of a resume at a model's limit names its part. Each run holds the base playbook in its
 context from its first turn, so a part saves its size on each turn of a run that does not read it.
 
 ## Further ideas
@@ -479,9 +480,9 @@ context from its first turn, so a part saves its size on each turn of a run that
 Not built. Each needs a trial before it is worth its cost.
 
 - **A cheaper helper model.** A run hands its searching and the reading of docs to a cheap model, and gets back only
-  the answer. It needs the `Task` tool unblocked (`$UnusedTools` in the worker script) and a rule in the playbook.
-  Measured with Claude Code 2.1.323: the `Task` tool is 2,702 tokens on every turn. Estimated from 328 run logs of
+  the answer. It needs the provider to give a run its tool for helpers and a rule in the playbook.
+  Measured with one coding tool: that tool is 2,702 tokens on every turn. Estimated from 328 run logs of
   one project (November 2026): searching and the reading of docs were about 6 % of the runs' cost, which is the most
-  that a helper can save, and the `Task` tool would cost about 1.5 %. Not known: how often a run would hand work
+  that a helper can save, and the helper tool would cost about 1.5 %. Not known: how often a run would hand work
   over, which decides the gain. The risk: a thin or wrong answer makes the run read the files anyway, and it pays
   twice.
