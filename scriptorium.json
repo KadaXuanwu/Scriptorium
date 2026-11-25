@@ -2,6 +2,7 @@
     "name": "Scriptorium",
     "port": 8771,
     "plugins": {
-        "claude": {}
+        "claude": {},
+        "antigravity": { "source": "https://github.com/KadaXuanwu/Scriptorium-Antigravity" }
     }
 }
