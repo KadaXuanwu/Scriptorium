@@ -333,6 +333,7 @@ request that does this.
    [CONTRIBUTING.md](../.github/CONTRIBUTING.md) gives the checks for it.
 5. Add `"detect"` to the entry, a list of file patterns from the repo root (`"*/ProjectSettings/ProjectVersion.txt"`),
    and `setup.ps1` puts the plugin in a new `scriptorium.json` when a pattern matches a file of the project. A
-   provider needs none: setup adds the listed provider to a project that names none, while the list has exactly one.
+   provider needs none: a project names its provider (`setup.ps1 -Plugins <name>`). Setup adds the listed provider
+   by itself only while the list has exactly one; with more, it stops at a project that names none and lists them.
 
 A listed plugin stays its author's: its issues and pull requests go to its own repo.
