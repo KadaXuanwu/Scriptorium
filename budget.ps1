@@ -1,6 +1,8 @@
 # The queue's budget arithmetic (docs/QUEUE.md, Dispatching): whether the workers take a ticket of a size on an account
-# (limits.ps1: the ceiling and the pick-up limits) and which account wants its room spent first. Pure functions,
-# dot-sourced by worker.ps1, checked by budget.test.ps1.
+# (limits.ps1: the ceiling and the pick-up limits) and which account wants its room spent first; and an account's
+# usage reading as the PC keeps it. Pure functions, but Read-UsageFile and Save-Reading, which read and write the PC's
+# usage file. Dot-sourced by worker.ps1 and app/state.ps1 (the page's Ping saves a reading too), checked by
+# budget.test.ps1.
 
 . (Join-Path $PSScriptRoot 'limits.ps1')
 
@@ -45,6 +47,54 @@ function Merge-Usage($stored, $new) {
 # for 30 minutes (Get-FreshUsage): without the probe the next tickets are taken on it, and the page shows it.
 function Test-ProbeAfterRun([bool] $readsLog, [bool] $probes) {
     return $probes -and -not $readsLog
+}
+
+# A provider's usage reading (docs/PLUGINS.md, ReadUsage, Probe) as the queue keeps it, read at $now: each window's
+# share used and reset, and whether the plan refused the request. The refusal of a window of some models is not
+# `refused` but `modelRefused`, that window's name: it stops only those models. Only the windows that the provider's
+# models.json names. $null for no reading.
+function ConvertTo-Reading($read, [long] $now) {
+    if (-not $read) {
+        return $null
+    }
+    $refused = [string]$read.Refused
+    $ofModels = [bool]$refused -and $ModelWindows.Contains($refused)
+    $usage = @{ at = $now; refused = [bool]$refused -and -not $ofModels; modelRefused = $(if ($ofModels) { $refused } else { '' })
+        refusedResetsAt = [long]$read.RefusedResetsAt }
+    foreach ($window in @($WindowSeconds.Keys) + @($ModelWindows.Keys)) {
+        $value = if ($read.Windows) { $read.Windows[$window] } else { $null }
+        if ($value) {
+            $usage[$window] = @{ used = [double]$value.Used; resetsAt = [long]$value.ResetsAt; at = $now }
+        }
+    }
+    return $usage
+}
+
+# Every account's stored reading, by account, from the PC's usage file.
+function Read-UsageFile([string] $file) {
+    $all = @{}
+    try {
+        (Get-Content $file -Raw -ErrorAction Stop | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $all[$_.Name] = $_.Value }
+    } catch {
+        # Missing or unreadable: an empty cache, so every account is read again. A bad file must not stop the worker.
+    }
+    return $all
+}
+
+# Saves an account's reading ($usage, with its login's `email`) in the PC's usage file, which the workers of every
+# project and the pages share. Under the lock of the accounts' records (pc.ps1, 'Usage') and written whole: two
+# workers that saved in the same second once tore the file, and every worker then failed each poll.
+function Save-Reading([string] $file, [string] $account, $usage) {
+    $lock = Enter-PcLock 'Usage'
+    try {
+        $all = Read-UsageFile $file
+        # Merge-Usage changes $usage itself, so the caller's reading is the account's newest too.
+        $all[$account] = Merge-Usage $all[$account] $usage
+        $all | ConvertTo-Json -Depth 4 | Set-Content "$file.tmp" -Encoding utf8
+        Move-Item "$file.tmp" $file -Force
+    } finally {
+        Exit-PcLock $lock
+    }
 }
 
 # What a reading says, without its read time: the same text for the same event of a log. A run that waits on a long

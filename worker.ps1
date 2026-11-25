@@ -430,30 +430,10 @@ function Read-Log([string] $log) {
     }
 }
 
-# A provider's usage reading (docs/PLUGINS.md, ReadUsage) as the queue keeps it: each window's share used and reset,
-# and whether the plan refused the request. The refusal of a window of some models is not `refused` but `modelRefused`,
-# that window's name: it stops only those models. Only the windows that the provider's models.json names.
-function ConvertTo-Reading($read) {
-    if (-not $read) {
-        return $null
-    }
-    $refused = [string]$read.Refused
-    $ofModels = [bool]$refused -and $ModelWindows.Contains($refused)
-    $usage = @{ at = (Get-Now); refused = [bool]$refused -and -not $ofModels; modelRefused = $(if ($ofModels) { $refused } else { '' })
-        refusedResetsAt = [long]$read.RefusedResetsAt }
-    foreach ($window in @($windows) + @($ModelWindows.Keys)) {
-        $value = if ($read.Windows) { $read.Windows[$window] } else { $null }
-        if ($value) {
-            $usage[$window] = @{ used = [double]$value.Used; resetsAt = [long]$value.ResetsAt; at = $usage.at }
-        }
-    }
-    return $usage
-}
-
 # The plan's usage from a run's log, its last (or first) reading. $null for a log without one, and with a provider that
 # reads none: its workers then run until the plan refuses.
 function Get-Usage([string] $text, [switch] $First) {
-    return ConvertTo-Reading (Invoke-Provider 'ReadUsage' @{ Text = $text; First = [bool]$First })
+    return ConvertTo-Reading (Invoke-Provider 'ReadUsage' @{ Text = $text; First = [bool]$First }) (Get-Now)
 }
 
 # A window's share in use now: nothing once it has reset.
@@ -465,34 +445,15 @@ function Get-Used($usage, [string] $window) {
 }
 
 function Read-AllUsage {
-    $all = @{}
-    try {
-        (Get-Content $usageFile -Raw -ErrorAction Stop | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $all[$_.Name] = $_.Value }
-    } catch {
-        # Missing or unreadable: an empty cache, so every account is read again. A bad file must not stop the worker.
-    }
-    return $all
+    return Read-UsageFile $usageFile
 }
 
-# Shared with the other workers of every project of the PC, per account. Under the lock of the accounts' records
-# (pc.ps1, 'Usage') and written whole: two workers that saved in the same second once tore the file, and every worker
-# then failed each poll.
+# Shared with the other workers of every project of the PC and with the pages, per account (budget.ps1, Save-Reading).
+# The same lock guards the accounts that are out (Set-Out).
 $usageMutex = New-Object System.Threading.Mutex($false, 'Local\Scriptorium-Usage')
 function Save-Usage([string] $account, $usage) {
     $usage.email = Get-LoginEmail $account
-    try {
-        [void]$usageMutex.WaitOne()
-    } catch [System.Threading.AbandonedMutexException] {
-    }
-    try {
-        $all = Read-AllUsage
-        # Merge-Usage changes $usage itself, so the caller's reading is the account's newest too.
-        $all[$account] = Merge-Usage $all[$account] $usage
-        $all | ConvertTo-Json -Depth 4 | Set-Content "$usageFile.tmp" -Encoding utf8
-        Move-Item "$usageFile.tmp" $usageFile -Force
-    } finally {
-        $usageMutex.ReleaseMutex()
-    }
+    Save-Reading $usageFile $account $usage
 }
 
 # The account's record that a window of some models is used up until its reset (limits.ps1, Test-WindowOut), from a
@@ -550,7 +511,7 @@ function Invoke-Probe([string] $configDir) {
     if (-not $reply) {
         return $null
     }
-    return @{ usage = ConvertTo-Reading $reply.Usage; answered = [bool]$reply.Answered; kind = [string]$reply.Kind; text = [string]$reply.Text }
+    return @{ usage = (ConvertTo-Reading $reply.Usage (Get-Now)); answered = [bool]$reply.Answered; kind = [string]$reply.Kind; text = [string]$reply.Text }
 }
 
 # The login a folder holds now: what the provider says changes with a sign-in (when its credentials were last
