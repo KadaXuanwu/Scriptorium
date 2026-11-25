@@ -109,6 +109,10 @@ Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' 'main' }) 
 Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' 'old' }) "account old is another coding tool's: change it on a project of that tool" 'no worker on an account that no provider has claimed'
 Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' '' }) "the command-line login is another coding tool's account: pick an account" 'no worker on the command-line login of another tool'
 Assert-Equal (Fails { Get-OwnAccount ($two | ConvertFrom-Json) 'mine' }) '' 'its own account'
+# A worker that goes away leaves its account all the same: nothing refuses that.
+$gone = Set-WorkerEntry ($two | ConvertFrom-Json) '2' $false
+Assert-Equal "$(@($gone.accounts.mine.uses).Count) $($gone.accounts.main.uses -join ',')" '0 worker:1,personal' 'a removed worker leaves its account where the command-line login is another tool''s'
+Assert-Equal (Fails { Set-WorkerEntry ($two | ConvertFrom-Json) '3' $true '' }) "the command-line login is another coding tool's account: pick an account" 'a new worker does not go on the command-line login of another tool'
 $shown = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $register; workers = @(@{ id = '2'; state = [pscustomobject]@{ state = 'idle'; at = 0 } })
     usage = ('{"default":{"at":9,"short":{"used":0.9,"resetsAt":99}}}' | ConvertFrom-Json) }
 Assert-Equal "$(($shown.accounts | ForEach-Object { $_.name }) -join ',') $($shown.loginTaken)" 'mine True' 'the page lists the project''s own accounts, and says that the command-line login is taken'

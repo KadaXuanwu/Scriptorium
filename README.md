@@ -206,7 +206,8 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
   read from the keychain, which may ask once for access. Tell us what breaks.
 - On macOS and Linux, the pictures of a question go up at full size: the small copy needs Windows.
 - GitHub only. One provider is listed, for Claude Code, and a project runs on one provider at a time
-  ([docs/PROVIDERS.md](docs/PROVIDERS.md)).
+  ([docs/PROVIDERS.md](docs/PROVIDERS.md)). A second one, for Antigravity, is not listed yet: no ticket has run
+  through it. A project names it with a `source` ([docs/PLUGINS.md](docs/PLUGINS.md), Where a plugin comes from).
 - GitHub builds and tests nothing: a run's own checks are the gate.
 
 ## Docs
@@ -215,7 +216,7 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
 - [docs/APP.md](docs/APP.md): the page.
 - [docs/CONFIG.md](docs/CONFIG.md): `scriptorium.json`.
 - [docs/PLUGINS.md](docs/PLUGINS.md): writing a plugin, a provider too.
-- [docs/PROVIDERS.md](docs/PROVIDERS.md): what six coding tools share, and what a second provider still needs.
+- [docs/PROVIDERS.md](docs/PROVIDERS.md): what six coding tools share, and what the second provider showed.
 - [PLAYBOOK.md](PLAYBOOK.md): what a run does.
 - [CONTRIBUTING.md](.github/CONTRIBUTING.md): sending a change.
 

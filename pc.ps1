@@ -321,6 +321,7 @@ function Set-AccountProviders($settings, [string[]] $workers, [string] $provider
 # - Where the command-line login is another coding tool's account, the worker goes to this provider's first account,
 #   or to a new one named after the provider. The new one's folder ($homeDir/.<provider>-<name>) is its key in the
 #   usage records, also for a tool that keeps its login elsewhere; the page's sign-in makes the folder.
+# - A worker on another provider's account counts as on none: the project changed its coding tool.
 function Set-WorkerAccounts($settings, [string[]] $workers, [string] $provider, [string] $homeDir) {
     $uses = @($workers | ForEach-Object { "worker:$_" })
     if (-not $settings.accounts) {
@@ -332,12 +333,22 @@ function Set-WorkerAccounts($settings, [string[]] $workers, [string] $provider, 
         return $true
     }
     $changed = Set-AccountProviders $settings $workers $provider
-    $claimed = @($settings.accounts.PSObject.Properties | ForEach-Object { $_.Value.uses })
+    $own = @($settings.accounts.PSObject.Properties | Where-Object { -not $provider -or (Test-AccountOf $_.Value $provider) })
+    $claimed = @($own | ForEach-Object { $_.Value.uses })
     $new = @($uses | Where-Object { $claimed -notcontains $_ })
     if (-not $new.Count) {
         return $changed
     }
-    $own = @($settings.accounts.PSObject.Properties | Where-Object { -not $provider -or (Test-AccountOf $_.Value $provider) })
+    # A worker on another provider's account (the project changed its coding tool) leaves that account first.
+    $ownNames = @($own | ForEach-Object { $_.Name })
+    foreach ($entry in @($settings.accounts.PSObject.Properties | Where-Object { $ownNames -notcontains $_.Name })) {
+        $current = @($entry.Value.uses | Where-Object { $_ })
+        $kept = @($current | Where-Object { $new -notcontains $_ })
+        if ($kept.Count -ne $current.Count) {
+            Set-JsonProperty $entry.Value 'uses' ([object[]]$kept)
+            $changed = $true
+        }
+    }
     $login = $own | Where-Object { -not $_.Value.configDir } | Select-Object -First 1
     if (-not $login -and $provider -and (Test-LoginTaken $settings $provider)) {
         $login = $own | Select-Object -First 1

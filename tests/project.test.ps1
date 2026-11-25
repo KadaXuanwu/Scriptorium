@@ -389,6 +389,9 @@ Assert-Equal ((Place "{`"accounts`":$after}" @('6') 'two').EndsWith($expected)) 
 # Its second worker goes to that account, and a name that is taken gets a number.
 Assert-Equal ((Place "{`"accounts`":$((Place $real @('6') 'two').Substring(5))}" @('6', '7') 'two').EndsWith('"two":{"configDir":"C:/Users/me/.two-two","provider":"two","uses":["worker:6","worker:7"]}}')) $true 'a second worker goes to the provider''s first account'
 Assert-Equal ((Place '{"accounts":{"two":{"provider":"one","uses":["worker:1"]}}}' @('6') 'two').EndsWith('"two-2":{"configDir":"C:/Users/me/.two-two-2","provider":"two","uses":["worker:6"]}}')) $true 'a name that is taken gets a number'
+# A project that changed its coding tool: its worker leaves the old tool's account and gets one of the new tool's.
+# The other project's worker and the owner's own use stay.
+Assert-Equal (Place '{"accounts":{"main":{"provider":"one","uses":["personal","worker:1","worker:3"]}}}' @('3') 'two') 'True {"main":{"provider":"one","uses":["personal","worker:1"]},"two":{"configDir":"C:/Users/me/.two-two","provider":"two","uses":["worker:3"]}}' 'a worker on another tool''s account moves to an account of its project''s tool'
 # A PC whose accounts all have folders: a new worker is in none, as before.
 Assert-Equal (Place '{"accounts":{"a":{"provider":"one","configDir":"C:/a","uses":["worker:1"]}}}' @('1', '2') 'one') 'False {"a":{"provider":"one","configDir":"C:/a","uses":["worker:1"]}}' 'no command-line login entry: a new worker is in no entry'
 # Under the lock, on the PC's file: a project's settings come back with the claim.

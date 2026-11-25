@@ -262,6 +262,8 @@ between runs.
     worker there when it is the project's provider's. Otherwise the worker goes to that provider's first account, or
     to a new one named after the provider, with a folder as its key in the usage records. A worker of such a project
     that is in no entry does not run: its card says that it has no account.
+  - A project that changes its provider: run setup again. Each of its workers leaves the old provider's account and
+    goes to one of the new provider's.
   - An account from before this key names no provider. A project claims those accounts when one of its workers is on
     one of them: its scripts then write its provider into each. A project that is new on the PC claims none. Until a
     project claims it, such an account is no project's.
