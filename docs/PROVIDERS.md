@@ -247,8 +247,9 @@ Claude Code's, and nothing watches the other plan's usage.
 
 How each stands after the split. The owner can still decide otherwise before a second provider is built.
 
-1. **Pick-up limits** by ticket size: the provider says which of its windows has them (`pickUp`). A window with none
-   holds a new ticket back only at its ceiling.
+1. **Pick-up limits** by ticket size: the account's shortest window always has them, the provider's (`pickUp`) or
+   else the base's, so the owner sets them on the page with any provider. A provider can give them to a longer
+   window too. A window with none holds a new ticket back only at its ceiling.
 2. **The kept share** for the owner's own use: the provider marks one window to hold it (`keep`), and the share is
    spread over that window's length, a month too.
 3. **No usage reading:** the workers run until the plan refuses, and large tickets are cut off at the limit. The base

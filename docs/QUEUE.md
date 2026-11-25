@@ -114,10 +114,11 @@ A provider that reads no usage has no budget: its workers run until the plan ref
 
 More rules:
 
-- **Pick-up limits:** an account has one for each ticket size, in each window that the provider gives them (as a rule
-  the shortest): the share of the window from which its workers take no new ticket of that size (Settings, `pickUp`). A
-  bigger ticket stops being taken earlier, so a run seldom reaches the stop line. The defaults are the provider's. A
-  window with none holds a new ticket back only at its ceiling.
+- **Pick-up limits:** an account has one for each ticket size: the share of a window from which its workers take no
+  new ticket of that size (Settings, `pickUp`). A bigger ticket stops being taken earlier, so a run seldom reaches
+  the stop line. The account's shortest window always has them: the provider's defaults, else the base's
+  (`$BasePickUp` in [limits.ps1](../limits.ps1)). A provider can give them to a longer window too. A window with none
+  holds a new ticket back only at its ceiling.
 - **Complexity switches:** the owner switches a complexity off and on for each worker (Settings,
   `workers.<id>.complexity`; the worker's Config). Off: that worker takes no new ticket of it, forced or not, and the
   answers and rebases of its PRs of it wait. A ticket already started goes on, also a held run that resumes. The test is
@@ -290,8 +291,8 @@ between runs.
   provider's. In a window of some models: the share from which no new session gets one of them as its advisor (A
   model's limit). The page's meters set it.
 - `accounts.<name>.pickUp`: the account's pick-up limits, for example `{ "<short window>": { "L": 0.6 } }`. Left out:
-  the provider's. In a window of some models, under the name the provider gave its one limit: the start line, from
-  which no new run starts on those models (A model's limit). The page's meters set it.
+  the provider's, else the base's (The budget). In a window of some models, under the name the provider gave its one
+  limit: the start line, from which no new run starts on those models (A model's limit). The page's meters set it.
 - `keep` (the PC's): the share of the whole window that each human use's usage guard holds on its account, for example
   `{ "frontdesk": 0.1, "personal": 0.15 }` (the defaults). The guard keeps the part of it for the time left; 0 keeps
   nothing. The page's guard sliders set it.
