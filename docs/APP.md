@@ -109,8 +109,8 @@ worker's next run. A run in progress or on hold keeps its model, its effort and 
 - **Mapping,** the list at the top: Its own, or Same as another worker on the same coding tool, in any project. A
   worker whose own links lead back to this one is not in the list. The page asks before a link, because the worker's
   own picks for this tool go away. Its own again, the worker starts from the picks it ran on.
-- **A linked worker** shows the other worker's values, greyed, and a line that names the worker to change them on.
-  Its switches stay its own.
+- **A linked worker** shows the other worker's values as plain text, with no field to press, and a line that names
+  the worker to change them on. Its switches stay its own, and stay buttons.
 - **A row for each complexity,** with its switch, its name and an (i) button that shows its description:
   - **Model and effort** are two lists: the models and the efforts of the coding tool's `models.json`
     (`complexities.<name>.model`). A pick that is not the base's shows the base's under it as Default. Pick the
