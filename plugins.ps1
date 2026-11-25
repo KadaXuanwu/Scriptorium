@@ -1,6 +1,6 @@
 # The plugin seam (docs/PLUGINS.md): finds a project's plugins, loads each in a module of its own, calls their hooks and
-# merges what GetRun returns. Dot-sourced by worker.ps1, setup.ps1 and tasks.ps1; only definitions. Checked by
-# plugins.test.ps1.
+# merges what GetRun returns; and the provider, the one plugin that runs the coding tool (A provider). Dot-sourced by
+# worker.ps1, setup.ps1 and tasks.ps1; only definitions. Checked by plugins.test.ps1.
 
 # The version of docs/PLUGINS.md this base implements.
 $PluginApi = 1
@@ -46,6 +46,8 @@ function Import-Plugin([string] $dir, [string] $name, $entry) {
         Name = $name; Title = [string]$manifest.title; Version = [string]$manifest.version
         Description = [string]$manifest.description; Requires = @($manifest.requires | Where-Object { $_ })
         Dir = $dir; Hooks = $hooks; Settings = $settings
+        # A provider (docs/PLUGINS.md, A provider), and the folder of the project where its skills go.
+        Provider = [bool]$manifest.provider; Skills = [string]$manifest.skills
     }
 }
 
@@ -114,9 +116,10 @@ function Close-Checkouts($plugins, [string[]] $checkouts, [string] $project, $wo
 }
 
 # GetRun's answers merged (docs/PLUGINS.md, The hooks): MCP servers and environment variables by name (a later plugin's
-# wins), tools as a union, prompts in order. @{ McpServers; AllowedTools; Prompt; Env }.
+# wins), commands and tool rules as unions, prompts in order. @{ McpServers; Commands; AllowedTools; Prompt; Env }.
 function Merge-RunAnswers($answers) {
     $servers = [ordered]@{}
+    $commands = @()
     $tools = @()
     $prompts = @()
     $variables = [ordered]@{}
@@ -131,21 +134,68 @@ function Merge-RunAnswers($answers) {
                 $variables[$key] = [string]$answer.Env[$key]
             }
         }
+        $commands += @($answer.Commands | Where-Object { $_ })
         $tools += @($answer.AllowedTools | Where-Object { $_ })
         if ($answer.Prompt) {
             $prompts += ([string]$answer.Prompt).Trim()
         }
     }
-    return @{ McpServers = $servers; AllowedTools = @($tools | Select-Object -Unique); Prompt = $prompts -join ' '; Env = $variables }
+    return @{ McpServers = $servers; Commands = @($commands | Select-Object -Unique); AllowedTools = @($tools | Select-Object -Unique)
+        Prompt = $prompts -join ' '; Env = $variables }
 }
 
-# The run's MCP config file text: the merged servers, none without a plugin.
-function ConvertTo-McpConfig($servers) {
-    return @{ mcpServers = $servers } | ConvertTo-Json -Depth 8 -Compress
+# The commands a run may start without asking, each by how it starts (`git`, `unity command`): the base's git and gh,
+# then scriptorium.json's `commands`, then the plugins'.
+function Get-RunCommands($config, $merged) {
+    return @(@('git', 'gh') + @($config.commands) + @($merged.Commands) | Where-Object { $_ } | Select-Object -Unique)
 }
 
-# The run's tool rules: the base's git and gh, then scriptorium.json's `allowedTools`, then the plugins'.
+# The run's tool rules in the provider's own syntax, which the base hands on unread: scriptorium.json's `allowedTools`,
+# then the plugins'.
 function Get-RunTools($config, $merged) {
-    $tools = @('Bash(git:*)', 'Bash(gh:*)') + @($config.allowedTools) + @($merged.AllowedTools)
-    return @($tools | Where-Object { $_ } | Select-Object -Unique)
+    return @(@($config.allowedTools) + @($merged.AllowedTools) | Where-Object { $_ } | Select-Object -Unique)
+}
+
+# The project's provider (docs/PLUGINS.md, A provider): the first of its plugins whose manifest says `provider`; $null
+# when it has none.
+# shortcut: one provider for a project; give an account its provider when a project runs two.
+function Get-Provider($plugins) {
+    return @($plugins | Where-Object { $_ -and $_.Provider }) | Select-Object -First 1
+}
+
+# The provider that Invoke-Provider and Read-Models (project.ps1) use from here on, and its windows (limits.ps1) where
+# the script reckons a budget. $scope: the context fields of its calls, @{ Project; Copy; Worker; QueueDir; Machine (a
+# script block that reads the PC's settings); Report; Log }.
+function Set-Provider($plugin, [hashtable] $scope = @{}) {
+    $script:Provider = $plugin
+    $script:ProviderScope = $scope
+    if (Get-Command Set-Windows -ErrorAction SilentlyContinue) {
+        Set-Windows (Read-Models).windows
+    }
+}
+
+# Whether the provider has a hook: each one but GetCommand and ReadRun is a feature it may leave out.
+function Test-ProviderHook([string] $hook) {
+    return [bool]($script:Provider -and $script:Provider.Hooks[$hook])
+}
+
+# Calls one hook of the provider with the context of Set-Provider's scope and $fields over it (docs/PLUGINS.md, A
+# provider). $null for a hook the provider does not have. A hook that throws stops the call with the plugin's name.
+function Invoke-Provider([string] $hook, [hashtable] $fields = @{}) {
+    if (-not (Test-ProviderHook $hook)) {
+        return $null
+    }
+    $scope = $script:ProviderScope
+    $silent = { param($text) }
+    $ctx = New-HookContext $script:Provider ([string]$scope.Project) ([string]$scope.Copy) $scope.Worker $scope.QueueDir `
+        $(if ($scope.Machine) { & $scope.Machine }) $(if ($scope.Report) { $scope.Report } else { $silent }) `
+        $(if ($scope.Log) { $scope.Log } else { $silent })
+    foreach ($key in $fields.Keys) {
+        $ctx[$key] = $fields[$key]
+    }
+    try {
+        return (& $script:Provider.Hooks[$hook] $ctx)
+    } catch {
+        throw "plugin $($script:Provider.Name), ${hook}: $($_.Exception.Message)"
+    }
 }

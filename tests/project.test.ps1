@@ -71,33 +71,34 @@ try {
 . (Join-Path $baseDir 'followup.ps1')
 . (Join-Path $baseDir 'limits.ps1')
 . (Join-Path $baseDir 'app/state.ps1')
+Set-Provider (Import-Plugin (Join-Path $baseDir 'tests/provider') 'test' $null)
 $models = Read-Models
-$own = '{ "name": "App", "compactAt": 250000, "complexities": { "medium": { "models": ["claude-sonnet-5-5@high"] },
-    "review": { "description": "A second look at a change", "models": ["claude-opus-5-5@high"], "advisor": true, "advisorFallback": "xhigh", "compactAt": 400000 },
+$own = '{ "name": "App", "compactAt": 250000, "complexities": { "medium": { "models": ["mid-1@high"] },
+    "review": { "description": "A second look at a change", "models": ["main-1@high"], "advisor": true, "advisorFallback": "xhigh", "compactAt": 400000 },
     "tidy": { "description": "Small cleanups" } } }' | ConvertFrom-Json
 $list = Get-Complexities $models $own
 Assert-Equal (($list | ForEach-Object { $_.name }) -join ',') 'low,medium,high,review,tidy,design' 'the project''s own between high and design'
-Assert-Equal "$(($list | Where-Object { $_.name -eq 'medium' }).models) $(($list | Where-Object { $_.name -eq 'medium' }).advisor)" 'claude-sonnet-5-5@high True' 'a change keeps what it does not name'
+Assert-Equal "$(($list | Where-Object { $_.name -eq 'medium' }).models) $(($list | Where-Object { $_.name -eq 'medium' }).advisor)" 'mid-1@high True' 'a change keeps what it does not name'
 Assert-Equal ($list | Where-Object { $_.name -eq 'tidy' }).models (($list | Where-Object { $_.name -eq 'medium' }).models) 'no models: medium''s'
 # As the worker reads them: through a pipe, one complexity at a time.
 function Get-Listed { return Get-Complexities $models $own }
 Assert-Equal @(Get-Listed | Where-Object { $_.name -eq 'design' }).Count 1 'a pipe sees each complexity'
-Assert-Equal ((Get-ComplexityModels (Get-Listed) 'design') -join ',') 'claude-fable-5-2@high' 'the models of one complexity'
+Assert-Equal ((Get-ComplexityModels (Get-Listed) 'design') -join ',') 'deep-1@high' 'the models of one complexity'
 Assert-Equal (Get-ComplexityModels (Get-Listed) 'none').Count 0 'no models for a name not in the list'
 Assert-Equal (Get-TicketComplexity @('P1', 'complexity:design') (Get-Listed)) 'design' 'a ticket''s complexity'
 Assert-Equal (Get-TicketComplexity @('complexity:review') (Get-Listed)) 'review' 'a complexity of the project''s own'
 Assert-Equal (Get-TicketComplexity @('complexity:art', 'size:S') (Get-Listed)) 'medium' 'a label not in the list counts as medium'
 Assert-Equal (Get-TicketComplexity @() (Get-Listed)) 'medium' 'no label counts as medium'
 $rule = Get-AdvisorRule $models $list
-Assert-Equal "$($rule.model) $($rule.complexities -join ',') $($rule.fallback.review)" 'claude-fable-5-2 medium,high,review xhigh' 'the advisor rule'
-Assert-Equal (Get-FallbackEffort $rule 'review' 'claude-opus-5-5' 'high' $false) 'xhigh' 'the project''s fallback effort'
+Assert-Equal "$($rule.model) $($rule.complexities -join ',') $($rule.fallback.review)" 'deep-1 medium,high,review xhigh' 'the advisor rule'
+Assert-Equal (Get-FallbackEffort $rule 'review' 'main-1' 'high' $false) 'xhigh' 'the project''s fallback effort'
 Assert-Equal ((Get-FollowUpLabels @('area:api') "**Complexity:** review" @() @($list | ForEach-Object { $_.name })) -join ',') 'area:api,complexity:review' 'a follow-up of the project''s complexity'
 Assert-Equal ((Get-FollowUpLabels @('area:api') "**Complexity:** review") -join ',') 'area:api' 'not without the project''s list'
 $snapshot = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); complexities = $list
     workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
 Assert-Equal (($snapshot.workers[0].takes | ForEach-Object { $_.name }) -join ',') 'low,medium,high,review,tidy,design' 'a worker takes each'
 $review = $snapshot.complexities | Where-Object { $_.name -eq 'review' }
-Assert-Equal "$($review.description)|$($review.model)|$($review.effort)|$($review.advisor)" 'A second look at a change|claude-opus-5-5|high|claude-fable-5-2' 'the page gets each complexity'
+Assert-Equal "$($review.description)|$($review.model)|$($review.effort)|$($review.advisor)" 'A second look at a change|main-1|high|deep-1' 'the page gets each complexity'
 $threw = $false
 try { Get-Complexities $models ('{ "complexities": { "art": { "models": ["x"] } } }' | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'a complexity of the project''s own needs a description'
@@ -109,10 +110,9 @@ Assert-Equal (Get-ComplexityCompactAt (Get-Complexities $models $null) 'design')
 $paged = Get-Complexities $models $own ('{ "complexities": { "review": { "compactAt": 90000 }, "low": { "compactAt": 300000 }, "gone": { "compactAt": 1 } } }' | ConvertFrom-Json)
 Assert-Equal "$(Get-ComplexityCompactAt $paged 'low') $(Get-ComplexityCompactAt $paged 'review') $(Get-ComplexityCompactAt $paged 'high')" '300000 90000 250000' 'the page''s compact size over the project''s'
 Assert-Equal $review.compactAt 400000 'the page gets each compact size'
-# Claude Code gets the window that compacts there: 33k more.
-Assert-Equal (Get-CompactWindow 250000) 283000 'the window of a compact size'
-# Only what makes a window Claude Code takes (100k to 1M): it read '250k' as its minimum without a word.
-Assert-Equal "$(ConvertTo-CompactAt 67000 'x') $(ConvertTo-CompactAt '967000' 'x')" '67000 967000' 'the ends of the range'
+# Only a size within the provider's range (models.json, `compactRange`): a size written as '250k' was once read as
+# the least without a word. Any size where the provider gives no range.
+Assert-Equal "$(ConvertTo-CompactAt 67000 'x' @(67000, 967000)) $(ConvertTo-CompactAt '967000' 'x' @(67000, 967000)) $(ConvertTo-CompactAt 5 'x')" '67000 967000 5' 'the ends of the range, and any size without one'
 foreach ($bad in '"250k"', '66999', '967001', '250000.5', '""') {
     $threw = $false
     try { Get-Complexities $models ("{ `"compactAt`": $bad }" | ConvertFrom-Json) | Out-Null } catch { $threw = $true }
@@ -125,48 +125,48 @@ Assert-Equal $threw $true 'a bad compact size in settings.json stops the scripts
 # The owner's pick of a model on the page (settings.json, `complexities.<name>.model`) is the complexity's one
 # candidate, and `base` keeps the first candidate without it. A complexity with no models follows medium's pick; a pick
 # for a name not in the list changes nothing.
-$picked = Get-Complexities $models $own ('{ "complexities": { "medium": { "model": "claude-haiku-5-5@low" }, "review": { "model": "claude-fable-5-2@max" }, "gone": { "model": "x" } } }' | ConvertFrom-Json)
-Assert-Equal ((Get-ComplexityModels $picked 'medium') -join ',') 'claude-haiku-5-5@low' 'the page''s pick is the one candidate'
-Assert-Equal "$(($picked | Where-Object { $_.name -eq 'medium' }).base) $(($picked | Where-Object { $_.name -eq 'review' }).base)" 'claude-sonnet-5-5@high claude-opus-5-5@high' 'the base is the first candidate without the pick'
-Assert-Equal "$((Get-ComplexityModels $picked 'tidy') -join ',') $((Get-ComplexityModels $picked 'high') -join ',')" 'claude-haiku-5-5@low claude-opus-5-5@xhigh' 'no models: medium''s pick; no pick: its own'
+$picked = Get-Complexities $models $own ('{ "complexities": { "medium": { "model": "small-1@low" }, "review": { "model": "deep-1@max" }, "gone": { "model": "x" } } }' | ConvertFrom-Json)
+Assert-Equal ((Get-ComplexityModels $picked 'medium') -join ',') 'small-1@low' 'the page''s pick is the one candidate'
+Assert-Equal "$(($picked | Where-Object { $_.name -eq 'medium' }).base) $(($picked | Where-Object { $_.name -eq 'review' }).base)" 'mid-1@high main-1@high' 'the base is the first candidate without the pick'
+Assert-Equal "$((Get-ComplexityModels $picked 'tidy') -join ',') $((Get-ComplexityModels $picked 'high') -join ',')" 'small-1@low main-1@xhigh' 'no models: medium''s pick; no pick: its own'
 Assert-Equal (($picked | ForEach-Object { $_.name }) -join ',') 'low,medium,high,review,tidy,design' 'a pick for a name not in the list changes nothing'
-$alone = Get-Complexities $models $own ('{ "complexities": { "tidy": { "model": "claude-haiku-5-5@low" } } }' | ConvertFrom-Json)
-Assert-Equal "$((Get-ComplexityModels $alone 'tidy') -join ',') $((Get-ComplexityModels $alone 'medium') -join ',')" 'claude-haiku-5-5@low claude-sonnet-5-5@high' 'a pick leaves medium alone'
+$alone = Get-Complexities $models $own ('{ "complexities": { "tidy": { "model": "small-1@low" } } }' | ConvertFrom-Json)
+Assert-Equal "$((Get-ComplexityModels $alone 'tidy') -join ',') $((Get-ComplexityModels $alone 'medium') -join ',')" 'small-1@low mid-1@high' 'a pick leaves medium alone'
 # A pick as its model and effort: after `@`, else the model's in models.json, xhigh for a model not listed.
-Assert-Equal ((@('claude-opus-5-5@high', 'claude-opus-5-5', 'x') | ForEach-Object { $run = Split-Pick $models $_; "$($run.model)=$($run.effort)" }) -join ' ') 'claude-opus-5-5=high claude-opus-5-5=medium x=xhigh' 'a pick as its model and effort'
+Assert-Equal ((@('main-1@high', 'main-1', 'x') | ForEach-Object { $run = Split-Pick $models $_; "$($run.model)=$($run.effort)" }) -join ' ') 'main-1=high main-1=medium x=xhigh' 'a pick as its model and effort'
 # The page offers models.json's two lists, and nothing else is saved: they hold every model and effort that
 # models.json itself names.
 $view = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); complexities = $picked
     workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
-$named = @($models.complexities.PSObject.Properties | ForEach-Object { $_.Value.models }) + @($models.afterFable) +
+$named = @($models.complexities.PSObject.Properties | ForEach-Object { $_.Value.models }) + @($models.windows.deep.after) +
     @($models.models.PSObject.Properties | ForEach-Object { $_.Name }) | ForEach-Object { Split-Pick $models $_ }
 Assert-Equal "$($named.Count -gt 8) $(@($named | Where-Object { $view.models -cnotcontains $_.model -or $view.efforts -cnotcontains $_.effort }).Count)" 'True 0' 'the two lists hold every model and effort that models.json names'
 $medium = $view.complexities | Where-Object { $_.name -eq 'medium' }
-Assert-Equal "$($medium.model) $($medium.effort) $($medium.base.model) $($medium.base.effort)" 'claude-haiku-5-5 low claude-sonnet-5-5 high' 'the page gets the pick and the base'
-Assert-Equal ($view.workers[0].takes | Where-Object { $_.name -eq 'medium' }).model 'claude-haiku-5-5' 'a worker runs on the pick'
-Assert-Equal "$($medium.advisor)|$(($view.complexities | Where-Object { $_.name -eq 'review' }).advisor)|" 'claude-fable-5-2||' 'no advisor for a run on the advisor''s own model'
+Assert-Equal "$($medium.model) $($medium.effort) $($medium.base.model) $($medium.base.effort)" 'small-1 low mid-1 high' 'the page gets the pick and the base'
+Assert-Equal ($view.workers[0].takes | Where-Object { $_.name -eq 'medium' }).model 'small-1' 'a worker runs on the pick'
+Assert-Equal "$($medium.advisor)|$(($view.complexities | Where-Object { $_.name -eq 'review' }).advisor)|" 'deep-1||' 'no advisor for a run on the advisor''s own model'
 # The pick as a change to the settings: saved as model@effort beside what is there; the base's own pick takes it away
 # and makes no entry.
 $file = '{ "complexities": { "low": { "compactAt": 300000 } } }' | ConvertFrom-Json
-$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'low' 'claude-haiku-5-5' 'max'
-$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'tidy' 'claude-opus-5-5' 'low'
-Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000,"model":"claude-haiku-5-5@max"},"tidy":{"model":"claude-opus-5-5@low"}}' 'a pick is saved as model@effort'
-Assert-Equal ((Get-ComplexityModels (Get-Complexities $models $own $file) 'low') -join ',') 'claude-haiku-5-5@max' 'the worker reads the saved pick'
-$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'low' 'claude-opus-5-5' 'medium'
-$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'high' 'claude-opus-5-5' 'xhigh'
-Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000},"tidy":{"model":"claude-opus-5-5@low"}}' 'the base''s pick is not saved'
-foreach ($bad in @('none', 'claude-opus-5-5', 'high'), @('low', 'opus', 'high'), @('low', 'claude opus 5.5 with extra high', 'high'), @('low', 'claude-opus-5-5', 'extra high'), @('low', '', '')) {
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'low' 'small-1' 'max'
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'tidy' 'main-1' 'low'
+Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000,"model":"small-1@max"},"tidy":{"model":"main-1@low"}}' 'a pick is saved as model@effort'
+Assert-Equal ((Get-ComplexityModels (Get-Complexities $models $own $file) 'low') -join ',') 'small-1@max' 'the worker reads the saved pick'
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'low' 'main-1' 'medium'
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'high' 'main-1' 'xhigh'
+Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000},"tidy":{"model":"main-1@low"}}' 'the base''s pick is not saved'
+foreach ($bad in @('none', 'main-1', 'high'), @('low', 'main', 'high'), @('low', 'main 1 with extra high', 'high'), @('low', 'main-1', 'extra high'), @('low', '', '')) {
     $threw = $false
     try { Set-ComplexityModel $file $models (Get-Complexities $models $own $file) $bad[0] $bad[1] $bad[2] | Out-Null } catch { $threw = $true }
     Assert-Equal $threw $true "no pick: $($bad -join ' / ')"
 }
-Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000},"tidy":{"model":"claude-opus-5-5@low"}}' 'a refused pick changes nothing'
+Assert-Equal ($file.complexities | ConvertTo-Json -Depth 8 -Compress) '{"low":{"compactAt":300000},"tidy":{"model":"main-1@low"}}' 'a refused pick changes nothing'
 # A model that the project names outside models.json's list stays a valid pick for its complexity: its effort alone
 # changes, and the way back to it is open.
-$other = '{ "complexities": { "low": { "models": ["claude-opus-4-8@high"] } } }' | ConvertFrom-Json
-$file = Set-ComplexityModel ('{}' | ConvertFrom-Json) $models (Get-Complexities $models $other) 'low' 'claude-opus-4-8' 'max'
-Assert-Equal $file.complexities.low.model 'claude-opus-4-8@max' 'the base''s own model with another effort'
-$file = Set-ComplexityModel $file $models (Get-Complexities $models $other $file) 'low' 'claude-opus-4-8' 'high'
+$other = '{ "complexities": { "low": { "models": ["main-0@high"] } } }' | ConvertFrom-Json
+$file = Set-ComplexityModel ('{}' | ConvertFrom-Json) $models (Get-Complexities $models $other) 'low' 'main-0' 'max'
+Assert-Equal $file.complexities.low.model 'main-0@max' 'the base''s own model with another effort'
+$file = Set-ComplexityModel $file $models (Get-Complexities $models $other $file) 'low' 'main-0' 'high'
 Assert-Equal ($file.complexities.low | ConvertTo-Json -Compress) '{}' 'and back to the base'
 
 # The owner's advisor switch and fallback effort (settings.json, `complexities.<name>.advisor`, `.advisorFallback`) go
@@ -176,12 +176,12 @@ Assert-Equal ($file.complexities | ConvertTo-Json -Compress) '{"review":{"adviso
 $off = Get-Complexities $models $own $file
 $rule = Get-AdvisorRule $models $off
 Assert-Equal "$(@($rule.complexities) -join ',')|$($rule.fallback.review)" 'medium,high|' 'a complexity switched off has no advisor'
-Assert-Equal (Get-FallbackEffort $rule 'review' 'claude-opus-5-5' 'high' $false) 'high' 'and no fallback effort'
+Assert-Equal (Get-FallbackEffort $rule 'review' 'main-1' 'high' $false) 'high' 'and no fallback effort'
 $file = Set-ComplexityAdvisor $file $models $off 'review' $true ''
 Assert-Equal ($file.complexities | ConvertTo-Json -Compress) '{"review":{"advisorFallback":""}}' 'on as in the file; no other effort is saved'
 $rule = Get-AdvisorRule $models (Get-Complexities $models $own $file)
 Assert-Equal "$(@($rule.complexities) -join ',')|$($rule.fallback.review)" 'medium,high,review|' 'the advisor with the fallback '''''
-Assert-Equal (Get-FallbackEffort $rule 'review' 'claude-opus-5-5' 'high' $false) 'high' 'the same effort without the advisor'
+Assert-Equal (Get-FallbackEffort $rule 'review' 'main-1' 'high' $false) 'high' 'the same effort without the advisor'
 $file = Set-ComplexityAdvisor $file $models (Get-Complexities $models $own $file) 'review' $true 'xhigh'
 $file = Set-ComplexityAdvisor $file $models (Get-Complexities $models $own $file) 'low' $true 'max'
 Assert-Equal ($file.complexities | ConvertTo-Json -Compress) '{"review":{},"low":{"advisor":true,"advisorFallback":"max"}}' 'the values of the files leave no key'
@@ -193,12 +193,12 @@ foreach ($bad in @('none', $true, 'high'), @('low', $true, 'extra high'), @('low
     Assert-Equal $threw $true "no advisor pick: $($bad -join ' / ')"
 }
 # The advisor's model: the owner's pick for the project goes over models.json's; models.json's own is not saved.
-$file = Set-AdvisorModel $file $models 'claude-opus-5-5'
-Assert-Equal (Get-AdvisorRule $models $list $file).model 'claude-opus-5-5' 'the advisor''s model of the settings'
-Assert-Equal (Get-AdvisorRule $models $list $null).model 'claude-fable-5-2' 'models.json''s without settings'
-$file = Set-AdvisorModel $file $models 'claude-fable-5-2'
+$file = Set-AdvisorModel $file $models 'main-1'
+Assert-Equal (Get-AdvisorRule $models $list $file).model 'main-1' 'the advisor''s model of the settings'
+Assert-Equal (Get-AdvisorRule $models $list $null).model 'deep-1' 'models.json''s without settings'
+$file = Set-AdvisorModel $file $models 'deep-1'
 Assert-Equal ($file.advisor | ConvertTo-Json -Compress) '{}' 'models.json''s advisor model is not saved'
-foreach ($bad in 'claude-opus-4-8', 'opus', '') {
+foreach ($bad in 'main-0', 'main', '') {
     $threw = $false
     try { Set-AdvisorModel $file $models $bad | Out-Null } catch { $threw = $true }
     Assert-Equal $threw $true "no advisor model: '$bad'"
@@ -267,20 +267,20 @@ Assert-Equal @((New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(
 function New-Json([string] $text) {
     return $text | ConvertFrom-Json
 }
-$game = '{"accounts":{"main":{"stopAt":{"five_hour":0.9},"uses":["frontdesk","personal","worker:1"]},"second":{"configDir":"C:/Users/u/.claude-second","uses":[]}},"keep":{"personal":0.07},"workers":{"1":{"enabled":true},"3":{"enabled":false}},"ntfy":{"topic":"t"}}'
-$app = '{"accounts":{"main":{"uses":["personal","worker:4"]},"second":{"configDir":"C:\\Users\\u\\.claude-other\\","uses":["worker:5"]}},"keep":{"personal":0.15,"frontdesk":0.1},"workers":{"4":{"enabled":true},"3":{"enabled":true,"ghConfigDir":"x"}}}'
+$game = '{"accounts":{"main":{"stopAt":{"short":0.9},"uses":["frontdesk","personal","worker:1"]},"second":{"configDir":"C:/Users/u/.test-second","uses":[]}},"keep":{"personal":0.07},"workers":{"1":{"enabled":true},"3":{"enabled":false}},"ntfy":{"topic":"t"}}'
+$app = '{"accounts":{"main":{"uses":["personal","worker:4"]},"second":{"configDir":"C:\\Users\\u\\.test-other\\","uses":["worker:5"]}},"keep":{"personal":0.15,"frontdesk":0.1},"workers":{"4":{"enabled":true},"3":{"enabled":true,"ghConfigDir":"x"}}}'
 function Show-Register($pc) {
     $accounts = $pc.accounts.PSObject.Properties | ForEach-Object { "$(Get-FolderKey ([string]$_.Value.configDir))=$(@($_.Value.uses | Sort-Object) -join ',')/$([bool]$_.Value.stopAt)" } | Sort-Object
     return "$($accounts -join ' ') keep=$($pc.keep.personal),$($pc.keep.frontdesk) workers=$(($pc.workers.PSObject.Properties | Sort-Object Name | ForEach-Object { "$($_.Name):$($_.Value.enabled):$($_.Value.ghConfigDir)" }) -join ',')"
 }
 $merged = Merge-PcSettings (Merge-PcSettings ([pscustomobject]@{}) (New-Json $game)) (New-Json $app)
-Assert-Equal (Show-Register $merged) '=frontdesk,personal,worker:1,worker:4/True c:/users/u/.claude-other=worker:5/False c:/users/u/.claude-second=/False keep=0.07,0.1 workers=1:True:,3:False:x,4:True:' 'two projects merge into one register'
+Assert-Equal (Show-Register $merged) '=frontdesk,personal,worker:1,worker:4/True c:/users/u/.test-other=worker:5/False c:/users/u/.test-second=/False keep=0.07,0.1 workers=1:True:,3:False:x,4:True:' 'two projects merge into one register'
 Assert-Equal (@($merged.accounts.PSObject.Properties.Name) -join ',') 'main,second,second-2' 'a name that another login folder has gets a number'
 Assert-Equal $merged.ntfy $null 'only the PC keys merge'
 $again = Merge-PcSettings $merged (New-Json $app)
 Assert-Equal (Show-Register $again) (Show-Register $merged) 'a second merge of the same project changes nothing'
 Assert-Equal @($again.accounts.PSObject.Properties).Count 3 'and adds no entry'
-$other = Merge-PcSettings (Merge-PcSettings ([pscustomobject]@{}) (New-Json '{"accounts":{"main":{"uses":["personal","worker:4"]}},"workers":{"4":{"enabled":true}}}')) (New-Json '{"accounts":{"main":{"stopAt":{"five_hour":0.9},"uses":["frontdesk","personal","worker:1"]}},"workers":{"1":{"enabled":false}}}')
+$other = Merge-PcSettings (Merge-PcSettings ([pscustomobject]@{}) (New-Json '{"accounts":{"main":{"uses":["personal","worker:4"]}},"workers":{"4":{"enabled":true}}}')) (New-Json '{"accounts":{"main":{"stopAt":{"short":0.9},"uses":["frontdesk","personal","worker:1"]}},"workers":{"1":{"enabled":false}}}')
 Assert-Equal (Show-Register $other) '=frontdesk,personal,worker:1,worker:4/True keep=, workers=1:False:,4:True:' 'the other order of the projects gives the same register'
 
 # On disk: a read moves a project's PC keys to the PC's file, once; a save puts each key into its file.
@@ -301,10 +301,10 @@ Assert-Equal (Show-Register (Read-PcSettings)) (Show-Register $merged) 'the seco
 $read = Read-ProjectSettings $two
 Assert-Equal "$($read.ntfy) $(@($read.accounts.main.uses).Count)" ' 4' 'the second project reads the PC''s register, and no key of the first'
 $read.workers.'4'.enabled = $false
-Set-JsonProperty $read 'model' 'claude-opus-5-5'
+Set-JsonProperty $read 'model' 'main-1'
 Save-ProjectSettings $two $read
 Assert-Equal "$((Read-ProjectSettings $one).workers.'4'.enabled) $((Read-ProjectSettings $one).model)" 'False ' 'a save of a PC key reaches the other project; a key of its own does not'
-Assert-Equal (Get-Content (Join-Path $two '.queue/settings.json') -Raw | ConvertFrom-Json).model 'claude-opus-5-5' 'the project''s own key is in its file'
+Assert-Equal (Get-Content (Join-Path $two '.queue/settings.json') -Raw | ConvertFrom-Json).model 'main-1' 'the project''s own key is in its file'
 # A file that does not parse is not an empty one.
 Set-Content (Join-Path $PcDir 'settings.json') '{ "accounts": ' -Encoding utf8
 $threw = $false
@@ -324,12 +324,12 @@ try {
 Assert-Equal $threw $true 'so does an empty one'
 
 # The accounts' records move too: the newer reading goes on, with the window that only the older one has.
-Set-Content (Join-Path $one '.queue/usage.json') '{"default":{"at":5,"five_hour":{"used":0.1},"fable":{"used":0.4}},"x":{"at":1}}' -Encoding utf8
-Set-Content (Join-Path $PcDir 'usage.json') '{"default":{"at":9,"five_hour":{"used":0.3}}}' -Encoding utf8
+Set-Content (Join-Path $one '.queue/usage.json') '{"default":{"at":5,"short":{"used":0.1},"deep":{"used":0.4}},"x":{"at":1}}' -Encoding utf8
+Set-Content (Join-Path $PcDir 'usage.json') '{"default":{"at":9,"short":{"used":0.3}}}' -Encoding utf8
 Set-Content (Join-Path $one '.queue/out.json') 'not json' -Encoding utf8
 Move-PcRecords $one
 $usage = Get-Content (Join-Path $PcDir 'usage.json') -Raw | ConvertFrom-Json
-Assert-Equal "$($usage.default.at) $($usage.default.five_hour.used) $($usage.default.fable.used) $($usage.x.at)" '9 0.3 0.4 1' 'the usage of two projects in one file'
+Assert-Equal "$($usage.default.at) $($usage.default.short.used) $($usage.default.deep.used) $($usage.x.at)" '9 0.3 0.4 1' 'the usage of two projects in one file'
 Assert-Equal "$(Test-Path (Join-Path $one '.queue/usage.json')) $(Test-Path (Join-Path $one '.queue/out.json')) $(Test-Path (Join-Path $PcDir 'out.json'))" 'False False False' 'the project keeps no record; one that does not parse is dropped'
 Remove-Item (Split-Path $PcDir) -Recurse -Force
 

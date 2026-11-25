@@ -25,6 +25,9 @@ try {
     Add-Content (Join-Path $Main '.queue/app.log') "$(Get-Date -Format s) plugins: $_" -Encoding utf8
 }
 Start-CodeWatch (@((Join-Path $Main 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }))
+# The provider (docs/PLUGINS.md, A provider): its models and windows, its logins, and what a run's log says. The page
+# runs on without one. Its calls get the settings as the snapshot last read them.
+Set-Provider (Get-Provider $plugins) @{ Project = $Main; Copy = $Main; Machine = { $script:saved } }
 if (-not $Port) {
     $Port = [int]$config.port
 }
@@ -139,49 +142,60 @@ function Read-Runs {
     return $script:runs
 }
 
-# A login's state from its files, no process started: signed in (a refresh token), its plan and its email.
+# A login's state as the provider reads it, no process started (docs/PLUGINS.md, GetLogin): signed in, its plan and
+# its email. With a provider that cannot tell: signed in.
 function Get-LoginInfo([string] $configDir) {
-    $profileFile = if ($configDir) { Join-Path $configDir '.claude.json' } else { Join-Path $HOME '.claude.json' }
-    $credentials = Read-Credentials $configDir
-    $info = @{ signedIn = [bool]($credentials -and $credentials.claudeAiOauth -and $credentials.claudeAiOauth.refreshToken) }
+    try {
+        $login = Invoke-Provider 'GetLogin' @{ Login = [string]$configDir }
+    } catch {
+        return @{ signedIn = $false }
+    }
+    if (-not $login) {
+        return @{ signedIn = [bool]$script:Provider }
+    }
+    $info = @{ signedIn = [bool]$login.SignedIn }
     if ($info.signedIn) {
-        $info.plan = Get-PlanName $credentials
-        # A regex, not ConvertFrom-Json: the file can hold keys differing only in case, which Windows PowerShell refuses.
-        if (Test-Path $profileFile) {
-            $match = [regex]::Match((Get-Content $profileFile -Raw -Encoding UTF8), '"emailAddress"\s*:\s*"([^"]+)"')
-            if ($match.Success) {
-                $info.email = $match.Groups[1].Value
-            }
+        $info.plan = [string]$login.Plan
+        if ($login.Email) {
+            $info.email = [string]$login.Email
         }
     }
     return $info
 }
 
-# The sign-in started from the page (docs/APP.md, Accounts): one at a time, `claude auth login` for an account's
-# config folder. The page shows its sign-in link and passes it the code; on a PC with a browser it may finish alone.
+# The sign-in started from the page (docs/APP.md, Accounts): one at a time, the provider's sign-in command for an
+# account's login folder (docs/PLUGINS.md, SignIn). The page shows its sign-in link and passes it the code; on a PC
+# with a browser it may finish alone.
 $script:login = $null
 function Start-Login([string] $name, [string] $configDir, [string] $email) {
     Stop-Login
+    $start = Invoke-Provider 'SignIn' @{ Login = $configDir; Email = $email }
+    if (-not $start -or -not $start.Command) {
+        throw 'the provider has no sign-in from the page: sign the account in from a terminal'
+    }
     $out = Join-Path $mainQueue 'login.txt'
     Remove-Item $out -ErrorAction SilentlyContinue
     $info = New-Object System.Diagnostics.ProcessStartInfo
-    $emailArg = if ($email) { " --email `"$email`"" } else { '' }
     if ($OnWindows) {
         $info.FileName = $env:ComSpec
-        $info.Arguments = "/c claude auth login$emailArg > `"$out`" 2>&1"
+        $info.Arguments = "/c $($start.Command) > `"$out`" 2>&1"
     } else {
         $info.FileName = '/bin/sh'
         $info.ArgumentList.Add('-c')
-        $info.ArgumentList.Add("claude auth login$emailArg > '$out' 2>&1")
+        $info.ArgumentList.Add("$($start.Command) > '$out' 2>&1")
     }
     $info.UseShellExecute = $false
     $info.RedirectStandardInput = $true
     $info.CreateNoWindow = $true
-    # No folder: the command-line login (~/.claude).
-    if ($configDir) {
-        $info.EnvironmentVariables['CLAUDE_CONFIG_DIR'] = $configDir
-    } else {
-        $info.EnvironmentVariables.Remove('CLAUDE_CONFIG_DIR')
+    # The provider's variables, its login folder among them. One with no value is taken away.
+    if ($start.Env) {
+        foreach ($key in @($start.Env.Keys)) {
+            if ($null -ne $start.Env[$key]) {
+                $info.EnvironmentVariables[$key] = [string]$start.Env[$key]
+            } else {
+                $info.EnvironmentVariables.Remove($key)
+            }
+        }
     }
     $script:login = @{ account = $name; configDir = $configDir; out = $out; at = Get-Now; ended = $null
         process = [System.Diagnostics.Process]::Start($info) }
@@ -194,7 +208,8 @@ function Stop-Login {
     $script:login = $null
 }
 
-# The sign-in as the page shows it: starting, waiting (its link), done or failed (the CLI's last line). A finished one
+# The sign-in as the page shows it: starting, waiting (its link), done or failed (the tool's last line), as the
+# provider reads its output (docs/PLUGINS.md, ReadSignIn). A finished one
 # stays two minutes; one waiting 15 minutes is ended.
 function Get-LoginView {
     $login = $script:login
@@ -211,7 +226,12 @@ function Get-LoginView {
         }
     }
     $view = @{ account = $login.account; state = 'starting' }
-    $url = [regex]::Match($text, 'https://\S*oauth/authorize\S*').Value
+    $read = $null
+    try {
+        $read = Invoke-Provider 'ReadSignIn' @{ Text = $text }
+    } catch {
+    }
+    $url = if ($read) { [string]$read.Url } else { '' }
     if ($url) {
         $view.url = $url
         $view.state = 'waiting'
@@ -229,8 +249,7 @@ function Get-LoginView {
             $view.state = 'done'
         } else {
             $view.state = 'failed'
-            $last = @($text -split "`n" | ForEach-Object { ($_ -replace '^.*prompted >', '').Trim() } | Where-Object { $_ })
-            $view.message = if ($last) { $last[-1] } else { 'The sign-in ended.' }
+            $view.message = if ($read -and $read.Message) { [string]$read.Message } else { 'The sign-in ended.' }
         }
         if ((Get-Now) - $login.ended -gt 120) {
             $script:login = $null
@@ -281,15 +300,15 @@ function Set-Enabled([string] $worker, [bool] $enabled) {
     }
 }
 
-# Ends a worker's run now: the process started with its clone's MCP config, and its children. Work since the run's
-# last checkpoint push is lost.
+# Ends a worker's run now: the process its script started (the `pid` of its running state) and that one's children.
+# Work since the run's last checkpoint push is lost.
 function Stop-Run([string] $worker, $state) {
-    $mcp = (Join-Path (Get-Clone $worker $state) '.queue/mcp.json').ToLowerInvariant()
-    $runs = @(Get-CommandLines | Where-Object { $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($mcp) })
-    foreach ($run in $runs) {
-        Stop-ProcessTree $run.ProcessId
+    $id = if ($state -and $state.state -eq 'running') { [int]$state.pid } else { 0 }
+    if (-not $id -or -not (Get-Process -Id $id -ErrorAction SilentlyContinue)) {
+        return 0
     }
-    return $runs.Count
+    Stop-ProcessTree $id
+    return 1
 }
 
 # A worker the owner added (docs/APP.md, Workers): its state file until its script writes one, 'setup' while
@@ -778,7 +797,10 @@ function Invoke-Action($request) {
             return "color: $($request.value)"
         }
         'login' {
-            # An account new to the register gets its own config folder, ~/.claude-<name>.
+            # An account new to the register gets its own login folder (state.ps1, Get-NewAccountDir).
+            if (-not (Test-ProviderHook 'SignIn')) {
+                throw 'the provider has no sign-in from the page: sign the account in from a terminal'
+            }
             $name = [string]$request.account
             $email = [string]$request.email
             if ($name -notmatch '^[a-z0-9][a-z0-9-]{0,30}$') {
@@ -821,28 +843,19 @@ function Invoke-Action($request) {
             return 'sign-in cancelled'
         }
         'ping' {
-            # One Haiku reply with no tools, settings, plugins or CLAUDE.md (about 770 tokens): it starts the 5-hour window.
+            # The provider's cheapest request (docs/PLUGINS.md, Probe): it starts the account's windows.
             $name = [string]$request.account
             $entry = (Read-SettingsToEdit).accounts.$name
             if (-not $entry) {
                 throw "no account $name"
             }
-            $previous = $env:CLAUDE_CONFIG_DIR
-            if ($entry.configDir) {
-                $env:CLAUDE_CONFIG_DIR = $entry.configDir
-            } else {
-                Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue
+            if (-not (Test-ProviderHook 'Probe')) {
+                throw 'the provider has no ping'
             }
-            # The temp folder has no CLAUDE.md for the CLI to find.
-            Push-Location ([IO.Path]::GetTempPath())
-            try {
-                & claude -p . @BareRequestArgs | Out-Null
-                if ($LASTEXITCODE) {
-                    throw "the ping failed (exit $LASTEXITCODE): is the account signed in?"
-                }
-            } finally {
-                Pop-Location
-                $env:CLAUDE_CONFIG_DIR = $previous
+            # The temp folder holds no project for the tool to read.
+            $reply = Invoke-Provider 'Probe' @{ Login = [string]$entry.configDir; Dir = [IO.Path]::GetTempPath() }
+            if (-not $reply -or -not $reply.Answered -or $reply.Kind) {
+                throw "the ping failed: $(if ($reply -and $reply.Text) { $reply.Text } else { 'is the account signed in?' })"
             }
             return "pinged: $name"
         }
@@ -861,12 +874,10 @@ function Invoke-Action($request) {
                 Stop-Login
             }
             if ($entry.configDir) {
-                $previous = $env:CLAUDE_CONFIG_DIR
-                $env:CLAUDE_CONFIG_DIR = $entry.configDir
                 try {
-                    & claude auth logout | Out-Null
-                } finally {
-                    $env:CLAUDE_CONFIG_DIR = $previous
+                    Invoke-Provider 'SignOut' @{ Login = [string]$entry.configDir } | Out-Null
+                } catch {
+                    Write-AppLog "sign-out of ${name}: $_"
                 }
             }
             $settings.accounts.PSObject.Properties.Remove($name)
@@ -930,11 +941,11 @@ function Invoke-Action($request) {
         }
         'stop-at' {
             # The account's stop line for one window (docs/QUEUE.md, Settings, `stopAt`): the share where its workers stop,
-            # or in the Fable week where they stop Fable (limits.ps1, Test-FableOut).
+            # or in a window of some models where no run gets one of them as its advisor (limits.ps1, Get-ModelLines).
             $name = [string]$request.account
             $window = [string]$request.window
             $value = [math]::Round([double]$request.value, 2)
-            if (@('five_hour', 'seven_day', $FableWindow) -notcontains $window -or $value -lt 0.1 -or $value -gt 1) {
+            if (-not $DefaultStopAt.ContainsKey($window) -or $value -lt 0.1 -or $value -gt 1) {
                 throw 'the stop line is a share between 10 % and 100 % of a window'
             }
             $settings = Read-SettingsToEdit
@@ -950,14 +961,15 @@ function Invoke-Action($request) {
             return "stop line: $name $window $value"
         }
         'pick-up' {
-            # The account's pick-up limit of one ticket size in the 5-hour window (docs/QUEUE.md, Settings, `pickUp`):
-            # from this share its workers take no new ticket of that size. In the Fable week, its design line.
+            # The account's pick-up limit of one ticket size in a window that has them (docs/QUEUE.md, Settings,
+            # `pickUp`): from this share its workers take no new ticket of that size. In a window of some models, the
+            # line from which no run starts on them.
             $name = [string]$request.account
             $window = [string]$request.window
             $size = [string]$request.size
             $value = [math]::Round([double]$request.value, 2)
             if (-not $DefaultPickUp.ContainsKey($window) -or @($DefaultPickUp[$window].Keys) -cnotcontains $size -or $value -lt 0 -or $value -gt 1) {
-                throw 'a pick-up limit is a share between 0 % and 100 %: of the 5-hour window for size S, M or L, of the Fable week for design'
+                throw 'a pick-up limit is a share between 0 % and 100 %, of a window that has that limit'
             }
             $settings = Read-SettingsToEdit
             $entry = $settings.accounts.$name

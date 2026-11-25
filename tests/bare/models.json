@@ -1,0 +1,12 @@
+{
+  "models": { "only": {} },
+  "complexities": {
+    "low": { "models": ["only"] },
+    "medium": { "models": ["only"] },
+    "high": { "models": ["only"] },
+    "design": { "models": ["only"] }
+  },
+  "windows": {
+    "month": { "title": "Month", "seconds": 2592000 }
+  }
+}

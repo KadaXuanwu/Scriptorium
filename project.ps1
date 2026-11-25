@@ -8,7 +8,7 @@ function Resolve-Project([string] $Project) {
     return (Resolve-Path $Project).Path.TrimEnd('\', '/')
 }
 
-# The project's scriptorium.json with its defaults: port 8770, no repos, no extra tools, no plugins. Throws for a
+# The project's scriptorium.json with its defaults: port 8770, no repos, no extra commands or tools, no plugins. Throws for a
 # missing file or a name that is not letters, digits and hyphens.
 function Read-Project([string] $Project) {
     $file = Join-Path $Project 'scriptorium.json'
@@ -19,7 +19,7 @@ function Read-Project([string] $Project) {
     if ([string]$config.name -notmatch '^[A-Za-z0-9-]+$') {
         throw "scriptorium.json: name takes letters, digits and hyphens, not '$($config.name)'"
     }
-    $defaults = @{ port = 8770; repos = @(); allowedTools = @(); plugins = [pscustomobject]@{} }
+    $defaults = @{ port = 8770; repos = @(); commands = @(); allowedTools = @(); plugins = [pscustomobject]@{} }
     foreach ($key in $defaults.Keys) {
         if ($null -eq $config.$key) {
             $config | Add-Member -NotePropertyName $key -NotePropertyValue $defaults[$key] -Force
@@ -28,25 +28,40 @@ function Read-Project([string] $Project) {
     return $config
 }
 
-# The base's model list (docs/QUEUE.md, Models), read again at each use so an edit applies at once.
-function Read-Models {
-    return Get-Content (Join-Path $PSScriptRoot 'models.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+# The base's ticket complexities (docs/QUEUE.md, Models): what each means. The provider gives each its models.
+$BaseComplexities = [ordered]@{
+    low = 'Clear what to do: a doc, a number, a rename, more of a pattern'
+    medium = 'Judgement within known patterns: a feature or a bug in one part'
+    high = 'Hard to get right: core rules, work across parts, a bug nobody can explain'
+    design = 'The worker finds the shape of the solution, and the choice stays'
 }
 
-# The ticket complexities (docs/CONFIG.md, Complexities), the one list every script and the page read: models.json's,
-# with scriptorium.json's `complexities` over them, in this order: low, medium, high, the project's own, design. Each
+# The provider's model list (docs/PLUGINS.md, A provider: its models.json), read again at each use so an edit applies
+# at once. With no provider (plugins.ps1, Set-Provider): a list with no model, so the page still shows the queue.
+function Read-Models {
+    if (-not $script:Provider) {
+        return [pscustomobject]@{ models = [pscustomobject]@{}; efforts = @(); complexities = [pscustomobject]@{} }
+    }
+    return Get-Content (Join-Path $script:Provider.Dir 'models.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+}
+
+# The ticket complexities (docs/CONFIG.md, Complexities), the one list every script and the page read: the base's with
+# the provider's models.json over them, and scriptorium.json's `complexities` over those, in this order: low, medium,
+# high, the provider's and the project's own, design. Each
 # @{ name; description; models; base; advisor; advisorFallback; baseAdvisor; baseFallback; compactAt }. A complexity of
 # the project's own needs a description; with no models it runs on medium's. The model the owner picked on the page
 # ($settings: the project's settings.json, `complexities.<name>.model`) is its one candidate, and `base` is the first
 # candidate without that pick. The owner's advisor switch and fallback effort (`complexities.<name>.advisor`,
 # `.advisorFallback`) go over the files' too, and `baseAdvisor` and `baseFallback` keep the files' values. Its compact
 # size (docs/CONFIG.md, The compact size) is the one the owner set on the page (`complexities.<name>.compactAt`), else
-# its own in scriptorium.json, else the project's, else models.json's. Throws for a missing description, a name that
-# is no label or a compact size out of range.
+# its own in scriptorium.json, else the project's, else models.json's; 0 with a provider that has none. Throws for a
+# missing description, a name that is no label or a compact size out of range.
 function Get-Complexities($models, $config, $settings) {
-    $compactAt = ConvertTo-CompactAt $(if ($config -and $null -ne $config.compactAt) { $config.compactAt } else { $models.compactAt }) 'compactAt'
+    $range = @($models.compactRange)
+    $compactAt = if ($config -and $null -ne $config.compactAt) { $config.compactAt } else { $models.compactAt }
+    $compactAt = if ($null -ne $compactAt) { ConvertTo-CompactAt $compactAt 'compactAt' $range } else { 0 }
     $paged = if ($settings -and $settings.complexities) { $settings.complexities } else { [pscustomobject]@{} }
-    $base = @($models.complexities.PSObject.Properties | ForEach-Object { $_.Name })
+    $base = @($BaseComplexities.Keys) + @($models.complexities.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { -not $BaseComplexities.Contains($_) })
     $changes = if ($config -and $config.complexities) { $config.complexities } else { [pscustomobject]@{} }
     $own = @($changes.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { $base -notcontains $_ })
     $names = @($base | Where-Object { $_ -ne 'design' }) + $own + @($base | Where-Object { $_ -eq 'design' })
@@ -55,7 +70,7 @@ function Get-Complexities($models, $config, $settings) {
         if ($name -cnotmatch '^[a-z0-9][a-z0-9-]*$') {
             throw "complexity '$name': lower-case letters, digits and hyphens only"
         }
-        $entry = @{ name = $name; description = ''; models = @(); base = ''; advisor = $false; advisorFallback = ''; compactAt = $compactAt }
+        $entry = @{ name = $name; description = [string]$BaseComplexities[$name]; models = @(); base = ''; advisor = $false; advisorFallback = ''; compactAt = $compactAt }
         foreach ($source in @($models.complexities.$name, $changes.$name)) {
             if (-not $source) {
                 continue
@@ -73,13 +88,13 @@ function Get-Complexities($models, $config, $settings) {
                 $entry.advisorFallback = [string]$source.advisorFallback
             }
             if ($null -ne $source.compactAt) {
-                $entry.compactAt = ConvertTo-CompactAt $source.compactAt "complexity '$name'"
+                $entry.compactAt = ConvertTo-CompactAt $source.compactAt "complexity '$name'" $range
             }
         }
         $entry.baseAdvisor = $entry.advisor
         $entry.baseFallback = $entry.advisorFallback
         if ($paged.$name -and $null -ne $paged.$name.compactAt) {
-            $entry.compactAt = ConvertTo-CompactAt $paged.$name.compactAt "settings.json, complexity '$name'"
+            $entry.compactAt = ConvertTo-CompactAt $paged.$name.compactAt "settings.json, complexity '$name'" $range
         }
         # Not a truth test: the owner's off and '' (no other effort) must go over a true and an effort of the files.
         if ($paged.$name -and $null -ne $paged.$name.advisor) {
@@ -104,30 +119,26 @@ function Get-Complexities($models, $config, $settings) {
     return $list
 }
 
-# A pick (`claude-opus-5-5@high`) as its model and effort: the effort after `@`, else that model's in models.json,
-# xhigh for a model not listed there (as worker.ps1, Get-RunModel).
+# A pick (`model@effort`) as its model and effort: the effort after `@`, else that model's in models.json, else
+# models.json's `effort`, the one of a model not listed there (as worker.ps1, Get-RunModel).
 function Split-Pick($models, [string] $pick) {
     $model, $effort = $pick -split '@'
     if (-not $effort) {
-        $effort = if ($models.models.$model) { [string]$models.models.$model.effort } else { 'xhigh' }
+        $effort = if ($model -and $models.models.$model) { [string]$models.models.$model.effort } else { [string]$models.effort }
     }
-    return @{ model = $model; effort = $effort }
+    return @{ model = [string]$model; effort = [string]$effort }
 }
 
 # A compact size (docs/CONFIG.md, The compact size): the context size at which a run compacts, in whole tokens in
-# plain digits, from 67000 to 967000, which are the windows Claude Code takes (Get-CompactWindow). Throws for
-# anything else: Claude Code read '250k' as its minimum without a word.
-function ConvertTo-CompactAt($value, [string] $where) {
-    if ("$value" -notmatch '^\d{5,6}$' -or [int]"$value" -lt 67000 -or [int]"$value" -gt 967000) {
-        throw "${where}: '$value' is no compact size: write whole tokens in digits, from 67000 to 967000"
+# plain digits, within the sizes the provider takes ($range: models.json's `compactRange`, the least and the most;
+# any size without one). Throws for anything else: a size written as '250k' was once read as the least without a word.
+function ConvertTo-CompactAt($value, [string] $where, $range = @()) {
+    $least = if (@($range).Count -eq 2) { [int]$range[0] } else { 1 }
+    $most = if (@($range).Count -eq 2) { [int]$range[1] } else { [int]::MaxValue }
+    if ("$value" -notmatch '^\d{1,9}$' -or [int]"$value" -lt $least -or [int]"$value" -gt $most) {
+        throw "${where}: '$value' is no compact size: write whole tokens in digits$(if (@($range).Count -eq 2) { ", from $least to $most" })"
     }
     return [int]"$value"
-}
-
-# The window that makes Claude Code compact a run at $at tokens (CLAUDE_CODE_AUTO_COMPACT_WINDOW, from 100000 to
-# 1000000): Claude Code compacts 33000 tokens before its window (measured with Claude Code 2.1.323).
-function Get-CompactWindow([int] $at) {
-    return $at + 33000
 }
 
 # The compact size of a ticket's complexity, from the list Get-Complexities gives; medium's for a name not in it,

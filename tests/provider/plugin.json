@@ -1,0 +1,9 @@
+{
+    "name": "test",
+    "title": "The test provider",
+    "version": "1.0.0",
+    "api": 1,
+    "description": "A provider for the base's tests: a coding tool that does not exist, with a log of plain lines.",
+    "provider": true,
+    "skills": ".test/skills"
+}

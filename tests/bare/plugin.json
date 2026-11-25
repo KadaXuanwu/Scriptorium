@@ -1,0 +1,8 @@
+{
+    "name": "bare",
+    "title": "The bare provider",
+    "version": "1.0.0",
+    "api": 1,
+    "description": "A provider for the base's tests with only the hooks a provider must have, and one window of a month.",
+    "provider": true
+}

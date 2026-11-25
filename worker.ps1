@@ -1,7 +1,8 @@
 # A worker script (docs/QUEUE.md): has its plugins make its clone's environment ready, claims the next job (the
 # dispatcher: a new ticket goes to the idle worker whose account's free room most wants spending) and starts a run, a
-# headless Claude session on it with what the plugins give it (docs/PLUGINS.md). Watches the plan's usage while a run works, and resumes a run
-# the usage limit cut off once the limit resets. Loops until stopped; started at logon by setup.ps1's task.
+# headless session of the provider's coding tool on it with what the plugins give it (docs/PLUGINS.md). Watches the
+# plan's usage while a run works, and resumes a run the usage limit cut off once the limit resets. Loops until stopped;
+# started at logon by setup.ps1's task.
 param(
     # The project's main checkout.
     [Parameter(Mandatory = $true)] [string] $Project,
@@ -21,7 +22,6 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'areas.ps1')
 . (Join-Path $PSScriptRoot 'comments.ps1')
 . (Join-Path $PSScriptRoot 'away.ps1')
-. (Join-Path $PSScriptRoot 'usage.ps1')
 
 $Project = Resolve-Project $Project
 $config = Read-Project $Project
@@ -47,7 +47,7 @@ $stopFile = Join-Path $queueDir 'stop.md'
 $commentsFile = Join-Path $queueDir 'comments.md'
 # There while the owner is away (docs/QUEUE.md, No blocking; away.ps1).
 $awayFile = Join-Path $queueDir 'away.md'
-# Written by a run that hands its ticket on at the Fable limit (docs/QUEUE.md, The Fable limit).
+# Written by a run that hands its ticket on at its model's limit (docs/QUEUE.md, A model's limit).
 $handoffFile = Join-Path $queueDir 'handoff.md'
 $progressFile = Join-Path $queueDir 'progress.json'
 $mainQueueDir = Join-Path $Project '.queue'
@@ -61,21 +61,21 @@ $forceFile = Join-Path $mainQueueDir "force-$Id.json"
 $wakeMerger = Join-Path $mainQueueDir 'wake-merger'
 $wakeWorkers = Join-Path $mainQueueDir 'wake-workers'
 New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir | Out-Null
-# Every turn reads the whole context again, so Claude Code compacts a run's context at the compact size of the job's
-# complexity, which Invoke-Worker sets for each run (docs/CONFIG.md, The compact size). A run
-# never hands off to a fresh session: that cost 24 turns of reading, a compaction 7.
-# Tools no run used in 631 logs; without them every turn reads 4,750 tokens less. Workflow: given in 89 of 698 logs,
-# never called, 1,977 tokens. Skill and ToolSearch stay: without them the tools Claude Code holds back load in full.
-# PowerShell (trial): 3,800 tokens, 749 calls against 40,868 of Bash; the run's one shell is Bash (PLAYBOOK.md, One shell).
-# Glob: 275 tokens, 10 calls in 328 logs; a run finds files with Grep and Bash.
-$UnusedTools = 'Task,CronCreate,CronDelete,CronList,DesignSync,EnterWorktree,ExitWorktree,ListAgents,NotebookEdit,' +
-    'PushNotification,RemoteTrigger,ReportFindings,SendMessage,WebFetch,WebSearch,Workflow,PowerShell,Glob'
+# The provider (docs/PLUGINS.md, A provider): the plugin that runs the coding tool, reads its logs and knows its
+# accounts and windows. Without one the worker starts no run.
+$provider = Get-Provider $plugins
+Set-Provider $provider @{ Project = $Project; Copy = $Clone; Worker = $Id; QueueDir = $queueDir
+    Machine = { Read-Settings }; Log = { param($text) Write-Log "$text" } }
+# Every turn reads the whole context again, so a run's context is compacted at the compact size of the job's
+# complexity, where the provider can (docs/CONFIG.md, The compact size). A run never hands off to a fresh session:
+# that cost 24 turns of reading, a compaction 7.
 Set-Location $Clone
 $repo = (& gh repo view --json nameWithOwner -q .nameWithOwner)
 # The repo's owner, whose other repos a ticket's `repo:<Name>` label names.
 $owner = $repo.Split('/')[0]
 
-$windows = @('five_hour', 'seven_day')
+# The windows of the whole account, shortest first: the provider's (limits.ps1, Set-Windows).
+$windows = @($WindowSeconds.Keys)
 
 # Windows PowerShell's ConvertFrom-Json passes a JSON list on as one object; returning it from a variable unrolls it.
 function Get-GhJson([string[]] $GhArgs, [string] $Slug = $repo) {
@@ -368,28 +368,26 @@ function Get-ConfigDir([string] $account) {
     return $account
 }
 
-# The login's plan size (budget.ps1), read from its credentials each time, so a plan change applies at once.
-function Get-AccountPlanSize([string] $account) {
-    $credentials = Read-Credentials (Get-ConfigDir $account)
-    if (-not $credentials) {
-        return 1.0
+# An account's login as the provider reads it (docs/PLUGINS.md, GetLogin): @{ SignedIn; Email; Plan; PlanSize; Stamp },
+# read each time, so a sign-in or a plan change applies at once. With a provider that cannot tell: signed in, on a plan
+# of size 1.
+function Get-Login([string] $account) {
+    $login = Invoke-Provider 'GetLogin' @{ Login = [string](Get-ConfigDir $account) }
+    if (-not $login) {
+        return @{ SignedIn = $true; Email = ''; Plan = ''; PlanSize = 1.0; Stamp = '' }
     }
-    return Get-PlanSize ([string]$credentials.claudeAiOauth.rateLimitTier)
+    return $login
 }
 
-# The login's email, from its profile file (as the queue app reads it); $null when signed out.
+# The login's plan size, relative to the provider's smallest plan: a run costs a bigger plan a smaller share.
+function Get-AccountPlanSize([string] $account) {
+    $size = [double](Get-Login $account).PlanSize
+    return $(if ($size -gt 0) { $size } else { 1.0 })
+}
+
+# The login's email; '' when signed out.
 function Get-LoginEmail([string] $account) {
-    $dir = Get-ConfigDir $account
-    $file = if ($dir) { Join-Path $dir '.claude.json' } else { Join-Path $HOME '.claude.json' }
-    if (-not (Test-Path $file)) {
-        return $null
-    }
-    # A regex, not ConvertFrom-Json: the file can hold keys differing only in case, which Windows PowerShell refuses.
-    $match = [regex]::Match((Get-Content $file -Raw -Encoding UTF8), '"emailAddress"\s*:\s*"([^"]+)"')
-    if ($match.Success) {
-        return $match.Groups[1].Value
-    }
-    return $null
+    return [string](Get-Login $account).Email
 }
 
 # A log the run is still writing: open it shared.
@@ -405,26 +403,30 @@ function Read-Log([string] $log) {
     }
 }
 
-# The plan's usage from a stream-json log's last (or first) rate_limit_event: each window's share used and reset, and
-# whether the plan refused the run. The Fable window too, but its refusal is not `refused`: it stops only Fable.
-function Get-Usage([string] $text, [switch] $First) {
-    # Only events with the plan's windows: a model the plan lacks sends a rejection without them.
-    $lines = ($text -split "`n") | Where-Object { $_ -like '*"rate_limit_event"*' -and $_ -like '*"unifiedWindows"*' }
-    if (-not $lines) {
+# A provider's usage reading (docs/PLUGINS.md, ReadUsage) as the queue keeps it: each window's share used and reset,
+# and whether the plan refused the request. The refusal of a window of some models is not `refused` but `modelRefused`,
+# that window's name: it stops only those models. Only the windows that the provider's models.json names.
+function ConvertTo-Reading($read) {
+    if (-not $read) {
         return $null
     }
-    $line = if ($First) { @($lines)[0] } else { @($lines)[-1] }
-    $info = ($line | ConvertFrom-Json).rate_limit_info
-    $rejected = $info.status -eq 'rejected'
-    $usage = @{ at = (Get-Now); refused = $rejected -and $info.rateLimitType -ne $FableWindow
-        fableRefused = $rejected -and $info.rateLimitType -eq $FableWindow; refusedResetsAt = [long]$info.resetsAt }
-    foreach ($window in @($windows) + $FableWindow) {
-        $value = $info.unifiedWindows.$window
+    $refused = [string]$read.Refused
+    $ofModels = [bool]$refused -and $ModelWindows.Contains($refused)
+    $usage = @{ at = (Get-Now); refused = [bool]$refused -and -not $ofModels; modelRefused = $(if ($ofModels) { $refused } else { '' })
+        refusedResetsAt = [long]$read.RefusedResetsAt }
+    foreach ($window in @($windows) + @($ModelWindows.Keys)) {
+        $value = if ($read.Windows) { $read.Windows[$window] } else { $null }
         if ($value) {
-            $usage[$window] = @{ used = [double]$value.utilization; resetsAt = [long]$value.resetsAt; at = $usage.at }
+            $usage[$window] = @{ used = [double]$value.Used; resetsAt = [long]$value.ResetsAt; at = $usage.at }
         }
     }
     return $usage
+}
+
+# The plan's usage from a run's log, its last (or first) reading. $null for a log without one, and with a provider that
+# reads none: its workers then run until the plan refuses.
+function Get-Usage([string] $text, [switch] $First) {
+    return ConvertTo-Reading (Invoke-Provider 'ReadUsage' @{ Text = $text; First = [bool]$First })
 }
 
 # A window's share in use now: nothing once it has reset.
@@ -466,81 +468,69 @@ function Save-Usage([string] $account, $usage) {
     }
 }
 
-# The account's record of the Fable limit until the reset (Test-FableOut), from a reading whose request Fable refused,
-# also when its event had no Fable window: without it, a refused start would give its ticket back to this account
-# every poll.
-function Save-FableOut([string] $account, $usage) {
+# The account's record that a window of some models is used up until its reset (limits.ps1, Test-WindowOut), from a
+# reading whose request the window refused, also when the reading had no such window: without it, a refused start
+# would give its ticket back to this account every poll.
+function Save-WindowOut([string] $account, [string] $window, $usage) {
     $record = if ($usage) { $usage } else { @{ at = 0 } }
-    if (-not (Test-FableOut $record (Get-Now))) {
+    if (-not (Test-WindowOut $record $window (Get-Now))) {
         $resetsAt = if ($record.refusedResetsAt -gt (Get-Now)) { [long]$record.refusedResetsAt } else { (Get-Now) + 86400 }
-        $record[$FableWindow] = @{ used = 1.0; resetsAt = $resetsAt }
+        $record[$window] = @{ used = 1.0; resetsAt = $resetsAt }
         Save-Usage $account $record
     }
 }
 
-# An account's usage, read again with a one-word Haiku request when the last reading is older than 30 minutes: idle
-# accounts get no run events, and the owner's own sessions spend them too. The Fable window it does not read: only a
-# Fable request reports it, and a Fable probe was dropped; the queue app shows its read time.
+# An account's usage, read again with a probe when the last reading is older than 30 minutes: idle accounts get no run
+# events, and the owner's own sessions spend them too. A window of some models it may not read: the queue app shows
+# that window's read time.
 function Get-FreshUsage([string] $configDir) {
     $account = Get-Account $configDir
     $stored = (Read-AllUsage)[$account]
     # A reading of another account is no reading: the folder's login changed since.
-    if ($stored -and $stored.email -ne (Get-LoginEmail $account)) {
+    if ($stored -and [string]$stored.email -ne (Get-LoginEmail $account)) {
         $stored = $null
     }
     if ($stored -and (Get-Now) - [long]$stored.at -lt 1800) {
         return $stored
     }
-    $text = Invoke-Probe $configDir
-    $usage = Get-Usage $text
-    if (-not $usage) {
+    $reply = Invoke-Probe $configDir
+    if (-not $reply -or -not $reply.usage) {
         # A refused probe finds an account that is out before a ticket is claimed for it. Not for 'start': one
         # failed request is no proof, and a record stops every worker on the account.
-        $reply = Read-Probe $text
-        if ($reply -and $reply.kind -in @('login', 'subscription') -and -not (Read-Out)[$account]) {
+        if ($reply -and $reply.answered -and $reply.kind -in @('login', 'subscription') -and -not (Read-Out)[$account]) {
             Set-Out $account (New-OutRecord $reply.kind $reply.text (Get-LoginStamp $account))
             Write-Log "$account is out ($($reply.kind)): $($reply.text)"
         }
         return $stored
     }
-    Save-Usage $account $usage
-    return $usage
+    Save-Usage $account $reply.usage
+    return $reply.usage
 }
 
-# A probe: one word from Haiku on a login, in a folder with no CLAUDE.md (limits.ps1, $BareRequestArgs). The cheapest
-# request that shows the account's usage (its rate_limit_event) and whether the account takes requests; a refused one
-# costs nothing. Returns its stream-json text.
+# A probe (docs/PLUGINS.md, Probe): the cheapest request that shows an account's usage and whether the account takes
+# requests, in a folder that holds no project; a refused one costs nothing. @{ usage (the reading, $null without one);
+# answered (it got a reply, a refusal too); kind (of the refusal, limits.ps1, $OutKinds; '' when the account answered);
+# text }. $null: the probe itself failed, or the provider has none.
 function Invoke-Probe([string] $configDir) {
-    $ErrorActionPreference = 'Continue'
     $dir = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-$($config.name)-probe"
     New-Item -ItemType Directory -Force $dir | Out-Null
-    $previousConfigDir = $env:CLAUDE_CONFIG_DIR
-    if ($configDir) {
-        $env:CLAUDE_CONFIG_DIR = $configDir
-    }
-    Push-Location $dir
     try {
-        return (& claude -p 'Reply: ok' @BareRequestArgs --output-format stream-json --verbose 2>$null) -join "`n"
-    } finally {
-        Pop-Location
-        $env:CLAUDE_CONFIG_DIR = $previousConfigDir
-    }
-}
-
-# What a probe's reply says of its account: the kind of its refusal (limits.ps1, Get-Refusal; '' when the account
-# answered) and its text. $null without a result line: the probe itself failed.
-function Read-Probe([string] $text) {
-    $line = ($text -split "`n") | Where-Object { $_ -like '*"type":"result"*' } | Select-Object -Last 1
-    if (-not $line) {
+        $reply = Invoke-Provider 'Probe' @{ Login = [string]$configDir; Dir = $dir }
+    } catch {
+        Write-Log "probe error: $_"
         return $null
     }
-    $result = $line | ConvertFrom-Json
-    return @{ kind = Get-Refusal $result; text = [string]$result.result }
+    if (-not $reply) {
+        return $null
+    }
+    return @{ usage = ConvertTo-Reading $reply.Usage; answered = [bool]$reply.Answered; kind = [string]$reply.Kind; text = [string]$reply.Text }
 }
 
-# The login a folder holds now: when its credentials were last written, and its email. A sign-in changes it.
+# The login a folder holds now: what the provider says changes with a sign-in (when its credentials were last
+# written), and its email.
 function Get-LoginStamp([string] $account) {
-    return "$(Get-CredentialsStamp (Get-ConfigDir $account)) $(Get-LoginEmail $account)"
+    $login = Get-Login $account
+    return "$($login.Stamp) $($login.Email)"
 }
 
 # Accounts that are out (`out.json` in the PC's folder, shared by the workers and the queue app): an account that refused a run
@@ -619,21 +609,22 @@ function Get-Out([string] $configDir) {
     if ((Get-LoginStamp $account) -eq $record.login -and (Get-Now) - [long]$record.at -lt 600) {
         return $record
     }
-    $reply = Read-Probe (Invoke-Probe $configDir)
-    if ($reply -and $OutKinds -notcontains $reply.kind) {
+    $reply = Invoke-Probe $configDir
+    # With a provider that has no probe, the next run is the test.
+    if (-not (Test-ProviderHook 'Probe') -or ($reply -and $reply.answered -and $OutKinds -notcontains $reply.kind)) {
         Set-Out $account $null
         Write-Log "$account takes runs again"
         return $null
     }
-    # A probe with no result keeps what the last refusal said.
+    # A probe with no reply keeps what the last refusal said.
     $stamp = Get-LoginStamp $account
-    $record = if ($reply) { New-OutRecord $reply.kind $reply.text $stamp } else { New-OutRecord $record.kind $record.text $stamp }
+    $record = if ($reply -and $reply.answered) { New-OutRecord $reply.kind $reply.text $stamp } else { New-OutRecord $record.kind $record.text $stamp }
     Set-Out $account $record
     return $record
 }
 
-# The ticket complexities (project.ps1, Get-Complexities): models.json's with the project's over them, and the
-# models and compact sizes the owner set on the page.
+# The ticket complexities (project.ps1, Get-Complexities): the provider's models with the project's over them, and
+# the models and compact sizes the owner set on the page.
 function Get-ProjectComplexities {
     return Get-Complexities (Read-Models) $config (Read-Settings)
 }
@@ -674,19 +665,23 @@ function Read-Access {
     return $access
 }
 
-# One of the account's Fable lines, 'stop' or 'design' (queue app, Accounts; limits.ps1, Get-FableLines).
-function Get-FableLine([string] $account, [string] $line) {
+# One of an account's lines in a window of some models, 'stop' or 'start' (queue app, Accounts; limits.ps1,
+# Get-ModelLines).
+function Get-ModelLine([string] $account, [string] $window, [string] $line) {
     $entry = @(Get-Accounts) | Where-Object { $_.Account -eq $account } | Select-Object -First 1
-    return (Get-FableLines $(if ($entry) { $entry.StopAt }) $(if ($entry) { $entry.PickUp })).$line
+    return (Get-ModelLines $window $(if ($entry) { $entry.StopAt }) $(if ($entry) { $entry.PickUp })).$line
 }
 
 # -Advisor: whether the model can be a run's advisor, else whether a run can start on it.
 function Test-ModelRefused([string] $account, [string] $model, [switch] $Advisor) {
-    # The account's Fable limit (limits.ps1) until the reset: from its design line no Fable run starts on it, from its
-    # stop line no run gets the Fable advisor.
-    $line = Get-FableLine $account $(if ($Advisor) { 'stop' } else { 'design' })
-    if ($model -like '*fable*' -and (Test-FableOut (Read-AllUsage)[$account] (Get-Now) $line)) {
+    # The limit of the model's window on the account (limits.ps1) until the reset: from its start line no run starts on
+    # the model there, from its stop line no run gets the model as its advisor.
+    $window = Get-ModelWindow $model
+    if ($window -and (Test-WindowOut (Read-AllUsage)[$account] $window (Get-Now) (Get-ModelLine $account $window $(if ($Advisor) { 'stop' } else { 'start' })))) {
         return $true
+    }
+    if (-not $model) {
+        return $false
     }
     $refusedAt = (Read-Access)[$account].$model
     return $refusedAt -and (Get-Now) - [long]$refusedAt -lt 86400
@@ -703,10 +698,10 @@ function Set-ModelRefused([string] $account, [string] $model) {
     $access | ConvertTo-Json -Depth 3 | Set-Content $accessFile -Encoding utf8
 }
 
-# Whether an account has a model for a ticket complexity now: the owner's override, else a candidate in
-# models.json, that the plan did not refuse in the last day and that is not Fable at its limit (Test-ModelRefused).
+# Whether an account has a model for a ticket complexity now: the owner's override, else a candidate of the
+# complexity, that the plan did not refuse in the last day and whose window is not at its limit (Test-ModelRefused).
 # Without one a run only gets refused: no dispatcher gives a worker on that account a ticket of the complexity, and the
-# ticket waits for another account, the next day (the model is tried again) or the Fable reset.
+# ticket waits for another account, the next day (the model is tried again) or the window's reset.
 function Test-ModelLeft([string] $complexity, $settings, [string] $account) {
     if (-not $complexity) {
         $complexity = 'medium'
@@ -716,37 +711,34 @@ function Test-ModelLeft([string] $complexity, $settings, [string] $account) {
 }
 
 # The model and effort a run of this ticket's complexity uses on this account: the settings' `model` if set (the
-# owner's override), else the first of the complexity's candidates in models.json (docs/QUEUE.md, Models), best first,
-# that the account wasn't refused; at the effort a candidate names after `@` (`claude-opus-5-5@high`), else that
-# model's effort there, xhigh for a model not listed. No candidate left: the last. Its refusal sends a ticket back to
-# the queue (Test-ModelLeft then holds it there) and parks a PR's job. -AfterFable: models.json's `afterFable`, for the
-# rest of a job whose account reached the Fable limit (docs/QUEUE.md, The Fable limit).
-function Get-RunModel([string] $complexity, $settings, [string] $account, [switch] $AfterFable) {
+# owner's override), else the first of the complexity's candidates (docs/QUEUE.md, Models), best first, that the
+# account wasn't refused; at the effort a candidate names after `@` (`model@high`), else that model's in the provider's
+# models.json (project.ps1, Split-Pick). No candidate left: the last. Its refusal sends a ticket back to
+# the queue (Test-ModelLeft then holds it there) and parks a PR's job. -After: the `after` pick of a window of some
+# models, for the rest of a job whose account reached that window's limit (docs/QUEUE.md, A model's limit).
+function Get-RunModel([string] $complexity, $settings, [string] $account, [string] $After) {
     $list = Read-Models
     if (-not $complexity) {
         $complexity = 'medium'
     }
-    if ($AfterFable) {
-        $pick = [string]$list.afterFable
+    if ($After) {
+        $pick = [string]$ModelWindows[$After].after
     } elseif ($settings.model) {
         $pick = [string]$settings.model
     } else {
         $candidates = Get-ComplexityModels (Get-ProjectComplexities) $complexity
         $pick = [string]($candidates | Where-Object { -not (Test-ModelRefused $account ($_ -split '@')[0]) } | Select-Object -First 1)
-        if (-not $pick) {
+        if (-not $pick -and $candidates.Count) {
             $pick = [string]$candidates[-1]
         }
     }
-    $model, $effort = $pick -split '@'
-    if (-not $effort) {
-        $effort = if ($list.models.$model) { [string]$list.models.$model.effort } else { 'xhigh' }
-    }
-    return @{ Model = $model; Effort = $effort }
+    $run = Split-Pick $list $pick
+    return @{ Model = $run.model; Effort = $run.effort }
 }
 
 # What the workers may spend of an account's windows (limits.ps1): per window its share used, the ceiling, the
-# pick-up limit of each ticket size and the seconds left before it resets. Each human use the register gives the account keeps room under the week's stop line:
-# its share for the time left.
+# pick-up limit of each ticket size and the seconds left before it resets. Each human use the register gives the
+# account keeps room under the stop line of the window that keeps (limits.ps1, $KeepWindow): its share for the time left.
 function Get-Budget([string] $account, $usage) {
     $settings = Read-Settings
     $entry = @(Get-Accounts) | Where-Object { $_.Account -eq $account } | Select-Object -First 1
@@ -758,8 +750,8 @@ function Get-Budget([string] $account, $usage) {
             $left = [long]$usage.$window.resetsAt - (Get-Now)
         }
         $reserve = 0.0
-        # Only the week keeps a reserve: the 5-hour window fills to its margin on any account.
-        if ($entry -and $window -eq 'seven_day') {
+        # Only one window keeps a reserve: the others fill to their margin on any account.
+        if ($entry -and $window -eq $KeepWindow) {
             foreach ($use in $entry.Human) {
                 $reserve += Get-Reserve (Get-Keep $use $settings) $left
             }
@@ -804,8 +796,9 @@ function Get-Candidates {
     return $candidates
 }
 
-# Best fit: among the candidates that take a ticket of this size now (Get-Fit), the one whose free weekly room most
-# wants spending before its reset, then the most 5-hour room. $null when none takes it.
+# Best fit: among the candidates that take a ticket of this size now (Get-Fit), the one whose free room in the longest
+# window most wants spending before its reset, then the most room in the shortest. $null when none takes it. With a
+# provider that reads no usage: the first candidate.
 function Select-Worker([string] $size, $candidates) {
     $best = $null
     $bestPace = $null
@@ -818,11 +811,12 @@ function Select-Worker([string] $size, $candidates) {
         foreach ($window in $windows) {
             $room[$window] = $candidate.Budget[$window].ceiling - $candidate.Budget[$window].used
         }
-        $pace = Get-Pace $room.seven_day $candidate.Budget.seven_day.left
-        if (-not $best -or $pace -gt $bestPace -or ($pace -eq $bestPace -and $room.five_hour -gt $bestRoom.five_hour)) {
+        $pace = if ($LongWindow) { Get-Pace $room[$LongWindow] $candidate.Budget[$LongWindow].left } else { 0.0 }
+        $short = if ($ShortWindow) { $room[$ShortWindow] } else { 0.0 }
+        if (-not $best -or $pace -gt $bestPace -or ($pace -eq $bestPace -and $short -gt $bestRoom)) {
             $best = $candidate
             $bestPace = $pace
-            $bestRoom = $room
+            $bestRoom = $short
         }
     }
     return $best
@@ -959,7 +953,7 @@ function Get-NextJob {
     $candidates = @(Get-Candidates)
     # Why each ticket this pass skipped waits, for the queue app (docs/APP.md).
     $waiting = @{}
-    $nextReset = @($candidates | ForEach-Object { (Get-Now) + [long]$_.Budget.five_hour.left } | Sort-Object)[0]
+    $nextReset = if ($ShortWindow) { @($candidates | ForEach-Object { (Get-Now) + [long]$_.Budget[$ShortWindow].left } | Sort-Object)[0] } else { Get-Now }
     while ($queue.Count -gt 0 -and $candidates.Count -gt 0) {
         # The first ticket in queue order whose areas are free and that a candidate takes: one that has its
         # complexity on, at its size.
@@ -978,7 +972,7 @@ function Get-NextJob {
             # Only an account whose plan has a model for the complexity now (Test-ModelLeft).
             $takers = @($takers | Where-Object { Test-ModelLeft $complexity $_.Settings $_.Account })
             if ($takers.Count -eq 0) {
-                $waiting["$($ticket.number)"] = "no idle worker's account has a model for complexity $complexity now (a plan without it, or its Fable week at the design line)"
+                $waiting["$($ticket.number)"] = "no idle worker's account has a model for complexity $complexity now (a plan without it, or the model's window at its limit)"
                 continue
             }
             $size = Get-Size $ticket
@@ -996,8 +990,7 @@ function Get-NextJob {
         $ticket = $pick.Ticket
         & gh issue edit $ticket.number --add-label "worker:$($best.Worker)" -R $repo | Out-Null
         Write-Log ("assigned #$($ticket.number) (size $($pick.Size), complexity $($pick.Complexity)) to worker $($best.Worker): " +
-            "5-hour $(Format-Share $best.Budget.five_hour.used) of $(Format-Share $best.Budget.five_hour.ceiling), week " +
-            "$(Format-Share $best.Budget.seven_day.used) of $(Format-Share $best.Budget.seven_day.ceiling)")
+            (($windows | ForEach-Object { "$($WindowTitles[$_]) $(Format-Share $best.Budget[$_].used) of $(Format-Share $best.Budget[$_].ceiling)" }) -join ', '))
         if ($best.Worker -eq $Id) {
             return @{ Kind = 'ticket'; Ticket = $ticket.number; Title = $ticket.title; Repo = Get-TicketRepo $ticket; Size = $pick.Size
                 Complexity = $pick.Complexity }
@@ -1018,7 +1011,7 @@ function Test-OverBudget([string] $configDir) {
     Save-Budget $budget
     foreach ($window in $windows) {
         if ($budget[$window].used -ge $budget[$window].ceiling) {
-            $line = "usage at $(Format-Share $budget[$window].used) of $window, over the workers' $(Format-Share $budget[$window].ceiling); waiting"
+            $line = "usage at $(Format-Share $budget[$window].used) of $($WindowTitles[$window]), over the workers' $(Format-Share $budget[$window].ceiling); waiting"
             if ($script:overBudget -ne $line) {
                 Write-Log $line
                 $script:overBudget = $line
@@ -1035,7 +1028,7 @@ function Test-OverBudget([string] $configDir) {
 function Save-RunUsage([string] $log, [string] $account, $usage) {
     $key = "$log|$(Get-ReadingKey $usage)"
     $stored = (Read-AllUsage)[$account]
-    if ($key -eq $script:readingKey -and $stored -and $stored.email -eq (Get-LoginEmail $account)) {
+    if ($key -eq $script:readingKey -and $stored -and [string]$stored.email -eq (Get-LoginEmail $account)) {
         return $stored
     }
     $script:readingKey = $key
@@ -1060,7 +1053,7 @@ function Update-Usage([string] $log, [string] $account) {
     }
     $over = $windows | Where-Object { $budget[$_].used -ge $budget[$_].ceiling } | Select-Object -First 1
     if ($over -and -not (Test-Path $warnFile)) {
-        $note = "The account's usage is at $(Format-Share $budget[$over].used) of its $over window, the workers' limit " +
+        $note = "The account's usage is at $(Format-Share $budget[$over].used) of its $($WindowTitles[$over]) window, the workers' limit " +
             "$(Format-Share $budget[$over].ceiling); it resets $(Format-Time ((Get-Now) + $budget[$over].left)). " +
             'End at your next checkpoint: commit and push, post every question you would hold as a ticket comment, post one ' +
             'handoff comment on the ticket (done, next), then end the run without a PR. The worker script holds your ' +
@@ -1074,15 +1067,22 @@ function Update-Usage([string] $log, [string] $account) {
     }
 }
 
-# Every run's cost: in dollars (the log's result, less $costBefore: a resumed session's result counts the part before
-# its pause again) and per window from its first and last usage readings, a window that reset meanwhile left out. A run
-# that isn't a whole ticket (partial: paused, resumed, answers, rebase) counts toward the account's spending but not
-# toward ticket estimates. $numbers (usage.ps1, Get-RunNumbers; none if the log could not be read) become more fields
-# of the line, for report.ps1; the page reads the lines as objects and ignores them.
-function Add-History($job, [string] $account, [string] $model, [string] $text, [bool] $partial, [long] $startedAt, [double] $costBefore, $numbers, [bool] $resumed) {
-    $start = Get-Usage $text -First
-    $end = Get-Usage $text
-    if (-not $start -or -not $end) {
+# Every run's cost: in money where the provider reads one ($read: its ReadRun answer; less $costBefore: a resumed
+# session's result counts the part before its pause again) and per window from its first and last usage readings, a
+# window that reset meanwhile left out. A run that isn't a whole ticket (partial: paused, resumed, answers, rebase)
+# counts toward the account's spending but not toward ticket estimates. $numbers (the provider's, docs/PLUGINS.md,
+# ReadRun; none if the log could not be read) become more fields of the line, for report.ps1; the page reads the lines
+# as objects and ignores them. With a provider that reads usage, a run with no reading did no request: no line.
+function Add-History($job, [string] $account, [string] $model, [string] $text, [bool] $partial, [long] $startedAt, [double] $costBefore, $numbers, [bool] $resumed, $read) {
+    $start = $null
+    $end = $null
+    try {
+        $start = Get-Usage $text -First
+        $end = Get-Usage $text
+    } catch {
+        Write-Log "usage error: $_"
+    }
+    if ((Test-ProviderHook 'ReadUsage') -and (-not $start -or -not $end)) {
         return
     }
     $run = @{
@@ -1091,22 +1091,20 @@ function Add-History($job, [string] $account, [string] $model, [string] $text, [
         # Went on in a held session: report.ps1 shows what such a start reads again.
         resumed = $resumed
     }
-    # Seconds of wall time, run start to run end, for the queue app's typical run time. The log's own duration_ms is
-    # only the last turn. The wall flag marks a line with this meaning; older lines hold the last turn only.
+    # Seconds of wall time, run start to run end, for the queue app's typical run time. The wall flag marks a line
+    # with this meaning; older lines hold the last turn only.
     $run.duration = $run.at - $startedAt
     $run.wall = $true
-    $resultLine = ($text -split "`n") | Where-Object { $_ -like '*"type":"result"*' } | Select-Object -Last 1
-    if ($resultLine) {
-        $result = $resultLine | ConvertFrom-Json
-        $run.cost = [math]::Max(0.0, [double]$result.total_cost_usd - $costBefore)
+    if ($read -and $read.Ended -and $null -ne $read.Cost) {
+        $run.cost = [math]::Max(0.0, [double]$read.Cost - $costBefore)
     }
     foreach ($window in $windows) {
-        if ($start.$window -and $end.$window -and $start.$window.resetsAt -eq $end.$window.resetsAt) {
+        if ($start -and $end -and $start.$window -and $end.$window -and $start.$window.resetsAt -eq $end.$window.resetsAt) {
             $run[$window] = [math]::Max(0.0, [double]$end.$window.used - [double]$start.$window.used)
         }
     }
     if ($numbers) {
-        foreach ($key in $numbers.Keys) {
+        foreach ($key in @($numbers.Keys)) {
             $run[$key] = $numbers[$key]
         }
     }
@@ -1127,20 +1125,20 @@ function Invoke-Worker($job, [string] $log, $paused) {
         Invoke-WorkerHooks 'Start' $dir | Out-Null
     }
     $given = Merge-RunAnswers (Invoke-WorkerHooks 'GetRun' $dir)
-    # Always a config, with no server when no plugin gives one: the queue app ends a run by this file's path.
-    $mcpConfig = Join-Path $queueDir 'mcp.json'
-    [System.IO.File]::WriteAllText($mcpConfig, (ConvertTo-McpConfig $given.McpServers))
 
     # A resumed run keeps the model, effort and account its session started on.
     $settings = Get-RunSettings $Id
     $configDir = $settings.configDir
     $pick = Get-RunModel $job.Complexity $settings (Get-Account $configDir)
-    # A PR's job on an account at its Fable stop line starts on the model after Fable (docs/QUEUE.md, The Fable limit): a
-    # start on Fable would soon be refused. Between the design line and the stop line it still runs on Fable.
-    $afterFable = $job.Kind -ne 'ticket' -and -not $paused -and $pick.Model -like '*fable*' -and
-        (Test-FableOut (Read-AllUsage)[(Get-Account $configDir)] (Get-Now) (Get-FableLine (Get-Account $configDir) 'stop'))
-    if ($afterFable) {
-        $pick = Get-RunModel $job.Complexity $settings (Get-Account $configDir) -AfterFable
+    # A PR's job on an account at the stop line of its model's window starts on the model after it (docs/QUEUE.md, A
+    # model's limit): a start on the model would soon be refused. Between the window's two lines it still runs on it.
+    $after = Get-ModelWindow $pick.Model
+    if ($job.Kind -eq 'ticket' -or $paused -or -not $after -or -not $ModelWindows[$after].after -or
+        -not (Test-WindowOut (Read-AllUsage)[(Get-Account $configDir)] $after (Get-Now) (Get-ModelLine (Get-Account $configDir) $after 'stop'))) {
+        $after = ''
+    }
+    if ($after) {
+        $pick = Get-RunModel $job.Complexity $settings (Get-Account $configDir) -After $after
     }
     $model = $pick.Model
     $effort = $pick.Effort
@@ -1154,12 +1152,12 @@ function Invoke-Worker($job, [string] $log, $paused) {
     # The run's advisor (limits.ps1, Get-Advisor): one for the whole session, like its model, so a resume and a
     # compaction see the same tools. A session held before the advisor existed has none recorded: it gets one now.
     $advisorOf = Get-AdvisorRule (Read-Models) (Get-ProjectComplexities) (Read-Settings)
-    $hasAdvisor = -not (Test-ModelRefused (Get-Account $configDir) ([string]$advisorOf.model) -Advisor)
+    $hasAdvisor = [bool]$advisorOf.model -and -not (Test-ModelRefused (Get-Account $configDir) ([string]$advisorOf.model) -Advisor)
     $advisor = Get-Advisor $advisorOf $job.Complexity $model $hasAdvisor
     if ($paused -and $null -ne $paused.Advisor) {
         $advisor = [string]$paused.Advisor
     } elseif (-not $paused) {
-        # Without the advisor its complexity has, a higher effort where models.json says it makes up for it
+        # Without the advisor its complexity has, a higher effort where the complexity names one that makes up for it
         # (Get-FallbackEffort). A resumed session keeps its effort.
         $effort = Get-FallbackEffort $advisorOf $job.Complexity $model $effort $hasAdvisor
     }
@@ -1172,15 +1170,18 @@ function Invoke-Worker($job, [string] $log, $paused) {
         default { $task = "ticket #$($job.Ticket), branch t$($job.Ticket)" }
     }
     $playbooks = Get-Playbooks
+    # The window of some models whose limit the account reached, for a session that goes on with the model after it.
+    $out = if ($paused -and $paused.ModelOut) { [string]$paused.ModelOut } else { $after }
+    $session = ''
     if ($paused -and $paused.Session) {
-        $cause = if ($paused.FableOut) {
-            "Your account reached its weekly Fable limit, so this session goes on with $model. Read $parts/PLAYBOOK-fable.md first."
+        $cause = if ($paused.ModelOut) {
+            "Your account reached the limit of its $($WindowTitles[$out]) window, so this session goes on with $model. Read $parts/PLAYBOOK-limit.md first."
         } elseif ($paused.Stopped) { 'The owner paused your worker, and it is active again now.' } else { 'A usage limit or a lost login stopped you, and it is cleared now.' }
         # The pause can last hours, and the playbooks may change meanwhile: a resumed run shipped by old rules.
         $prompt = "$cause Checkpoint first (PLAYBOOK.md, Checkpoints). " +
             "The playbooks may have changed while you were stopped: read them again, $playbooks; where one differs " +
             "from what you read before, the new text wins. Then carry on with your job where you stopped: $task."
-        $resumeArgs = @('--resume', $paused.Session)
+        $session = [string]$paused.Session
     } else {
         if ($dir -eq $Clone) {
             $prompt = "You are queue worker $Id, in your own clone. Run git fetch, then read and follow the playbooks " +
@@ -1190,24 +1191,24 @@ function Invoke-Worker($job, [string] $log, $paused) {
                 "read and follow the playbooks in this order, a later one winning where two differ: $playbooks " +
                 "(Another repository applies: read $parts/PLAYBOOK-repo.md). Your job: $task."
         }
-        $resumeArgs = @()
     }
-    $prompt += " You run on $model at $effort effort: name both in the PR body. Your queue folder is " +
+    $prompt += " You run on $model$(if ($effort) { " at $effort effort" }): name $(if ($effort) { 'both' } else { 'it' }) in the PR body. Your queue folder is " +
         "$($queueDir.Replace('\', '/')): at each checkpoint write progress.json there and look for limit.md, stop.md, " +
         "comments.md and away.md there (PLAYBOOK.md, Checkpoints). The Scriptorium folder is $($PSScriptRoot.Replace('\', '/')): " +
         "run a script of it where a playbook says so, and change no file in it."
-    # The rest of a Fable job (docs/QUEUE.md, The Fable limit). The note carries the whole
+    # The rest of a job whose model reached its limit (docs/QUEUE.md, A model's limit). The note carries the whole
     # instruction, so a run that read an older playbook follows it too.
-    if ($paused -and $paused.FableOut -and $job.Kind -eq 'ticket') {
-        $prompt += " The Fable limit: this ticket ran on Fable for its decisions, such as how a feature works, a look, " +
+    if ($paused -and $paused.ModelOut -and $job.Kind -eq 'ticket') {
+        $first = if ($paused.From) { [string]$paused.From } else { 'its first model' }
+        $prompt += " The model's limit: this ticket ran on $first for its decisions, such as how a feature works, a look, " +
             'or a code structure that stays (docs/QUEUE.md, Models). If those decisions are made and ' +
             "written down (code, docs, the ticket), finish the job on $model and name both models in the PR body. If not: " +
             'commit and push, post one handoff comment on the ticket (done, the decisions still open, next), write ' +
             'handoff.md in your queue folder, and end the run without a PR. The worker script then gives the ticket to a ' +
-            'worker whose account has Fable, which starts fresh from your comment.'
-    } elseif (($paused -and $paused.FableOut) -or $afterFable) {
-        $prompt += " Your account reached its weekly Fable limit, so this job runs on ${model}: the PR already holds the " +
-            "ticket's decisions."
+            "worker whose account has $first left, which starts fresh from your comment."
+    } elseif ($out) {
+        $prompt += " Your account reached the limit of its $($WindowTitles[$out]) window, so this job runs on ${model}: the PR already " +
+            "holds the ticket's decisions."
     }
     # A blocked ticket that a worker has, from a Now (docs/QUEUE.md, Now).
     if ($job.Blockers) {
@@ -1218,32 +1219,24 @@ function Invoke-Worker($job, [string] $log, $paused) {
     if ($given.Prompt) {
         $prompt += " $($given.Prompt)"
     }
-    # Claude Code's own commit and PR attribution off: CLAUDE.md allows none. Claude Code's own skills and the claude.ai
-    # account's off: 6,077 tokens less on every turn; the project's and the plugins' skills stay. The advisor on
-    # (Use-Advisor turns it off).
-    $runSettings = Join-Path $queueDir 'run-settings.json'
-    $advisorSetting = if ($advisor) { ",`"advisorModel`":`"$advisor`"" } else { '' }
-    # The base's tools, the project's and the plugins' (Get-RunTools), as a list: a rule may hold a space
-    # (`Bash(unity command:*)`), and a comma-joined --allowedTools value is not sure to keep such a rule whole.
-    $allow = ConvertTo-Json -InputObject @(Get-RunTools $config $given) -Compress
-    [System.IO.File]::WriteAllText($runSettings, '{"includeCoAuthoredBy":false,"attribution":{"commit":"","pr":""},' +
-        '"disableBundledSkills":true,"syncClaudeAiSkills":false,' +
-        '"permissions":{"allow":' + $allow + '}' + $advisorSetting + '}')
-    # The same for the run and for the compaction of its session (Compress-Session).
-    $sessionArgs = @('--permission-mode', 'auto', '--mcp-config', "`"$mcpConfig`"",
-        '--strict-mcp-config', '--settings', "`"$runSettings`"",
-        '--disallowedTools', "`"$UnusedTools`"", '--output-format', 'stream-json', '--verbose',
-        '--model', $model, '--effort', $effort)
-    if ($dir -ne $Clone) {
-        # The playbook, CLAUDE.md and the usage warning stay in the clone.
-        $sessionArgs += @('--add-dir', "`"$Clone`"")
+    # What the provider starts the run from (docs/PLUGINS.md, GetCommand): the same for the run and for the compaction
+    # of its session (Compress-Session). The cap of one run (docs/QUEUE.md, Models) and the compact size of the job's
+    # complexity (docs/CONFIG.md, The compact size) are 0 where the provider has none.
+    $compactAt = Get-ComplexityCompactAt (Get-ProjectComplexities) $job.Complexity
+    $runCap = [double](Read-Models).runCap
+    $run = @{
+        Prompt = $prompt; Session = $session; Model = $model; Effort = $effort; Advisor = $advisor
+        CompactAt = $compactAt; Cap = $runCap; Login = [string]$configDir
+        # The base's commands, the project's and the plugins', then the tool rules in the provider's own syntax.
+        Commands = @(Get-RunCommands $config $given); Tools = @(Get-RunTools $config $given); McpServers = $given.McpServers
+        # The playbooks, the project's rules and the usage warning stay in the clone.
+        Dir = $dir; AddDirs = @(if ($dir -ne $Clone) { $Clone })
     }
-    $claudeArgs = @('-p', "`"$prompt`"") + $resumeArgs + $sessionArgs
-    # The cap of one run (docs/QUEUE.md, Models), for the run alone: a compaction of its session never gets it.
-    $runCap = (Read-Models).runCap
-    if ($runCap) {
-        $claudeArgs += @('--max-budget-usd', [string]$runCap)
+    $command = Invoke-Provider 'GetCommand' @{ Copy = $dir; Run = $run }
+    if (-not $command -or -not $command.FilePath) {
+        throw "plugin $($provider.Name), GetCommand: it gave no command for the run"
     }
+    Write-Log "compacts at $compactAt"
 
     Remove-Item $warnFile, $stopFile, $commentsFile, $handoffFile -ErrorAction SilentlyContinue
     Write-AwayNote $awayFile ([bool](Read-Settings).away)
@@ -1253,30 +1246,29 @@ function Invoke-Worker($job, [string] $log, $paused) {
     $account = Get-Account $configDir
     $script:running.model = $model
     $script:running.effort = $effort
-    $previousConfigDir = $env:CLAUDE_CONFIG_DIR
-    if ($configDir) {
-        $env:CLAUDE_CONFIG_DIR = $configDir
-    }
-    $previousAdvisor = Use-Advisor $advisor
     # What the run's process takes from this script's environment: what the plugins set (docs/PLUGINS.md, GetRun), then
-    # the window that compacts the run at the compact size of the job's complexity (docs/CONFIG.md, The compact size).
+    # the provider's own (its login, its switches). A variable with no value is taken away for the run.
     $variables = @{}
     foreach ($name in @($given.Env.Keys)) {
         $variables[$name] = $given.Env[$name]
     }
-    $compactAt = Get-ComplexityCompactAt (Get-ProjectComplexities) $job.Complexity
-    $variables['CLAUDE_CODE_AUTO_COMPACT_WINDOW'] = [string](Get-CompactWindow $compactAt)
-    Write-Log "compacts at $compactAt"
+    if ($command.Env) {
+        foreach ($name in @($command.Env.Keys)) {
+            $variables[$name] = $command.Env[$name]
+        }
+    }
     $previousVariables = @{}
     foreach ($name in @($variables.Keys)) {
         $previousVariables[$name] = [Environment]::GetEnvironmentVariable($name)
-        [Environment]::SetEnvironmentVariable($name, $variables[$name])
+        [Environment]::SetEnvironmentVariable($name, $(if ($null -ne $variables[$name]) { [string]$variables[$name] }))
     }
     $runStartedAt = Get-Now
     $commentsCheckedAt = 0
     try {
-        $process = Start-Process (Get-Command claude).Source -ArgumentList $claudeArgs -WorkingDirectory $dir -NoNewWindow `
+        $process = Start-Process $command.FilePath -ArgumentList $command.Arguments -WorkingDirectory $dir -NoNewWindow `
             -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+        # The queue app ends a run by this (app/server.ps1, Stop-Run).
+        $script:running.pid = $process.Id
         while (-not $process.HasExited) {
             # Returns at once when the run ends, so its end is not seen up to 30 seconds late.
             [void]$process.WaitForExit(30000)
@@ -1317,8 +1309,6 @@ function Invoke-Worker($job, [string] $log, $paused) {
             }
         }
     } finally {
-        $env:CLAUDE_CONFIG_DIR = $previousConfigDir
-        $env:CLAUDE_CODE_DISABLE_ADVISOR_TOOL = $previousAdvisor
         foreach ($name in $previousVariables.Keys) {
             [Environment]::SetEnvironmentVariable($name, $previousVariables[$name])
         }
@@ -1330,79 +1320,93 @@ function Invoke-Worker($job, [string] $log, $paused) {
         }
     }
 
+    # What the provider reads from the run's log (docs/PLUGINS.md, ReadUsage, ReadRun). A hook that throws never loses
+    # the run's end: the run then counts as one with no result (a hard stop).
     $text = Read-Log $log
-    $usage = Get-Usage $text
+    $usage = $null
+    try {
+        $usage = Get-Usage $text
+    } catch {
+        Write-Log "usage error: $_"
+    }
     if ($usage) {
         [void](Save-RunUsage $log $account $usage)
     }
-    $limited = $usage -and $usage.refused
+    $read = $null
+    try {
+        $read = Invoke-Provider 'ReadRun' @{ Text = $text }
+    } catch {
+        Write-Log "run log error: $_"
+    }
+    if (-not $read) {
+        $read = @{}
+    }
+    $limited = [bool]($usage -and $usage.refused)
     $modelRefused = $false
-    # The account reached its Fable limit (docs/QUEUE.md, The Fable limit): the main loop requeues the ticket or holds
-    # the job for the model after Fable.
-    $fableOut = $false
+    # The account reached the limit of a window of some models (docs/QUEUE.md, A model's limit), the window's name: the
+    # main loop requeues the ticket or holds the job for the model after it.
+    $windowOut = ''
     # The account refused the run, or the run could not start on it (limits.ps1, $OutKinds): its kind and its text.
     $refusal = ''
-    $refusalText = ''
+    $refusalText = [string]$read.Text
     # The run reached its cap: parked like a run without a PR (Test-Outcome), never held.
-    $capped = $false
-    $session = [regex]::Match($text, '"session_id":"([^"]+)"').Groups[1].Value
+    $capped = [bool]$read.Capped
+    $session = [string]$read.Session
     # A resumed session's result holds its whole cost, the part before the pause too.
     $costBefore = if ($paused -and $paused.Session -and $paused.Cost) { [double]$paused.Cost } else { 0.0 }
-    $cost = $costBefore
+    $cost = [math]::Max($costBefore, [double]$read.Cost)
     # The same for its advisor's cost, the session's so far kept beside Cost (Suspend-Job). The run's numbers for the
     # history: a log they cannot be read from loses only them, never the run's end.
     $advisorBefore = if ($paused -and $paused.Session -and $paused.AdvisorCost) { [double]$paused.AdvisorCost } else { 0.0 }
     $advisorCost = $advisorBefore
-    $numbers = $null
-    try {
-        $numbers = Get-RunNumbers $text
-        $advisorCost = [math]::Max($advisorBefore, $numbers.advisorCost)
-        # shortcut: a session that goes on with another model after the Fable limit counts its earlier Fable cost as
-        # the advisor's. Its lines are partial and the report leaves them out; keep the cost by model if it needs them.
-        $numbers.advisorCost = [math]::Max(0.0, $numbers.advisorCost - $advisorBefore)
-    } catch {
-        Write-Log "run numbers error: $_"
+    $numbers = $read.Numbers
+    if ($numbers -and $null -ne $numbers.advisorCost) {
+        $advisorCost = [math]::Max($advisorBefore, [double]$numbers.advisorCost)
+        # shortcut: a session that goes on with another model after its model's limit counts its earlier cost as the
+        # advisor's. Its lines are partial and the report leaves them out; keep the cost by model if it needs them.
+        $numbers.advisorCost = [math]::Max(0.0, [double]$numbers.advisorCost - $advisorBefore)
     }
-    $resultLine = ($text -split "`n") | Where-Object { $_ -like '*"type":"result"*' } | Select-Object -Last 1
-    if ($resultLine) {
-        $result = $resultLine | ConvertFrom-Json
-        $cost = [math]::Max($cost, [double]$result.total_cost_usd)
-        $kind = Get-Refusal $result
-        $capped = $result.subtype -eq 'error_max_budget_usd'
-        $refusalText = [string]$result.result
+    $ended = [bool]$read.Ended
+    if ($ended) {
+        $kind = [string]$read.Kind
         # A run refused at its first turn did no work: it starts fresh later, not as a resume. Not for the plan's
         # limit: that pause resumes the session the refusal named, as before.
-        if ($kind -and $kind -ne 'limit' -and [double]$result.total_cost_usd -eq 0) {
+        if ($kind -and $kind -ne 'limit' -and -not $read.Worked) {
             $session = if ($paused) { $paused.Session } else { '' }
         }
         if ($kind -eq 'model') {
-            # The plan doesn't include the model (e.g. "Fable 5.1 requires usage credits").
+            # The plan doesn't include the model.
             $modelRefused = $true
             Set-ModelRefused $account $model
         } elseif ($kind -eq 'limit') {
             $limited = $true
-        } elseif ($kind -eq 'fable') {
-            $fableOut = $true
+        } elseif ($kind -eq 'window') {
+            $windowOut = [string]$read.Window
         } elseif ($kind -and -not $limited) {
             $refusal = $kind
         }
     }
-    # The Fable limit by its rate limit event too: a run that ended with an error in a wording Get-Refusal does not
-    # know, or with no result line.
-    if ($usage -and $usage.fableRefused -and -not ($resultLine -and -not $result.is_error)) {
-        $fableOut = $true
+    # The limit of a window of some models by the usage reading too: a run that ended with an error the provider could
+    # not name, or with no result.
+    if ($usage -and $usage.modelRefused -and -not ($ended -and -not $read.Error)) {
+        $windowOut = [string]$usage.modelRefused
         $refusal = ''
     }
-    if ($fableOut) {
-        Save-FableOut $account $usage
+    # A window that the provider's models.json does not name is the plan's limit.
+    if ($windowOut -and -not $ModelWindows.Contains($windowOut)) {
+        $windowOut = ''
+        $limited = $true
+    }
+    if ($windowOut) {
+        Save-WindowOut $account $windowOut $usage
     }
     # Ended at a checkpoint for the workers' limit or for the owner's pause, its job not done: the main loop holds
     # it with its session (Get-Hold, Suspend-Job).
     # Ended at the stop note of the owner's Now with its job not done: never held. The main loop frees its ticket.
     $freed = [bool]$script:stopNoted -and (Test-NowElsewhere $job) -and -not (Test-Finished $job)
     $hold = $null
-    if (-not ($freed -or $limited -or $refusal -or $modelRefused -or $fableOut -or $capped)) {
-        $clean = [bool]$resultLine -and -not $result.is_error
+    if (-not ($freed -or $limited -or $refusal -or $modelRefused -or $windowOut -or $capped)) {
+        $clean = $ended -and -not $read.Error
         $hold = Get-Hold ([bool]$script:limitNoted) ([bool]$script:stopNoted) (Test-Path $stopFile) $clean (Test-Enabled $Id)
         if ($hold -and (Test-Finished $job)) {
             $hold = $null
@@ -1411,19 +1415,21 @@ function Invoke-Worker($job, [string] $log, $paused) {
     $atLimit = $hold -eq 'limit'
     $stopped = $hold -eq 'pause' -and [bool]$session
     if (-not $modelRefused) {
-        $partial = $limited -or $fableOut -or [bool]$refusal -or $atLimit -or $stopped -or $freed -or [bool]$paused -or $job.Kind -ne 'ticket'
-        Add-History $job $account $model $text $partial $runStartedAt $costBefore $numbers ($resumeArgs.Count -gt 0)
+        $partial = $limited -or [bool]$windowOut -or [bool]$refusal -or $atLimit -or $stopped -or $freed -or [bool]$paused -or $job.Kind -ne 'ticket'
+        Add-History $job $account $model $text $partial $runStartedAt $costBefore $numbers ([bool]$run.Session) $read
     }
     # Not after a stop note the owner withdrew: that run resumes at once, with its cache still warm.
     if ($session -and ($atLimit -or ($stopped -and (Test-Path $stopFile)))) {
-        Compress-Session $dir $configDir $session $sessionArgs "$log.compact" $advisor
+        Compress-Session $run $session "$log.compact"
     }
     return @{
         AtLimit = $atLimit
         Stopped = $stopped
         Freed = $freed
         ModelRefused = $modelRefused
-        FableOut = $fableOut
+        # The window of some models whose limit the account reached, else ''; and the model the run was on.
+        ModelOut = $windowOut
+        From = $model
         Limited = $limited
         Refusal = $refusal
         RefusalText = $refusalText
@@ -1431,7 +1437,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
         # began is not held: it goes back to the queue (Remove-Claims).
         Holds = [bool]$session -or $job.Kind -ne 'ticket'
         LoggedOut = $false
-        # The cap in dollars that the run reached, else 0.
+        # The cap that the run reached, else 0.
         Capped = $(if ($capped) { [double]$runCap } else { 0 })
         Session = $session
         Cost = $cost
@@ -1455,7 +1461,7 @@ function Suspend-Job($job, $end) {
     if (-not $end.LoggedOut -and $end.Usage -and $end.Usage.refusedResetsAt -gt (Get-Now)) {
         $resetsAt = $end.Usage.refusedResetsAt
     }
-    if ($end.Stopped -or $end.FableOut) {
+    if ($end.Stopped -or $end.ModelOut) {
         # Not zero: the queue app reads a ticket with a reset time as a run in flight.
         $resetsAt = Get-Now
     }
@@ -1463,7 +1469,9 @@ function Suspend-Job($job, $end) {
         Kind = $job.Kind; Ticket = $job.Ticket; Title = $job.Title; Pr = $job.Pr; Repo = (Get-JobRepo $job); Size = $job.Size; Complexity = $job.Complexity; Session = $end.Session; Cost = $end.Cost
         AdvisorCost = $end.AdvisorCost
         Model = $end.Model; Effort = $end.Effort; Advisor = [string]$end.Advisor; ConfigDir = $end.ConfigDir; ResetsAt = $resetsAt; LoggedOut = [bool]$end.LoggedOut
-        AtLimit = [bool]$end.AtLimit; Stopped = [bool]$end.Stopped; FableOut = [bool]$end.FableOut
+        AtLimit = [bool]$end.AtLimit; Stopped = [bool]$end.Stopped
+        # The window of some models whose limit ended the run, and the model the run was on (Invoke-Worker's prompt).
+        ModelOut = [string]$end.ModelOut; From = [string]$end.From
         # The time worked so far, so the queue app's progress goes on from here after the resume.
         Elapsed = (Get-Now) - [long]$script:running.startedAt
     } | ConvertTo-Json | Set-Content $pausedFile -Encoding utf8
@@ -1482,10 +1490,10 @@ function Suspend-Job($job, $end) {
         Write-Log "held #$($job.Ticket) at the workers' limit"
         return
     }
-    if ($end.FableOut) {
-        $more = if ($job.Kind -eq 'ticket') { ' If the decisions it is on Fable for are still open, the run hands the ticket to a worker whose account has Fable.' } else { '' }
-        Send-Comment $job "its account reached the weekly Fable limit: the run goes on now with $($end.Model).$more"
-        Write-Log "#$($job.Ticket) goes on with $($end.Model): its account reached the Fable limit"
+    if ($end.ModelOut) {
+        $more = if ($job.Kind -eq 'ticket') { " If the decisions it is on $($end.From) for are still open, the run hands the ticket to a worker whose account has $($end.From) left." } else { '' }
+        Send-Comment $job "its account reached the limit of its $($WindowTitles[$end.ModelOut]) window: the run goes on now with $($end.Model).$more"
+        Write-Log "#$($job.Ticket) goes on with $($end.Model): its account reached the limit of $($end.ModelOut)"
         return
     }
     Send-Comment $job "paused by the plan's usage limit; resumes on its own after it resets ($(Format-Time $resetsAt))."
@@ -1518,12 +1526,12 @@ function Test-Finished($job) {
 }
 
 # A run must end its job (Test-Finished); anything else is parked for the owner, so a failing ticket never loops.
-# $cap: the cap in dollars that the run reached (models.json, runCap), else 0; the comment then names it.
+# $cap: the cap that the run reached (the provider's models.json, runCap), else 0; the comment then names it.
 function Test-Outcome($job, [string] $log, [double] $cap) {
     if (Test-Finished $job) {
         return
     }
-    $why = if ($cap) { "reached the cap of $cap dollars for one run (runCap in models.json) and " } else { '' }
+    $why = if ($cap) { "reached the cap of $cap for one run (runCap in the provider's models.json) and " } else { '' }
     if ($job.Kind -ne 'ticket') {
         & gh pr edit $job.Pr --add-label needs-owner -R (Get-JobRepo $job) | Out-Null
         Send-Comment $job "${why}stopped without finishing ($($job.Kind)). Log: ``$log``"
@@ -1533,48 +1541,25 @@ function Test-Outcome($job, [string] $log, [double] $cap) {
     Send-Comment $job "${why}stopped without a PR or a question. Log: ``$log``"
 }
 
-# Compacts a session that is held at the workers' limit or for the owner's pause, at once.
-# Its cache is still warm, so
-# the compaction reads the context cheaply; hours later the cache is gone, and the resume then reads only the summary.
-# The run's own arguments: the cache holds only for the same model, tools and settings. A failure is not the job's:
-# the session then resumes whole. The run's advisor too ($advisor, Use-Advisor).
-function Compress-Session([string] $dir, [string] $configDir, [string] $session, $sessionArgs, [string] $log, [string] $advisor) {
-    $previous = $env:CLAUDE_CONFIG_DIR
-    if ($configDir) {
-        $env:CLAUDE_CONFIG_DIR = $configDir
+# Compacts a session that is held at the workers' limit or for the owner's pause, at once, where the provider can
+# (docs/PLUGINS.md, Compact). Its cache is still warm, so the compaction reads the context cheaply; hours later the
+# cache is gone, and the resume then reads only the summary. $run: what the run started from, so the cache holds: the
+# same model, tools and settings. A failure is not the job's: the session then resumes whole.
+function Compress-Session($run, [string] $session, [string] $log) {
+    if (-not (Test-ProviderHook 'Compact')) {
+        return
     }
-    $previousAdvisor = Use-Advisor $advisor
+    $held = @{}
+    foreach ($key in @($run.Keys)) {
+        $held[$key] = $run[$key]
+    }
+    $held.Session = $session
     try {
-        $process = Start-Process (Get-Command claude).Source -ArgumentList (@('-p', '/compact', '--resume', $session) + $sessionArgs) `
-            -WorkingDirectory $dir -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
-        if (-not $process.WaitForExit(600000)) {
-            $process.Kill()
-            Write-Log "compaction: no end after 10 minutes, stopped; the session resumes whole. Log: $log"
-            return
-        }
-        $text = Read-Log $log
-        $tokens = [regex]::Match($text, '"pre_tokens":(\d+),"post_tokens":(\d+)')
-        if ($tokens.Success) {
-            $cached = [regex]::Match($text, '"cacheReadInputTokens":(\d+)').Groups[1].Value
-            Write-Log "compacted the session: $($tokens.Groups[1].Value) -> $($tokens.Groups[2].Value) tokens, $cached read from the cache"
-        } else {
-            Write-Log "compaction failed; the session resumes whole. Log: $log"
-        }
+        $line = Invoke-Provider 'Compact' @{ Copy = $run.Dir; Run = $held; Log = $log }
+        Write-Log "compaction: $line Log: $log"
     } catch {
         Write-Log "compaction error: $_"
-    } finally {
-        $env:CLAUDE_CONFIG_DIR = $previous
-        $env:CLAUDE_CODE_DISABLE_ADVISOR_TOOL = $previousAdvisor
     }
-}
-
-# The advisor switch for the claude processes this script starts next: on with $advisor (the run's settings file names
-# it), else off, also where the login's own settings name one: a run of the queue gets only the queue's
-# advisor. Returns the variable's value before, for the caller to put back.
-function Use-Advisor([string] $advisor) {
-    $previous = $env:CLAUDE_CODE_DISABLE_ADVISOR_TOOL
-    $env:CLAUDE_CODE_DISABLE_ADVISOR_TOOL = if ($advisor) { $null } else { '1' }
-    return $previous
 }
 
 # While this worker's account is out, its tickets that no run holds go back to the queue, for a worker on another
@@ -1634,6 +1619,12 @@ while ($true) {
             Start-Sleep 30
             continue
         }
+        # The worker restarts when scriptorium.json changes (Start-CodeWatch), so a provider added there is found.
+        if (-not $provider) {
+            Write-State 'error' @{ error = 'no provider: add a provider plugin to scriptorium.json and run setup.ps1 (docs/PLUGINS.md, A provider)' }
+            Start-Sleep 30
+            continue
+        }
         Invoke-WorkerHooks 'Start' $Clone -Report | Out-Null
         Set-GitHubIdentity (Get-RunSettings $Id).ghConfigDir
         $mode = Get-Control
@@ -1671,7 +1662,7 @@ while ($true) {
             # from its handoff comment. The same for a run that waits for a limit reset on an account that is out
             # now: it would wait for that account for ever.
             $heldOn = Get-Account $paused.ConfigDir
-            if (($paused.AtLimit -or $paused.Stopped -or $paused.LoggedOut -or $paused.FableOut -or (Read-Out)[$heldOn]) -and $heldOn -ne (Get-Account (Get-RunSettings $Id).configDir)) {
+            if (($paused.AtLimit -or $paused.Stopped -or $paused.LoggedOut -or $paused.ModelOut -or (Read-Out)[$heldOn]) -and $heldOn -ne (Get-Account (Get-RunSettings $Id).configDir)) {
                 Remove-Item $pausedFile
                 Write-Log "dropped the held session of #$($paused.Ticket): the worker moved to another account; its ticket starts fresh"
                 continue
@@ -1775,40 +1766,44 @@ while ($true) {
             # account's stops every worker on it; this worker's own (a model its plan lacks, a wrong setting) stops
             # only this worker.
             $account = Get-Account $end.ConfigDir
-            # The Fable limit (docs/QUEUE.md). A run on the model after Fable found the ticket's
-            # decisions still open and handed it on: back to the queue, where no dispatcher gives it to this account
-            # until the Fable reset (Test-ModelLeft).
+            # A model's limit (docs/QUEUE.md). A run on the model after it found the ticket's decisions still open and
+            # handed it on: back to the queue, where no dispatcher gives it to this account until the window's reset
+            # (Test-ModelLeft).
             if ($job.Kind -eq 'ticket' -and (Test-Path $handoffFile)) {
                 Remove-Item $handoffFile, $pausedFile -ErrorAction SilentlyContinue
                 & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
-                Send-Comment $job ("handed on: its decisions need Fable, and this worker's account reached the Fable limit. " +
-                    'A worker whose account has Fable takes it next, fresh from the handoff comment.')
-                Write-Log "requeued #$($job.Ticket): handed on for Fable"
+                Send-Comment $job ("handed on: its decisions need the model it began on, and this worker's account reached that model's limit. " +
+                    'A worker whose account has the model left takes it next, fresh from the handoff comment.')
+                Write-Log "requeued #$($job.Ticket): handed on for its first model"
                 continue
             }
-            if ($end.FableOut) {
-                if ($job.Kind -eq 'ticket' -and -not $end.Session) {
-                    # No run began the ticket: it goes back to the queue the same way.
+            if ($end.ModelOut) {
+                $after = Get-RunModel $job.Complexity $null $account -After $end.ModelOut
+                if ($job.Kind -eq 'ticket' -and (-not $end.Session -or -not $after.Model)) {
+                    # No run began the ticket, or the window names no model to go on with: it goes back to the queue
+                    # the same way.
                     Remove-Item $pausedFile -ErrorAction SilentlyContinue
                     & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
-                    Write-Log "requeued #$($job.Ticket): $account reached the Fable limit"
-                } else {
-                    # A run that did work, or a PR's job: it goes on now with the model after Fable, which decides
-                    # whether the ticket's decisions are made (Invoke-Worker's prompt).
-                    $after = Get-RunModel $job.Complexity $null $account -AfterFable
+                    Write-Log "requeued #$($job.Ticket): $account reached the limit of $($end.ModelOut)"
+                    continue
+                }
+                if ($after.Model) {
+                    # A run that did work, or a PR's job: it goes on now with the model after, which decides whether
+                    # the ticket's decisions are made (Invoke-Worker's prompt).
                     $end.Model = $after.Model
                     $end.Effort = $after.Effort
                     Suspend-Job $job $end
+                    continue
                 }
-                continue
+                # A PR's job, and no model to go on with: parked for the owner below.
             }
             $whose = ''
             if ($end.Refusal -in @('login', 'subscription')) {
                 $whose = $account
             } elseif ($end.Refusal -eq 'start') {
                 # A cause the text does not name: a probe says whether the account takes requests at all.
-                $reply = Read-Probe (Invoke-Probe $end.ConfigDir)
-                if ($reply -and $OutKinds -contains $reply.kind) {
+                $reply = Invoke-Probe $end.ConfigDir
+                if ($reply -and $reply.answered -and $OutKinds -contains $reply.kind) {
                     $whose = $account
                     $end.Refusal = $reply.kind
                     $end.RefusalText = $reply.text
