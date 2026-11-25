@@ -82,6 +82,34 @@ function Get-Word { 'two' }
     $message = ''
     try { Import-Plugin (Join-Path $root 'none') 'none' $null | Out-Null } catch { $message = "$_" }
     Assert-Equal ($message -like 'plugin none: no plugin.json and plugin.ps1 in *') $true 'a plugin not installed'
+    # A plugin the file names that is not installed yet (the owner added it, setup.ps1 has not cloned it): a script
+    # that waits loads the others, and starts again when the plugin's files are in its folder.
+    $late = Join-Path (Join-Path $root 'W') 'plugins/late'
+    $waiting = "{ `"plugins`": { `"one`": { `"source`": `"$($one.Replace('\', '/'))`" }, `"late`": {}, `"two`": { `"source`": `"$($two.Replace('\', '/'))`" } } }" | ConvertFrom-Json
+    $message = ''
+    try { Import-Plugins (Join-Path $root 'W') $waiting | Out-Null } catch { $message = "$_" }
+    Assert-Equal ($message -like 'plugin late: no plugin.json and plugin.ps1 in *') $true 'a plugin not installed stops a script that does not wait'
+    Assert-Equal (((Import-Plugins (Join-Path $root 'W') $waiting -Installed) | ForEach-Object { $_.Name }) -join ',') 'one,two' 'a script that waits has the others'
+    $missing = Get-MissingPlugins (Join-Path $root 'W') $waiting
+    Assert-Equal "$($missing.Count) $($missing[0].Name) $($missing[0].Watch -join '|')" "1 late $late|$(Join-Path $late 'plugin.json')" 'the plugin not installed, and what to watch for it'
+    Assert-Equal (Get-MissingText $missing) 'plugin late not installed: run setup.ps1 for this project (docs/PLUGINS.md, Where a plugin comes from). This script loads it by itself once it is there.' 'what the worker''s card says'
+    . (Join-Path $baseDir 'restart.ps1')
+    Start-CodeWatch @($missing | ForEach-Object { $_.Watch })
+    New-Item -ItemType Directory -Force (Join-Path $late '.git') | Out-Null
+    Assert-Equal "$(Test-CodeChanged) $((Get-MissingPlugins (Join-Path $root 'W') $waiting).Count)" 'False 1' 'a clone that has only made the folder: still missing, no restart'
+    New-Plugin (Join-Path $root 'W/plugins') 'late' '@{}' | Out-Null
+    Assert-Equal "$(Test-CodeChanged) $((Get-MissingPlugins (Join-Path $root 'W') $waiting).Count)" 'True 0' 'the files are there: the script restarts and nothing is missing'
+    Assert-Equal (((Import-Plugins (Join-Path $root 'W') $waiting -Installed) | ForEach-Object { $_.Name }) -join ',') 'one,late,two' 'the plugin loads in its place'
+    # A script that started between the two files watches the manifest too.
+    Remove-Item (Join-Path $late 'plugin.json')
+    Start-CodeWatch @((Get-MissingPlugins (Join-Path $root 'W') $waiting) | ForEach-Object { $_.Watch })
+    Set-Content (Join-Path $late 'plugin.json') '{ "api": 1 }' -Encoding utf8
+    Assert-Equal (Test-CodeChanged) $true 'the manifest that comes after plugin.ps1 restarts the script too'
+    # An installed plugin that is broken still throws for a script that waits.
+    Set-Content (Join-Path $late 'plugin.json') '{ "api": 2 }' -Encoding utf8
+    $message = ''
+    try { Import-Plugins (Join-Path $root 'W') $waiting -Installed | Out-Null } catch { $message = "$_" }
+    Assert-Equal $message 'plugin late: written for contract version 2, and Scriptorium has version 1' 'a broken plugin is not a missing one'
     $plugins = Join-Path (Join-Path $root 'S') 'plugins'
     Assert-Equal (Get-PluginDir (Join-Path $root 'S') 'unity' ('{ "source": "https://github.com/x/y" }' | ConvertFrom-Json)) (Join-Path $plugins 'unity') 'a git source lives in the install'
     Assert-Equal (Get-PluginDir (Join-Path $root 'S') 'unity' $null) (Join-Path $plugins 'unity') 'a listed plugin lives in the install'

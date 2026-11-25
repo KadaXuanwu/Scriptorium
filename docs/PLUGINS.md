@@ -41,6 +41,20 @@ A project names its plugins in `scriptorium.json` ([CONFIG.md](CONFIG.md)):
 
 The plugins of a project run in the order the file gives them.
 
+To add a plugin, put its name in `scriptorium.json`, then run `setup.ps1` for the project. Between the two steps the
+plugin is named and not installed: its folder does not have its `plugin.json` and `plugin.ps1` yet. The project's
+scripts start again when the file changes, and each waits for the plugin:
+
+- **A worker** loads the other plugins and starts no run. Its card names the plugin that is not installed and says to
+  run `setup.ps1`.
+- **The page's server** and **the merger** run on with the other plugins. Each writes the same line to its log.
+- Each script starts again by itself when the plugin's files are in its folder, as it does for new code. Nobody has
+  to start a task by hand.
+
+A plugin that is installed and does not load is another case (a manifest for another contract version, a
+`plugin.ps1` that throws): the worker script ends, and the page runs on without plugins. Fix the plugin, then start
+the tasks again.
+
 ## The manifest
 
 ```json
@@ -169,7 +183,8 @@ manifest says `"provider": true` is one.
   page's Details are its, and setup puts a new worker on its account.
 - **The page's server** serves the accounts and the workers of every provider it has, each with its own hooks,
   models and windows.
-- With no provider, the page still shows the queue, and each worker's card says that it has no provider.
+- With no provider, the page still shows the queue, and each worker's card says that it has no provider. A provider
+  that the file names and setup has not installed yet is named on the card (Where a plugin comes from).
 
 A provider is a plugin like any other: it may also have `Setup`, `Start` and the other hooks above, and a
 `PLAYBOOK.md` with what holds for its tool (its shell, the rules file it loads, how it compacts).

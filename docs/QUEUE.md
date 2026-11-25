@@ -28,7 +28,9 @@ script restarts itself through its task (on macOS and Linux: it exits with code 
 again; launchd also starts it again 10 seconds after any other exit that is not 0) when Scriptorium, a loaded plugin or the project's `scriptorium.json` changes
 ([restart.ps1](../restart.ps1)): a worker between jobs, so a run in progress finishes on the old code first; the merger
 between passes; the page's server not while a sign-in, a GitHub write, a worker's setup or a copy's delete runs, and also
-after an error of its loop (old code may fail on what a pull took away). A paused run
+after an error of its loop (old code may fail on what a pull took away). A script also restarts when a plugin that
+`scriptorium.json` names and that was not installed gets its files: until then it waits for it
+([PLUGINS.md](PLUGINS.md), Where a plugin comes from). A paused run
 (`paused.json`) resumes as before. To stop the queue, disable the tasks and end the `powershell.exe` (`pwsh` on macOS
 and Linux) processes that run the scripts with `-Project "<main>"`.
 
@@ -492,7 +494,9 @@ A worker's environment comes from the project's plugins ([PLUGINS.md](PLUGINS.md
 before each look for a job, `GetRun` and `Start` for another repo's checkout before a run, and `EndRun` after it.
 A `Start` or `GetRun` that throws starts no run: the worker's card shows the error, and the worker tries again at its
 next look. With no environment plugin, a run gets no MCP server and only the base's commands (`git`, `gh`). The
-provider is a plugin too: with none, a worker starts no run and its card says so. A worker's run gets the playbook
+provider is a plugin too: with none, a worker starts no run and its card says so. A plugin that `scriptorium.json`
+names and `setup.ps1` has not installed yet also starts no run: the card names it and says to run setup, and the
+worker loads it by itself once setup has cloned it. A worker's run gets the playbook
 and the hooks of its own provider, not of another provider that the project lists.
 
 ## Working a job

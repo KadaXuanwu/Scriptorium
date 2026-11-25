@@ -24,14 +24,20 @@ $plugins = @()
 # runs on its account's coding tool, so the page serves the accounts and the workers of each. The page runs on
 # without one.
 $providers = @()
+# A plugin the file names that is not installed yet (plugins.ps1, Get-MissingPlugins): the page runs on with the
+# others, and the server starts again when setup.ps1 has cloned it. Each worker's card says which one.
+$missing = Get-MissingPlugins (Split-Path $PSScriptRoot -Parent) $config
+if ($missing.Count) {
+    Add-Content (Join-Path $Main '.queue/app.log') "$(Get-Date -Format s) $(Get-MissingText $missing)" -Encoding utf8
+}
 try {
-    $plugins = Import-Plugins (Split-Path $PSScriptRoot -Parent) $config
+    $plugins = Import-Plugins (Split-Path $PSScriptRoot -Parent) $config -Installed
     $providers = Get-Providers (Split-Path $PSScriptRoot -Parent) $plugins
 } catch {
     Add-Content (Join-Path $Main '.queue/app.log') "$(Get-Date -Format s) plugins: $_" -Encoding utf8
 }
 Start-CodeWatch (@((Join-Path $Main 'scriptorium.json')) + @(@($plugins) + @($providers) | ForEach-Object { $_.Dir }) +
-    @($providers | ForEach-Object { Join-Path $_.Dir 'models.json' }))
+    @($providers | ForEach-Object { Join-Path $_.Dir 'models.json' }) + @($missing | ForEach-Object { $_.Watch }))
 # The default is set. A provider's calls get the settings as the snapshot last read them.
 Set-Providers $providers @{ Project = $Main; Copy = $Main; Machine = { $script:saved } }
 # The project's default provider: each snapshot and each action starts from it (plugins.ps1, Select-Provider).
@@ -47,7 +53,8 @@ Get-CommandLines -Shells |
 
 $mainQueue = Join-Path $Main '.queue'
 # A PC from before an account had a provider: the accounts this project's workers are on become its default provider's.
-if ($script:Provider) {
+# Not while a plugin is missing: it may be the default provider, and the one set here another tool's.
+if ($script:Provider -and -not $missing.Count) {
     Update-AccountProviders $Main @(Get-ChildItem (Join-Path $mainQueue 'worker-*.json') -ErrorAction SilentlyContinue |
         ForEach-Object { $_.BaseName.Substring(7) }) $script:Provider.Name
 }

@@ -18,11 +18,14 @@ $ErrorActionPreference = 'Stop'
 
 $Project = Resolve-Project $Project
 $config = Read-Project $Project
-Start-CodeWatch @((Join-Path $Project 'scriptorium.json'))
+# A plugin the file names that is not installed yet (plugins.ps1, Get-MissingPlugins): the merger starts again when
+# setup.ps1 has cloned it.
+$missing = Get-MissingPlugins $PSScriptRoot $config
+Start-CodeWatch (@((Join-Path $Project 'scriptorium.json')) + @($missing | ForEach-Object { $_.Watch }))
 # The provider's models can add a complexity (project.ps1, Get-Complexities), which a follow-up may name. The merger
 # runs on without a provider: the base's complexities and the project's own are enough for it.
 try {
-    Set-Provider (Get-Provider (Import-Plugins $PSScriptRoot $config))
+    Set-Provider (Get-Provider (Import-Plugins $PSScriptRoot $config -Installed))
 } catch {
 }
 
@@ -38,6 +41,9 @@ $slug = (& gh repo view --json nameWithOwner -q .nameWithOwner)
 $thisRepo = @($slug.Split('/')[1], $config.name)
 $log = Join-Path $Project '.queue/merge.log'
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
+if ($missing.Count) {
+    Add-Content $log "$(Get-Date -Format s) $(Get-MissingText $missing)" -Encoding utf8
+}
 # A squash commit is its PR's title alone: the branch's own commit messages stay out of main.
 $emptyBody = Join-Path $Project '.queue/empty-body.txt'
 [System.IO.File]::WriteAllText($emptyBody, '')

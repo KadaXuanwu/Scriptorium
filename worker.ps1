@@ -28,7 +28,10 @@ $config = Read-Project $Project
 if (-not $Clone) {
     $Clone = "$Project-w$Id"
 }
-$projectPlugins = Import-Plugins $PSScriptRoot $config
+# A plugin the file names that is not installed yet (plugins.ps1, Get-MissingPlugins): the worker loads the others,
+# starts no run and says so on its card, and starts again when setup.ps1 has cloned it (Start-CodeWatch below).
+$missing = Get-MissingPlugins $PSScriptRoot $config
+$projectPlugins = Import-Plugins $PSScriptRoot $config -Installed
 
 # One loop per worker: stopping the task ends only its console host, so an older loop may still run, on old code.
 # End it with its run; the ticket resumes here (PLAYBOOK.md, Branch). Only this project's worker of this number.
@@ -62,7 +65,8 @@ New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir 
 # The providers this worker can run on (plugins.ps1, Get-Providers): the project's default first.
 $providers = Get-Providers $PSScriptRoot $projectPlugins
 # A PC from before an account had a provider: the accounts this worker is on become the default provider's (pc.ps1).
-if ($providers.Count) {
+# Not while a plugin is missing: it may be the default provider, and the first here another tool's.
+if ($providers.Count -and -not $missing.Count) {
     Update-AccountProviders $Project @("$Id") $providers[0].Name
 }
 # The provider (docs/PLUGINS.md, A provider): the plugin that runs the coding tool, reads its logs and knows its
@@ -80,7 +84,8 @@ if ($provider -and @($plugins | ForEach-Object { $_.Name }) -notcontains $provid
 # A pull of a plugin restarts the worker as a pull of Scriptorium does. So does a change to the provider's models.json:
 # its windows are read once, when a script starts (limits.ps1, Set-Windows).
 Start-CodeWatch (@((Join-Path $Project 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }) +
-    @($plugins | Where-Object { $_.Provider } | ForEach-Object { Join-Path $_.Dir 'models.json' }))
+    @($plugins | Where-Object { $_.Provider } | ForEach-Object { Join-Path $_.Dir 'models.json' }) +
+    @($missing | ForEach-Object { $_.Watch }))
 Set-Provider $provider @{ Project = $Project; Copy = $Clone; Worker = $Id; QueueDir = $queueDir
     Machine = { Read-Settings }; Log = { param($text) Write-Log "$text" } }
 # Every turn reads the whole context again, so a run's context is compacted at the compact size of the job's
@@ -1659,6 +1664,13 @@ while ($true) {
     try {
         if (-not (Test-Enabled $Id)) {
             Disable-Worker
+            Start-Sleep 30
+            continue
+        }
+        # A plugin of scriptorium.json is not installed yet: no run starts without it (it may be the provider, or
+        # what makes the environment). The worker restarts when its files are there (Start-CodeWatch).
+        if ($missing.Count) {
+            Write-State 'error' @{ error = (Get-MissingText $missing) }
             Start-Sleep 30
             continue
         }

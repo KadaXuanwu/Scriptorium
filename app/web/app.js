@@ -233,7 +233,7 @@ function activity(worker) {
   if (worker.activity === 'setup') return ['muted', 'history', 'Setting up its copy of the repo'];
   if (worker.activity === 'opening') return ['muted', 'history', esc(worker.report || 'Getting its environment ready')];
   if (worker.activity === 'setup-failed') return ['bad', 'alert', 'Setup failed'];
-  // A plugin's hook threw (its text is in Now); the worker tries again at its next look.
+  // A plugin's hook threw, or a plugin is not installed yet (the text is in Now); the worker tries again at its next look.
   if (worker.activity === 'error') return ['bad', 'alert', 'Its environment failed'];
   // Its account is out (docs/QUEUE.md, An account that is out): the cause, and when the workers test the account next.
   // `own`: its runs do not start although its account answers, so the cause is on this card (Now), not on Accounts.
