@@ -169,6 +169,21 @@ function inline(text) {
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
 }
 
+// A project's coding tool, by its provider plugin's title without the start every plugin's title has
+// (docs/PLUGINS.md, A provider): "Scriptorium for Claude Code" is Claude Code. '' with no provider.
+const toolOf = (s) => (s?.provider || '').replace(/^Scriptorium for /, '');
+// Whether a project's provider has each of these hooks (the snapshot's `hooks`). A snapshot from before that list (the
+// last state on the device) counts as having them all, as the page showed it then.
+const has = (s, ...hooks) => !s?.hooks || hooks.every((hook) => s.hooks.includes(hook));
+// The coding tools of the PC's projects, each once. An account is the PC's and has no tool of its own yet, so its
+// card names the tool only while there is one.
+const toolsOfPc = () => [...new Set(names.map((p) => toolOf(states[p])).filter(Boolean))];
+// What a project's coding tool has of the settings Details offers, from its models.json: efforts, an advisor, a
+// compact size. A snapshot from before `compactRange` counts as having one.
+const toolHas = (s) => ({ efforts: (s?.efforts || []).length > 0, advisor: Boolean(s?.advisor?.model || s?.advisor?.base),
+  compact: !s?.compactRange || s.compactRange.length === 2 });
+const toolBadge = (tool) => (tool ? `<span class="badge tool" title="The coding tool that runs here">${esc(tool)}</span>` : '');
+
 const badges = (items) => (items || []).filter(Boolean).map((a) => `<span class="badge">${esc(a)}</span>`).join('');
 // A ticket's tags stand in one order on every tab: kind, repo, areas, size, then the model and effort of its run (Now,
 // History) or, for a ticket not started, its complexity (Next, Queue).
@@ -299,7 +314,7 @@ function workerCard(worker) {
 
   const card = `worker:${worker.id}`;
   return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}" data-card="${esc(`${scope}|${worker.id}`)}"${busyAttr(card)}>
-    <div class="worker-head"><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}</strong>
+    <div class="worker-head"><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}${toolBadge(toolOf(state))}</strong>
       <span class="doing ${tone}">${icon(glyph)}${words}</span></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
@@ -353,19 +368,24 @@ function complexityRow(c) {
     && `Default: ${esc(modelName(c.base.model))} · ${esc(c.base.effort)}`,
   c.baseAdvisor != null && (c.baseAdvisor !== on || (c.baseFallback || '') !== fallback)
     && `Default: ${c.baseAdvisor ? `advisor, ${esc(fallbackName(c.baseFallback))}` : 'no advisor'}`].filter(Boolean);
-  const advisor = c.model === advisorModel
+  // Only what the coding tool has (toolHas): with no efforts or no compact size the field keeps its place, unseen;
+  // with no advisor the row has none.
+  const tool = toolHas(state);
+  const advisor = !tool.advisor ? '' : c.model === advisorModel
     ? '<small>No advisor: the run is on the advisor\'s model.</small>'
     : `<button class="take${on ? ' on' : ''}" data-advisor="${name}" aria-pressed="${on}" aria-label="Advisor of a ${name} run">${icon(on ? 'check' : 'lock')}<span><b>Advisor</b></span></button>
       <select data-fallback="${name}" aria-label="Effort of a ${name} run without the advisor"${on ? '' : ' disabled'}>${
   ['', ...(state.efforts || [])].map((e) => `<option value="${esc(e)}"${e === fallback ? ' selected' : ''}>${esc(fallbackName(e))}</option>`).join('')}</select>`;
+  // The compact sizes the coding tool takes (the snapshot's `compactRange`); an older snapshot has none.
+  const [least, most] = state.compactRange?.length === 2 ? state.compactRange : [67000, 967000];
   // The description is behind an (i) button: a popover that a tap outside closes, so a phone keeps the row short.
   const about = esc(`about-${scope}-${c.name}`);
   return `<div class="config-row${busyClass(key)}"${busyAttr(key)}>
     <span class="config-name"><b>${name}<button class="about" popovertarget="${about}" aria-label="What ${name} is">${icon('info')}</button></b>
       <span class="pop about-text" id="${about}" popover>${esc(c.description)}</span></span>
     <select data-run-model="${name}" aria-label="Model of a ${name} run">${pickList([...(state.models || []), c.base?.model], c.model, modelName)}</select>
-    <select data-run-effort="${name}" aria-label="Effort of a ${name} run">${pickList(state.efforts || [], c.effort, (v) => v)}</select>
-    <label class="compact"><input type="number" inputmode="numeric" min="67" max="967" step="1" value="${Math.round(c.compactAt / 1000)}"
+    <select data-run-effort="${name}" aria-label="Effort of a ${name} run"${tool.efforts ? '' : ' class="none" disabled'}>${pickList(state.efforts || [], c.effort, (v) => v)}</select>
+    <label class="compact${tool.compact ? '' : ' none'}"><input type="number"${tool.compact ? '' : ' disabled'} inputmode="numeric" min="${Math.round(least / 1000)}" max="${Math.round(most / 1000)}" step="1" value="${Math.round(c.compactAt / 1000)}"
       data-compact="${name}" aria-label="Thousands of tokens at which a ${name} run compacts its context">k tokens</label>
     ${notes.length ? `<small>${notes.join(' · ')}</small>` : ''}${advisor}</div>`;
 }
@@ -380,12 +400,13 @@ function settingsBlock() {
   const [model, effort] = (state.settingsModel || '').split('@');
   const override = model ? `<p class="settings-note">settings.json sets ${esc(modelName(model))}${effort ? ` · ${esc(effort)}` : ''}
     for every run: the models and efforts above are not in use.</p>` : '';
+  const tool = toolHas(state);
   return `<section class="settings">${head}
-    <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide">Effort</span><span>Compacts near</span></div>
+    <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide${tool.efforts ? '' : ' none'}">Effort</span><span${tool.compact ? '' : ' class="none"'}>Compacts near</span></div>
     ${(state.complexities || []).map(complexityRow).join('')}
-    <div class="config-row${busyClass('advisor-model')}"${busyAttr('advisor-model')}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
+    ${tool.advisor ? `<div class="config-row${busyClass('advisor-model')}"${busyAttr('advisor-model')}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
       <select data-advisor-model aria-label="Model of the advisor">${pickList(state.models || [], advisor.model, modelName)}</select>
-      ${base && base !== advisor.model ? `<small>Default: ${esc(modelName(base))}</small>` : ''}</div>
+      ${base && base !== advisor.model ? `<small>Default: ${esc(modelName(base))}</small>` : ''}</div>` : ''}
     ${override}</section>`;
 }
 
@@ -543,11 +564,13 @@ function accountCard(a) {
   const out = a.out ? `<div class="reason">${markdown(a.out.text || '')}<small>${test}</small></div>` : '';
   const name = esc(a.name);
   // Sign in only while the account is signed out: to change the login of an account, remove it and add one.
-  const buttons = a.status === 'signedout' ? [`<button class="primary" data-login="${name}">Sign in</button>`] : [];
-  if (a.signedIn) buttons.push(`<button data-ping="${name}" title="Sends the cheapest request: it starts the account's windows now">Ping</button>`);
+  // Each only with a coding tool that has it (has): a tool with no sign-in for the page is signed in from a terminal.
+  const buttons = a.status === 'signedout' && has(state, 'SignIn', 'ReadSignIn') ? [`<button class="primary" data-login="${name}">Sign in</button>`] : [];
+  if (a.signedIn && has(state, 'Probe')) buttons.push(`<button data-ping="${name}" title="Sends the cheapest request: it starts the account's windows now">Ping</button>`);
   const card = `account:${a.name}`;
+  const tools = toolsOfPc();
   return `<article class="card account ${tone}${busyClass(card)}" data-card="${name}"${busyAttr(card)}>
-    <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
+    <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${tools.length === 1 ? toolBadge(tools[0]) : ''}${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
       <span class="chip ${tone}">${icon(glyph)}${words}</span>${cross('account', a.name, a.name)}</div>
     <div class="meta"><span class="email">${esc(a.signedIn ? a.email || '' : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${out}</div>
     ${accountMeters(a)}
@@ -611,15 +634,55 @@ function infoLimits(a) {
 // The project's environment in words: the titles of its plugins but the provider's, '' for a plain git repo.
 const environment = (s) => inWords((s.plugins || []).filter((p) => !p.provider).map((p) => esc(p.title || p.name)));
 
+// What a coding tool gives here, for each feature of a provider (its hooks; docs/PLUGINS.md, A provider): the words
+// with it, and what the queue does without it.
+const toolFeatures = [
+  [['ReadUsage'], 'each account\'s usage, so the workers stop at your lines (Accounts)', 'a reading of the usage: the workers run until the plan refuses, then wait'],
+  [['GetLogin'], 'each account\'s email and plan, and whether it is signed in', 'a reading of a login: every account counts as signed in'],
+  [['SignIn', 'ReadSignIn'], 'the sign-in of an account from this page', 'a sign-in from this page: sign an account in from a terminal'],
+  [['SignOut'], 'the sign-out of an account you remove', 'a sign-out: an account you remove stays signed in'],
+  [['Probe'], 'Ping, a test of an account that is out, and the usage of an idle account', 'Ping: an idle account\'s usage is not read again, and its next run tests an account that is out'],
+  [['Compact'], 'a session that waits at a limit is compacted before it goes on', 'compacting a session that waits at a limit: it goes on whole'],
+  [['ReadStep'], 'the steps of a run (Steps on a worker\'s card)', 'the steps of a run'],
+  [['ReadEnd'], 'the reason a stuck run ended', 'the reason a stuck run ended'],
+];
+
+// One project's coding tool for Details, from its own snapshot: the tool and the plugin that runs it, its models and
+// usage windows, then what it gives here and what it does not.
+function toolInfo(st) {
+  const tool = toolOf(st);
+  if (!tool) return '<p>None: the project names no provider plugin, so no worker of it runs. Run setup again; it names the ones to choose from.</p>';
+  const plugin = (st.plugins || []).find((x) => x.provider);
+  const models = (st.models || []).map((id) => esc(st.modelTitles?.[id] || id));
+  const windows = (st.windows || []).map((win) => `${esc(win.title || win.name)}${win.models ? ' (some models only)' : ''}`);
+  const own = toolHas(st);
+  const k = (tokens) => Math.round(tokens / 1000);
+  // Then what its models.json has: efforts, an advisor, a compact size.
+  const settings = [
+    [own.efforts, `an effort for each complexity (${(st.efforts || []).map(esc).join(', ')})`, 'efforts'],
+    [own.advisor, `an advisor for a run (${esc(st.modelTitles?.[st.advisor?.base] || st.advisor?.base || st.advisor?.model)})`, 'an advisor'],
+    [own.compact, `a compact size for each complexity${st.compactRange?.length === 2 ? ` (${k(st.compactRange[0])} to ${k(st.compactRange[1])} thousand tokens)` : ''}`, 'a compact size for a run'],
+  ];
+  const gives = [...toolFeatures.filter(([hooks]) => has(st, ...hooks)).map(([, yes]) => yes), ...settings.filter(([on]) => on).map(([, yes]) => yes)];
+  const lacks = [...toolFeatures.filter(([hooks]) => !has(st, ...hooks)).map(([, , no]) => no), ...settings.filter(([on]) => !on).map(([, , no]) => no)];
+  return `<p><b>${esc(tool)}</b> runs every session of the workers${plugin ? `, through the plugin ${esc(plugin.title || plugin.name)} ${esc(plugin.version)}` : ''}.</p>${items([
+    models.length && `<b>Models:</b> ${inWords(models)}.`,
+    `<b>Usage windows:</b> ${windows.length ? `${inWords(windows)}.` : 'none.'}`,
+    gives.length && `<b>It gives:</b>${items(gives)}`,
+    lacks.length && `<b>It does not give:</b>${items(lacks)}`,
+  ])}`;
+}
+
 function info(s) {
   const blocking = s.questions.filter((q) => q.blocking).length;
   const advisor = s.advisor;
   const working = (s.accounts || []).filter((a) => (a.uses || []).some((u) => u.startsWith('worker:')));
   const plugins = s.plugins || [];
-  // What can differ between the PC's projects, for each of them: its plugins.
-  const per = s.per || [{ name: '', plugins }];
+  // What can differ between the PC's projects, for each of them: its plugins and its coding tool (`of`, its snapshot).
+  const per = s.per || [{ name: '', plugins, of: s }];
+  const tools = [...new Set(per.map((p) => toolOf(p.of)).filter(Boolean))];
   return [
-    section('In short', `<p>Workers are sessions of a coding tool on this PC${s.provider ? ` (${esc(s.provider)})` : ''}. Each builds tickets (GitHub issues) on its own, one at
+    section('In short', `<p>Workers are sessions of a coding tool on this PC${tools.length ? ` (${inWords(tools.map(esc))})` : ''}. Each builds tickets (GitHub issues) on its own, one at
       a time, in its own copy of the project${environment(s) ? `, with its environment (${environment(s)})` : ''}. It tests
       its work and opens a pull request (PR), and a merger merges the PR into main. You decide what to build; the scripts
       do the rest.</p>`),
@@ -666,16 +729,17 @@ function info(s) {
         ? ` The project on a worker's ${setting('card', 'workers')} moves the worker to another project.` : ''}</p>`),
     section('Complexities', `<p>A ticket's complexity chooses the model; its size (S, M, L) only says how much usage it
       takes. A ticket with no complexity label is medium.</p>
-      <p>Compacts near: at this context size, the coding tool replaces the older part of a run with a summary. A larger
-        size keeps more in view and uses more each turn.</p>
+      ${toolHas(s).compact ? `<p>Compacts near: at this context size, the coding tool replaces the older part of a run with a summary. A larger
+        size keeps more in view and uses more each turn.</p>` : ''}
       <p>${setting('Details', 'details')} (above) sets each complexity's model, effort, compact size and advisor for all
         workers${per.length > 1 ? ' of its project' : ''}, from the next run. A run in progress or on hold keeps its
         model, effort and advisor.</p>
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
         not see the advice. A run keeps its advisor to the end, but past the stop line of the advisor's own window
         (Limits) new runs start without it.</p>` : ''}`),
+    section('Coding tool', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${toolInfo(p.of)}`).join('')),
     section('Plugins', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${(p.plugins || []).length
-      ? items(p.plugins.map((x) => `<b>${esc(x.title || x.name)}</b> ${esc(x.version)}: ${esc(x.description)}`))
+      ? items(p.plugins.map((x) => `<b>${esc(x.title || x.name)}</b> ${esc(x.version)}${x.provider ? ' (the coding tool)' : ''}: ${esc(x.description)}`))
       : '<p>None: a plain git repo.</p>'}`).join('')),
     section('Limits', `<p>Each account has the usage windows of its plan${(s.windows || []).length ? `: ${inWords((s.windows || []).map((win) => `${esc(win.title || win.name)}${win.models ? ' (some models only)' : ''}`))}` : ''}.
       The workers use all the room you give them and stop at the lines you set (${setting('Accounts', 'accounts')}). A
@@ -688,7 +752,8 @@ function info(s) {
         `<b>A worker script</b> for each worker has its plugins make its environment ready${plugins.length ? '' : ' (none here)'}, chooses its next job, starts the run and checks how it ended. A free worker looks for a job every few minutes, and at once on Force.`,
         '<b>The merger</b> looks at the open PRs every few minutes and merges, oldest first, each worker PR that GitHub can merge and no question holds. A PR that conflicts with main, or has a comment of yours its run did not read, goes back to its worker. While No blocking is on, it also hands back what waits on you.',
         '<b>This page\'s server</b> reads GitHub once a minute and the workers\' files every few seconds, sends the pushes and does what you click. Tailscale puts it on your phone; nothing is open to the internet. With the PC off, the page shows its last state, greyed out.',
-        'Only the runs use a model, with two small exceptions: a worker with no run for a while reads an account\'s usage with a one-word request, and Ping starts an account\'s 5-hour window.',
+        has(s, 'Probe') ? 'Only the runs use a model, with two small exceptions: a worker with no run for a while reads an account\'s usage with the coding tool\'s cheapest request, and Ping starts an account\'s windows.'
+          : 'Only the runs use a model.',
         'A change to the queue\'s scripts loads by itself: a worker restarts on the new code between jobs, never in a run.',
       ])}`),
     section('GitHub', `<p>GitHub holds the record of all work: the tickets, the PRs, every question and answer. The scripts
@@ -706,7 +771,7 @@ function info(s) {
         the run's own tests are the check.</p>`),
     section('The tabs', items([
       `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account${per.length > 1 ? ', project' : ''} and Config, and the No blocking switch. The last tile adds a worker; a card's cross removes a disabled worker, and its copy of the project stays on the PC unless you tick Delete in the dialog.`,
-      `${setting('Accounts', 'accounts')}: usage and the limits above; drag a handle to move one. The last tile adds an account and signs it in; a card's cross removes an account that nothing uses.`,
+      `${setting('Accounts', 'accounts')}: usage and the limits above; drag a handle to move one. ${has(s, 'SignIn', 'ReadSignIn') ? 'The last tile adds an account and signs it in; a' : 'A'} card's cross removes an account that nothing uses.`,
       `${setting('Questions', 'questions')}: decisions for you, blocking first.`,
       `${setting('Queue', 'queue')}: Up next with why each ticket waits, Stuck, On hold and Parked.`,
       `${setting('History', 'history')}: merged PRs, and each run with its model, time and cost.`,
@@ -824,9 +889,18 @@ function render() {
 
   // The accounts are the PC's: this address's own project gives them.
   const code = $('login-code')?.value || '';
+  // Above the cards, what a card cannot say: the projects run different coding tools (an account has none of its own
+  // yet), or the tool has no sign-in from the page.
+  const tools = toolsOfPc();
+  const signIn = has(s, 'SignIn', 'ReadSignIn');
+  const toolNote = tools.length > 1 ? quiet(`The projects run different coding tools: ${inWords(names.filter((p) => toolOf(states[p])).map((p) => `${esc(toolOf(states[p]))} on ${esc(p)}`))}.
+      An account has no tool of its own yet: this page reads every account with ${esc(toolOf(s) || 'no tool')}, the tool of ${esc(home)}.`)
+    : !signIn && tools.length ? quiet(`${esc(tools[0])} has no sign-in from this page: add an account in the PC's settings and sign its folder in from a terminal.`) : '';
   within(home, () => {
-    put($('login-box'), loginBox(s.login));
-    put($('account-list'), (accountsInOrder().map((a) => tagged(home, accountCard(a))).join('') || quiet('No accounts in the settings.')) + addTile('account', 'Add an account'));
+    put($('login-box'), loginBox(s.login) + toolNote);
+    // The tile only with a coding tool that signs an account in from the page.
+    put($('account-list'), (accountsInOrder().map((a) => tagged(home, accountCard(a))).join('') || quiet('No accounts in the settings.'))
+      + (signIn ? addTile('account', 'Add an account') : ''));
   });
   if (code && $('login-code')) $('login-code').value = code;
 
@@ -855,7 +929,7 @@ function render() {
     text = within(base, () => info({
       ...states[base], accounts: s.accounts, questions: questions.filter(shown).map(({ item }) => item), stuck: stuck.filter(shown).map(({ item }) => item),
       workers: workersShown.map(({ p, item }) => ({ ...item, project: several ? p : '' })),
-      per: names.filter((p) => !shownOf || p === shownOf).map((p) => ({ name: p, plugins: states[p].plugins })),
+      per: names.filter((p) => !shownOf || p === shownOf).map((p) => ({ name: p, plugins: states[p].plugins, of: states[p] })),
     }));
   } catch (e) {
     text = quiet('The info could not be drawn from this state. Pull down or reload to fetch a new one.');

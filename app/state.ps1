@@ -1154,7 +1154,11 @@ function New-Snapshot($data) {
         # account's own first: each @{ name; title; models (it holds only some models); keep (it holds the guards);
         # seconds }.
         provider = $(if ($script:Provider) { [string]$script:Provider.Title } else { '' })
-        windows = @(@($WindowSeconds.Keys) + @($ModelWindows.Keys) | ForEach-Object {
+        # The features the provider has (plugins.ps1, $ProviderFeatures), by their hooks' names: the page offers only
+        # these (Ping, the sign-in) and Details says what the coding tool gives. And the compact sizes it takes.
+        hooks = @($ProviderFeatures | Where-Object { Test-ProviderHook $_ })
+        compactRange = @($models.compactRange | Where-Object { $_ })
+        windows =@(@($WindowSeconds.Keys) + @($ModelWindows.Keys) | ForEach-Object {
             @{ name = $_; title = [string]$WindowTitles[$_]; models = $ModelWindows.Contains($_); keep = ($_ -eq $KeepWindow)
                 seconds = $(if ($ModelWindows.Contains($_)) { [long]$ModelWindows[$_].seconds } else { [long]$WindowSeconds[$_] }) }
         })

@@ -169,7 +169,10 @@ A provider is a plugin like any other: it may also have `Setup`, `Start` and the
 ### Its hooks
 
 Each gets the context above, with the fields of the call over it. `GetCommand` and `ReadRun` are needed. Every other
-hook is a feature: the base runs without it, as the last column says.
+hook is a feature: the base runs without it, as the last column says. The page shows the owner which features a
+project's coding tool has ([APP.md](APP.md), Details, Coding tool), and offers Ping and the sign-in only with a tool
+that has them. It names the tool by the provider's `title` without "Scriptorium for" at its start: "Scriptorium for
+Claude Code" is Claude Code on a worker's card.
 
 | Hook | Fields of the call | It returns | Without it |
 | ---- | ------------------ | ---------- | ---------- |

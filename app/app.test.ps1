@@ -646,6 +646,8 @@ Remove-Item $log
 $shown = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }
 Assert-Equal "$($shown.provider): $(($shown.windows | ForEach-Object { "$($_.name)=$($_.title)/$($_.models)/$($_.keep)" }) -join ' ')" 'The test provider: short=5 hours/False/False long=Week/False/True deep=Deep week/True/False' 'the windows'
 Assert-Equal "$($shown.modelTitles.'main-1') $($shown.modelTitles.ContainsKey('mid-1'))" 'Main 1 False' 'the models'' names'
+# The features the provider has, by their hooks: the page offers only these.
+Assert-Equal "$($shown.hooks.Count) $($shown.hooks -contains 'Probe') $($shown.hooks -contains 'GetCommand') $($shown.compactRange.Count)" '9 True False 2' 'every feature of the test provider, no needed hook among them, and the compact sizes'
 # With a provider that has only the hooks it must have: no step and no end from a log, one window, no advisor, no
 # effort, and a sign-in folder with its name.
 Set-Provider (Import-Plugin (Join-Path $baseDir 'tests/bare') 'bare' $null)
@@ -657,10 +659,12 @@ $bare = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = ('{"accou
     workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }); logins = @{ 'C:/a' = @{ signedIn = $true } } }
 Assert-Equal "$(($bare.windows | ForEach-Object { $_.name }) -join ',') $($bare.accounts[0].month.ceiling) $($bare.accounts[0].month.ContainsKey('guards')) $($bare.accounts[0].status)" 'month 1 False ready' 'one window, nothing kept'
 Assert-Equal "'$($bare.advisor.model)' $($bare.efforts.Count) $($bare.workers[0].takes[0].model) '$($bare.workers[0].takes[0].effort)' $($bare.complexities[0].compactAt)" "'' 0 only '' 0" 'no advisor, no effort, no compact size'
+Assert-Equal "$($bare.hooks.Count) $($bare.compactRange.Count)" '0 0' 'no feature and no compact size'
 Assert-Equal (Get-NewAccountDir ('{"accounts":{}}' | ConvertFrom-Json) 'x' 'C:\Users\me') 'C:/Users/me/.bare-x' 'the folder of a new account'
 # With no provider the page still shows the queue: no model and no window.
 Set-Provider $null
 $none = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
 Assert-Equal "'$($none.provider)' $($none.windows.Count) $($none.models.Count) $(($none.complexities | ForEach-Object { $_.name }) -join ',')" "'' 0 0 low,medium,high,design" 'no provider'
+Assert-Equal $none.hooks.Count 0 'no provider: no feature'
 
 Write-Output 'ok'

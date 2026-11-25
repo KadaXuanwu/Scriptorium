@@ -54,6 +54,10 @@ click elsewhere saves, Escape keeps the name. A worker's name is the page's only
 stays with a move); an empty one gives back "Worker N". Comments, pushes and dialogs keep the number. An account's name
 changes the same way (Accounts).
 
+**The coding tool.** Beside its name, each card names the coding tool that runs the worker's sessions: its project's
+provider ([PLUGINS.md](PLUGINS.md), A provider), by the plugin's title without "Scriptorium for". On a PC whose
+projects run different tools, the cards show which worker runs on which.
+
 **Order.** A press on a card's empty space (not on a control or on text) and a drag move the card among the others:
 with a mouse at once, on a touch screen after a short hold. The order is the PC's (`order.workers`, `order.accounts`
 in the settings), so every device shows the same; a new worker goes last, after the others in the order of their
@@ -239,6 +243,11 @@ email and plan, the human uses on it (front desk, you), and a meter for each of 
 reading of ([QUEUE.md](QUEUE.md), A model's limit), with two handles: the one under a letter is the start line, the
 other the stop line for those models as advisors ("Advisor stops at").
 
+**The coding tool.** A card names it beside the plan while every project of the PC runs the same one. With different
+tools a line above the cards says which project runs which, and that the page reads every account with the tool of its
+own project: an account has no tool of its own yet. Sign in, Ping and the last tile show only with a tool that has them
+(the snapshot's `hooks`); a line above the cards says so for a tool with no sign-in from the page.
+
 **The meter** shows where the workers stop. The fill is the share used. The handle is the **stop line**: drag it to set
 the share where this account's workers stop (`stopAt`). The hatched part right of it is what they leave.
 
@@ -294,11 +303,15 @@ from the next run. A run in progress or on hold keeps its model, its effort and 
 - **The advisor's model** (`advisor.model`): a list of the models of `models.json`, with the default under it when the
   pick differs.
 - **A line when the settings set `model`:** that model goes over every pick of the block, for every run.
+- **Only what the project's coding tool has:** with no efforts, no compact size or no advisor in its `models.json`,
+  the block shows no field for it.
 
 On a phone a complexity has three lines: its name and compact size, its model and effort, then its advisor.
 
 **The info:** what the queue does and what to expect, for someone who does not know it, in plain sections: In short,
-What needs you, How a ticket goes through, Who builds what, Complexities, Plugins (each active plugin's title, version
+What needs you, How a ticket goes through, Who builds what, Complexities, Coding tool (for each project: the tool and
+the plugin that runs it, its models and usage windows, what it gives here and what it does not, from the provider's
+hooks and its `models.json`), Plugins (each active plugin's title, version
 and description, or "None: a plain git repo"), Limits, In the background, GitHub and The tabs. Each value the owner sets
 links to the tab that sets it. Every setting and reading comes from the snapshot; none is typed into the text, and no
 environment is named in it. **A change to a queue rule changes this text in the same pull request.** The settings and
