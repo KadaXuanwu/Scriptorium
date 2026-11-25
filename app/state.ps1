@@ -344,7 +344,7 @@ function Get-ComplexitySettings($settings, [string] $name) {
 function Get-OwnEfforts($list) {
     $own = @{}
     foreach ($entry in $list.models.PSObject.Properties) {
-        if ($null -ne $entry.Value.efforts) {
+        if ($entry.Value.PSObject.Properties['efforts']) {
             $efforts = @(Get-ModelEfforts $list $entry.Name)
             $effort = (Split-Pick $list $entry.Name).effort
             if ($efforts -cnotcontains $effort) {

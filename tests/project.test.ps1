@@ -191,6 +191,10 @@ $threw = $false
 try { Set-ComplexityModel $file $models (Get-Complexities $models $own $file) 'low' 'mid-1' 'xhigh' | Out-Null } catch { $threw = $true }
 Assert-Equal "$threw $($file.complexities.low.model)" 'True mid-1@low' 'an effort of the provider''s list that the model does not take is refused'
 $file.complexities.low.PSObject.Properties.Remove('model')
+# An empty list of its own: the model takes no effort, whatever the provider's list holds.
+$noEffort = '{ "models": { "plain": { "efforts": [] }, "one": { "efforts": ["high"] } }, "efforts": ["low", "high"], "effort": "low" }' | ConvertFrom-Json
+$shownOwn = Get-OwnEfforts $noEffort
+Assert-Equal "$(@(Get-ModelEfforts $noEffort 'plain').Count) $(@($shownOwn.plain.efforts).Count) '$($shownOwn.plain.effort)' $($shownOwn.one.efforts -join ',') $($shownOwn.one.effort)" "0 0 '' high high" 'no effort of its own, and a default outside its list'
 # A model that the project names outside models.json's list stays a valid pick for its complexity: its effort alone
 # changes, and the way back to it is open.
 $other = '{ "complexities": { "low": { "models": ["main-0@high"] } } }' | ConvertFrom-Json

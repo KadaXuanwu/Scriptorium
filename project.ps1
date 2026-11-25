@@ -210,11 +210,12 @@ function Split-Pick($models, [string] $pick) {
     return @{ model = [string]$model; effort = [string]$effort }
 }
 
-# The efforts a model takes (docs/PLUGINS.md, models.json): its own `efforts`, else the provider's list; none where
-# neither has one.
+# The efforts a model takes (docs/PLUGINS.md, models.json): its own `efforts` (`[]`: none), else the provider's list;
+# none where neither has one. Callers wrap it in @(): an empty list comes back as nothing.
 function Get-ModelEfforts($models, [string] $model) {
-    $own = if ($model -and $models.models.$model) { $models.models.$model.efforts }
-    return @($(if ($null -ne $own) { $own } else { $models.efforts }) | Where-Object { $_ })
+    $entry = if ($model) { $models.models.$model }
+    $list = if ($entry -and $entry.PSObject.Properties['efforts']) { $entry.efforts } else { $models.efforts }
+    return @($list | Where-Object { $_ })
 }
 
 # A compact size (docs/CONFIG.md, The compact size): the context size at which a run compacts, in whole tokens in

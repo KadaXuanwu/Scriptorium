@@ -1836,7 +1836,7 @@ document.addEventListener('change', async (e) => {
     const name = data.runModel || data.runEffort;
     const row = e.target.closest('.config-row');
     const pick = { model: row.querySelector('[data-run-model]').value, effort: row.querySelector('[data-run-effort]').value };
-    // A model with efforts of its own that lack the one shown takes its own default (Flash has no xhigh, say).
+    // A model with efforts of its own that lack the one shown takes its own default.
     const own = toolView(states[project], workerOf(states[project], data.worker)?.provider)?.perModel?.[pick.model];
     if (own && !own.efforts.includes(pick.effort)) pick.effort = own.effort;
     const same = (t) => t && t.model === pick.model && (t.effort || '') === pick.effort;
