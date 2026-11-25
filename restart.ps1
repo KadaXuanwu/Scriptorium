@@ -1,6 +1,7 @@
-# A queue script restarts itself on new code (docs/QUEUE.md): a pull of Scriptorium or of a plugin it loaded, or a
-# change to the project's scriptorium.json, ends the loop at its next safe point, and its own logon task starts it
-# again. Dot-sourced by worker.ps1, merge.ps1 and app/server.ps1.
+# A queue script restarts itself on new code (docs/QUEUE.md): a pull of Scriptorium or of a plugin it loaded, a
+# change to the project's scriptorium.json, or the files of a plugin it waited for (plugins.ps1, Get-MissingPlugins)
+# ends the loop at its next safe point, and its own logon task starts it again. Dot-sourced by worker.ps1, merge.ps1
+# and app/server.ps1.
 
 # The folders and files watched: the install folder (without the plugins it holds, the tests and its .claude folder),
 # then what Start-CodeWatch adds.
@@ -25,7 +26,8 @@ function Get-CodeStamp {
     return ($files | Sort-Object FullName -Unique | ForEach-Object { "$($_.FullName)=$($_.LastWriteTimeUtc.Ticks)" }) -join ';'
 }
 
-# Watches $paths too (the project's scriptorium.json, the loaded plugins' folders) from now on.
+# Watches $paths too (the project's scriptorium.json, the loaded plugins' folders, where a plugin that is not
+# installed yet will be) from now on. A path that is not there yet counts once it is.
 function Start-CodeWatch([string[]] $paths) {
     $script:watched = @($paths | Where-Object { $_ })
     $script:codeAt = Get-CodeStamp

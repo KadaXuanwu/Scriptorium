@@ -1027,7 +1027,8 @@ function New-Snapshot($data) {
         } elseif ($s.state -eq 'signedout') { 'signedout' } elseif ($s.state -eq 'over-budget') { 'room' } elseif (
             # A worker the owner added: the server sets it up ('setup', or 'setup-failed' with the error), then its
             # plugins make its environment ready ('opening', with their words in `report`: a first import can take
-            # long). 'error': a plugin's hook threw; the worker tries again at its next look.
+            # long). 'error': a plugin's hook threw, or a plugin is not installed yet; the worker tries again at its
+            # next look.
             @('setup', 'setup-failed', 'opening', 'error') -contains $s.state) { [string]$s.state } else { 'free' }
         if (@('setup-failed', 'error') -contains $s.state) {
             $view.error = [string]$s.error

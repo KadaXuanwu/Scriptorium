@@ -15,12 +15,40 @@ function Get-PluginDir([string] $install, [string] $name, $entry) {
     return Join-Path $install "plugins/$name"
 }
 
+# Whether a plugin is in its folder: its manifest and its hooks file. A clone makes the folder before the files.
+function Test-PluginInstalled([string] $dir) {
+    return (Test-Path (Join-Path $dir 'plugin.json')) -and (Test-Path (Join-Path $dir 'plugin.ps1'))
+}
+
+# The plugins scriptorium.json names that are not installed yet (docs/PLUGINS.md, Where a plugin comes from): the
+# owner added the name, and setup.ps1 has not cloned it. @{ Name; Dir; Watch }: `Watch` goes to Start-CodeWatch, so
+# the script starts again when the plugin's files are there.
+function Get-MissingPlugins([string] $install, $config) {
+    $missing = @()
+    if ($config -and $config.plugins) {
+        foreach ($property in $config.plugins.PSObject.Properties) {
+            $dir = Get-PluginDir $install $property.Name $property.Value
+            if (-not (Test-PluginInstalled $dir)) {
+                # The folder for its plugin.ps1, and the manifest: a restart may come between the two files.
+                $missing += , @{ Name = $property.Name; Dir = $dir; Watch = @($dir, (Join-Path $dir 'plugin.json')) }
+            }
+        }
+    }
+    return , $missing
+}
+
+# What a script says while it waits for the plugins of Get-MissingPlugins: on a worker's card and in the logs.
+function Get-MissingText($missing) {
+    return "plugin $(@($missing | ForEach-Object { $_.Name }) -join ', ') not installed: run setup.ps1 for this project " +
+        '(docs/PLUGINS.md, Where a plugin comes from). This script loads it by itself once it is there.'
+}
+
 # One plugin from its folder: its manifest, its hooks in a module of its own (so the helpers of two plugins never
 # meet) and its settings from scriptorium.json. Throws for a missing folder or file and for another contract version.
 function Import-Plugin([string] $dir, [string] $name, $entry) {
     $manifestFile = Join-Path $dir 'plugin.json'
     $file = Join-Path $dir 'plugin.ps1'
-    if (-not (Test-Path $manifestFile) -or -not (Test-Path $file)) {
+    if (-not (Test-PluginInstalled $dir)) {
         throw "plugin ${name}: no plugin.json and plugin.ps1 in $dir; run setup.ps1 to install it"
     }
     $manifest = Get-Content $manifestFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -51,12 +79,17 @@ function Import-Plugin([string] $dir, [string] $name, $entry) {
     }
 }
 
-# The project's plugins in the order scriptorium.json gives them; none for `"plugins": {}`.
-function Import-Plugins([string] $install, $config) {
+# The project's plugins in the order scriptorium.json gives them; none for `"plugins": {}`. -Installed: without the
+# ones that are not installed yet (Get-MissingPlugins), for a script that waits for them; else such a plugin throws.
+function Import-Plugins([string] $install, $config, [switch] $Installed) {
     $plugins = @()
     if ($config -and $config.plugins) {
         foreach ($property in $config.plugins.PSObject.Properties) {
-            $plugins += , (Import-Plugin (Get-PluginDir $install $property.Name $property.Value) $property.Name $property.Value)
+            $dir = Get-PluginDir $install $property.Name $property.Value
+            if ($Installed -and -not (Test-PluginInstalled $dir)) {
+                continue
+            }
+            $plugins += , (Import-Plugin $dir $property.Name $property.Value)
         }
     }
     return , $plugins

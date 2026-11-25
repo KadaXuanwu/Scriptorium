@@ -91,8 +91,8 @@ yet.
 
 What a worker does now is a line under its name: Working (or applying answers, rebasing), Usage limit with the reset
 time, Resumes within a minute, Account at its stop line, Free, the words of a plugin while it makes the environment
-ready (the worker's state `opening`, for example a first import), Its environment failed (a plugin's hook threw; the
-error is in Now), or Script silent (its state file is older than 15 minutes: the script is gone, even if its run still
+ready (the worker's state `opening`, for example a first import), Its environment failed (a plugin's hook threw, or a
+plugin that `scriptorium.json` names is not installed yet; the error is in Now), or Script silent (its state file is older than 15 minutes: the script is gone, even if its run still
 works). When its account is out, the line names the cause and the next test: Account signed out, Subscription refused
 or Runs do not start.
 
