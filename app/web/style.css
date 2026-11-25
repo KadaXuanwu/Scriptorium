@@ -491,7 +491,8 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .account { row-gap: 12px; }
 /* A window of some models sits in the part of the account's last window, under its meter. */
 .window .window { margin-top: 12px; }
-.account .buttons { align-self: end; }
+/* The buttons stand in the card's last row, at its bottom, also on a card with fewer windows than its neighbour. */
+.account .buttons { align-self: end; grid-row-end: -1; }
 .account.bad { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
 .account-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 16px; }
 .account-head .chip { margin-left: auto; }
