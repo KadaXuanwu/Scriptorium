@@ -24,7 +24,8 @@ try {
 } catch {
     Add-Content (Join-Path $Main '.queue/app.log') "$(Get-Date -Format s) plugins: $_" -Encoding utf8
 }
-Start-CodeWatch (@((Join-Path $Main 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }))
+Start-CodeWatch (@((Join-Path $Main 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }) +
+    @($plugins | Where-Object { $_.Provider } | ForEach-Object { Join-Path $_.Dir 'models.json' }))
 # The provider (docs/PLUGINS.md, A provider): its models and windows, its logins, and what a run's log says. The page
 # runs on without one. Its calls get the settings as the snapshot last read them.
 Set-Provider (Get-Provider $plugins) @{ Project = $Main; Copy = $Main; Machine = { $script:saved } }
@@ -301,10 +302,17 @@ function Set-Enabled([string] $worker, [bool] $enabled) {
 }
 
 # Ends a worker's run now: the process its script started (the `pid` of its running state) and that one's children.
-# Work since the run's last checkpoint push is lost.
+# Only the process that started when the state says (`pidStarted`): a state gone stale may name a number that
+# another process has now. Work since the run's last checkpoint push is lost.
 function Stop-Run([string] $worker, $state) {
     $id = if ($state -and $state.state -eq 'running') { [int]$state.pid } else { 0 }
-    if (-not $id -or -not (Get-Process -Id $id -ErrorAction SilentlyContinue)) {
+    $process = if ($id) { Get-Process -Id $id -ErrorAction SilentlyContinue } else { $null }
+    $started = ''
+    try {
+        $started = [string]$process.StartTime.ToUniversalTime().Ticks
+    } catch {
+    }
+    if (-not $process -or -not $started -or $started -ne [string]$state.pidStarted) {
         return 0
     }
     Stop-ProcessTree $id

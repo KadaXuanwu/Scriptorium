@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'project.ps1')
+. (Join-Path $PSScriptRoot 'plugins.ps1')
 . (Join-Path $PSScriptRoot 'followup.ps1')
 . (Join-Path $PSScriptRoot 'comments.ps1')
 . (Join-Path $PSScriptRoot 'away.ps1')
@@ -18,6 +19,12 @@ $ErrorActionPreference = 'Stop'
 $Project = Resolve-Project $Project
 $config = Read-Project $Project
 Start-CodeWatch @((Join-Path $Project 'scriptorium.json'))
+# The provider's models can add a complexity (project.ps1, Get-Complexities), which a follow-up may name. The merger
+# runs on without a provider: the base's complexities and the project's own are enough for it.
+try {
+    Set-Provider (Get-Provider (Import-Plugins $PSScriptRoot $config))
+} catch {
+}
 
 # One merger per project: stopping the task ends only its console host, so an older loop may still run, on old code.
 # End it.

@@ -29,8 +29,10 @@ if (-not $Clone) {
     $Clone = "$Project-w$Id"
 }
 $plugins = Import-Plugins $PSScriptRoot $config
-# A pull of a plugin restarts the worker as a pull of Scriptorium does.
-Start-CodeWatch (@((Join-Path $Project 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }))
+# A pull of a plugin restarts the worker as a pull of Scriptorium does. So does a change to the provider's models.json:
+# its windows are read once, when a script starts (limits.ps1, Set-Windows).
+Start-CodeWatch (@((Join-Path $Project 'scriptorium.json')) + @($plugins | ForEach-Object { $_.Dir }) +
+    @($plugins | Where-Object { $_.Provider } | ForEach-Object { Join-Path $_.Dir 'models.json' }))
 
 # One loop per worker: stopping the task ends only its console host, so an older loop may still run, on old code.
 # End it with its run; the ticket resumes here (PLAYBOOK.md, Branch). Only this project's worker of this number.
@@ -1267,8 +1269,15 @@ function Invoke-Worker($job, [string] $log, $paused) {
     try {
         $process = Start-Process $command.FilePath -ArgumentList $command.Arguments -WorkingDirectory $dir -NoNewWindow `
             -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
-        # The queue app ends a run by this (app/server.ps1, Stop-Run).
+        # The queue app ends a run by these two (app/server.ps1, Stop-Run): the process and when it started, so a
+        # number that Windows gave to another process since is never that run. Written at once.
         $script:running.pid = $process.Id
+        $script:running.pidStarted = ''
+        try {
+            $script:running.pidStarted = [string]$process.StartTime.ToUniversalTime().Ticks
+        } catch {
+        }
+        Write-State 'running' $script:running
         while (-not $process.HasExited) {
             # Returns at once when the run ends, so its end is not seen up to 30 seconds late.
             [void]$process.WaitForExit(30000)

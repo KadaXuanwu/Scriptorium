@@ -228,7 +228,8 @@ none. A name that `models.json` does not give to a window of some models counts 
 
 ### Its models.json
 
-Beside `plugin.json`. The base reads it again at each use.
+Beside `plugin.json`. The base reads it again at each use, and the windows when a script starts: a change to the file
+restarts the workers and the page between jobs, as a change to a `.ps1` does.
 
 ```json
 {
