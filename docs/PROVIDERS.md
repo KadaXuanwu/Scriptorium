@@ -154,10 +154,11 @@ Antigravity's model groups are the same thing.
 ## The design
 
 The contract is [PLUGINS.md](PLUGINS.md), A provider: the hooks, the `Run` a provider starts from, the reading and the
-end it returns, and `models.json` with its windows. It was drawn from one provider, so it is that provider's shape
-under neutral names until a second one is written against it (The order of work). The base's tests run it with two
-made-up providers (`tests/provider`, with a log of plain lines, and `tests/bare`, with only the two hooks a provider
-must have), which shows that the base does not need Claude Code's log or names, not that another real tool fits.
+end it returns, and `models.json` with its windows. It was drawn from Claude Code. Antigravity was then written
+against it with no change to the hooks; what did not fit (usage read with a command of its own between runs, and one
+login for each OS user) is in [The order of work](#the-order-of-work). The base's tests run it with two made-up
+providers (`tests/provider`, with a log of plain lines, and `tests/bare`, with only the two hooks a provider must
+have), which shows that the base does not need Claude Code's log or names, not that another real tool fits.
 
 A new hook does not change the contract version ([PLUGINS.md](PLUGINS.md), What changes the version).
 
