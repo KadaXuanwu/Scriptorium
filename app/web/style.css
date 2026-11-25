@@ -511,15 +511,16 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 /* The buttons stand in the card's last row, at its bottom, also on a card with fewer windows than its neighbour. */
 .account .buttons { align-self: end; grid-row-end: -1; }
 /* A part of the card where a neighbour has a window this account has not (a shorter window, one of some models, the
-   guards) gets a short dashed line in its middle, with no text: a whole row of its own, or what the row leaves under
-   the last meter. A part under 14px high draws none: a card with no neighbour still has a few pixels there (the page's
-   gap and the card's differ). */
+   guards) shows a faint "none" sign in its middle (a slashed circle, drawn as the page's icons are), with no text: a
+   whole row of its own, or what the row leaves under the last meter. A part under 24px high shows none: a card with no
+   neighbour still has a few pixels there (the page's gap and the card's differ). */
 .account > .window { display: flex; flex-direction: column; }
 .account > .window::after, .account > .empty {
   content: '';
   flex: 1 0 0;
-  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--muted) 60%, transparent) 0 6px, transparent 6px 10px)
-    center / 46px clamp(0px, 100% - 12px, 2px) no-repeat;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='9'/><path d='M5.6 18.4 18.4 5.6'/></svg>")
+    center / auto clamp(0px, (100% - 24px) * 99, 18px) no-repeat;
 }
 .account.bad { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
 .account-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 16px; }
