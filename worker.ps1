@@ -1380,6 +1380,20 @@ function Invoke-Worker($job, [string] $log, $paused) {
     if ($usage) {
         [void](Save-RunUsage $log $account $usage)
     }
+    # A provider whose runs' logs hold no usage (budget.ps1, Test-ProbeAfterRun): the account is read with a probe now,
+    # before the next ticket is taken. Not as $usage: a probe's refusal is not this run's.
+    # shortcut: no probe while the run works, so such a run passes the stop line unseen; probe in the watch loop when
+    # a run of such a provider must end at the line.
+    if (Test-ProbeAfterRun (Test-ProviderHook 'ReadUsage') (Test-ProviderHook 'Probe')) {
+        try {
+            $reply = Invoke-Probe $configDir
+            if ($reply -and $reply.usage) {
+                Save-Usage $account $reply.usage
+            }
+        } catch {
+            Write-Log "usage error: $_"
+        }
+    }
     $read = $null
     try {
         $read = Invoke-Provider 'ReadRun' @{ Text = $text }

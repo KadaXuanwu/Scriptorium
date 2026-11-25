@@ -191,6 +191,9 @@ Assert-Same (Get-FallbackEffort $null 'review' 'main-1' 'high' $false) 'high' 'n
 
 Assert-Same (($OutKinds | Sort-Object) -join ',') 'login,start,subscription' 'the kinds that put an account out'
 
+# A probe when a run ends: only with a provider that has a probe and reads no usage from a run's log.
+Assert-Same "$(Test-ProbeAfterRun $false $true) $(Test-ProbeAfterRun $true $true) $(Test-ProbeAfterRun $false $false) $(Test-ProbeAfterRun $true $false)" 'True False False False' 'the usage is read again after a run whose log holds none'
+
 # The provider's windows (Set-Windows): the account's own shortest first, the one that keeps, the ones of some models.
 Assert-Same "$(@($WindowSeconds.Keys) -join ',') $ShortWindow $LongWindow $KeepWindow $(@($ModelWindows.Keys) -join ',')" 'short,long short long long deep' 'the windows of the test provider'
 Assert-Same "$(Get-ModelWindow 'deep-1')|$(Get-ModelWindow 'main-1')|$(Get-ModelWindow '')" 'deep||' 'the window that covers a model'

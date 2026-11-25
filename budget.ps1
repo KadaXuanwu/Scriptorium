@@ -40,6 +40,13 @@ function Merge-Usage($stored, $new) {
     return $new
 }
 
+# Whether a worker reads an account's usage with a probe when a run ends (worker.ps1, Invoke-Worker): the provider
+# reads none from a run's log and has a probe. The stored reading is then from before the run, and it counts as fresh
+# for 30 minutes (Get-FreshUsage): without the probe the next tickets are taken on it, and the page shows it.
+function Test-ProbeAfterRun([bool] $readsLog, [bool] $probes) {
+    return $probes -and -not $readsLog
+}
+
 # What a reading says, without its read time: the same text for the same event of a log. A run that waits on a long
 # task has only an old event in its log, and its worker reads that event again at every look. The worker saves a
 # reading only when this text changed (worker.ps1, Save-RunUsage), so an old event never replaces the newer reading
