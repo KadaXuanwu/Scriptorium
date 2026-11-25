@@ -201,7 +201,7 @@ function Move-PcSettings([string] $main) {
 
 # Moves the accounts' records that a project's folder still holds into the PC's folder, under the lock of those
 # files. For each account the newer record (`at`) goes on, with what only the other one has: a usage window (only a
-# Fable run reads the Fable week), a refused model. A record that does not parse is dropped: each is read again at no
+# run on its models reads a window of some models), a refused model. A record that does not parse is dropped: each is read again at no
 # cost.
 function Move-PcRecords([string] $main) {
     $found = @($PcRecords | Where-Object { Test-Path (Join-Path $main ".queue/$_") })

@@ -13,8 +13,8 @@ worker PRs there too and closes the ticket. Such a repo needs the bots as collab
   `repos/<owner>/<this repo>/issues/<N>/comments`. The PR, its comments and its labels are in the other repo (your
   working folder's default).
 - Branch `t<N>` from that repo's `main`. The queue folder that the job names is in your copy of this repo.
-- This repo's `CLAUDE.md` (in your copy) still sets the response style and the rule on attribution; that repo's own
-  README and code set its conventions. Read this repo's `CLAUDE.md` in step 2: your copy is an added folder, so it is
+- This repo's rules file (in your copy) still sets the response style and the rule on attribution; that repo's own
+  README and code set its conventions. Read this repo's rules file in step 2: your copy is an added folder, so it is
   not in your context. Update its docs. Anything this repo's docs need goes under **For this repo** in
   the PR body, for the front desk.
 - The checks are that repo's own.
