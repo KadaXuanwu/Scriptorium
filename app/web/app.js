@@ -402,7 +402,7 @@ function mappingRow(worker, t, tool, has) {
   const jobs = !t.on && t.jobs ? `<small>holds ${t.jobs} PR job${t.jobs === 1 ? '' : 's'}</small>` : '';
   // The description is behind an (i) button: a popover that a tap outside closes, so a phone keeps the row short.
   const about = esc(`about-${scope}-${worker.id}-${t.name}`);
-  return `<div class="config-row${busyClass(key)}"${busyAttr(key)}>
+  return `<div class="config-row${t.linked ? ' linked' : ''}${busyClass(key)}"${busyAttr(key)}>
     <span class="config-name switch"><button class="take${t.on ? ' on' : ''}" data-take="${name}" data-worker="${id}" aria-pressed="${t.on}" title="${t.on ? 'It takes' : 'It takes no'} ${name} tickets">
       ${icon(t.on ? 'check' : 'lock')}<span><b>${name}</b>${jobs}</span></button>${t.description ? `<button class="about" popovertarget="${about}" aria-label="What ${name} is">${icon('info')}</button>
       <span class="pop about-text" id="${about}" popover>${esc(t.description)}</span>` : ''}</span>
@@ -446,7 +446,7 @@ function drawConfigOf(worker) {
   const linkNote = !mapping.follows ? '' : `<small>The models${has.efforts ? ', efforts' : ''}${has.compact ? ', compact sizes' : ''}${has.advisor ? ' and advisor' : ''} below are ${endName}'s: change them there. The switches are this worker's own.${
     end && end.provider !== worker.provider ? ` ${endName} is on another coding tool now; its picks for ${esc(toolName(state, worker.provider))} still count.` : ''}</small>`;
   const advisorKey = `mapping:${worker.id}:`;
-  const advisorRow = has.advisor ? `<div class="config-row${busyClass(advisorKey)}"${busyAttr(advisorKey)}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
+  const advisorRow = has.advisor ? `<div class="config-row${mapping.follows ? ' linked' : ''}${busyClass(advisorKey)}"${busyAttr(advisorKey)}><span class="config-name"><b>Advisor</b><small>Its model</small></span>
     <select data-advisor-model data-worker="${id}" aria-label="Model of the advisor"${mapping.follows ? ' disabled' : ''}>${pickList(tool.models || [], mapping.advisor, modelName)}</select>
     ${mapping.baseAdvisor && mapping.baseAdvisor !== mapping.advisor ? `<small>Default: ${esc(modelName(mapping.baseAdvisor))}</small>` : ''}</div>` : '';
   // The settings' `model` goes over the mapping of every worker on the project's default coding tool.
@@ -1104,8 +1104,9 @@ function draw(animate) {
     }
     render();
   };
-  // A change the owner made moves smoothly from the old state to the new one; the 5 s refresh does not animate.
-  if (animate && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(paint);
+  // A change the owner made moves smoothly from the old state to the new one; the 5 s refresh does not animate. Not
+  // under an open dialog: the browser draws the moving parts (a card's status) above everything, also above the dialog.
+  if (animate && document.startViewTransition && !document.querySelector('dialog[open]') && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(paint);
   else paint();
 }
 
