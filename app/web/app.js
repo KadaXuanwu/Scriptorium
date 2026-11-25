@@ -670,83 +670,14 @@ const setting = (text, tab) => `<a class="val" href="#${tab}">${text}</a>`;
 const items = (lines) => `<ul>${lines.filter(Boolean).map((line) => `<li>${line}</li>`).join('')}</ul>`;
 const section = (title, body) => `<section><h2>${title}</h2>${body}</section>`;
 
-// One account's limits, a line for each of the provider's windows. Each starts with its reading now, so a line and
-// the usage never read as the same number.
-function infoLimits(a) {
-  const at = (share) => setting(percent(share), 'accounts');
-  const now = (w) => (w.used != null ? `${percent(w.used)} used${w.resetsAt ? `, resets ${clock(w.resetsAt * 1000)}` : ''}. ` : '');
-  const lines = usageWindows().map((win) => {
-    const w = a[win.name];
-    const title = `<b>${esc(win.title || win.name)}:</b>`;
-    if (win.models) {
-      if (!w) return `${title} no reading yet. The first run on its models gives one.`;
-      const marks = Object.values(w.pickUp || {});
-      const start = marks.length ? Math.min(...marks, w.ceiling) : w.ceiling;
-      const passed = w.used == null ? '' : w.used >= w.ceiling ? ' Both lines are passed now.' : w.used >= start ? ' The first line is passed now.' : '';
-      return `${title} ${now(w)}Only runs on its models update it. No new run on them from ${at(start)}, and none of them
-        as the advisor of a new run from ${at(w.ceiling)}.${passed}`;
-    }
-    if (!w || w.stopAt == null) return '';
-    const picks = sizes.filter((size) => w.pickUp && size in w.pickUp).map((size, i) => `${size}${i ? '' : ' ticket'} from ${at(w.pickUp[size])}`);
-    const guards = (w.guards || []).map((g) => `${esc((guardNames[g.use] || g.use).toLowerCase())} ${at(g.share)}`);
-    return `${title} ${now(w)}${picks.length ? `No new ${picks.join(', ')}. ` : ''}${guards.length
-      ? `Your stop line is ${at(w.stopAt)}. Below it the workers leave room for people (${guards.join(' and ')} of the
-        whole window, less as the reset comes closer): now ${percent(w.kept)}, so they stop at ${percent(w.ceiling)}.`
-      : `Workers stop at ${at(w.ceiling)}.`}`;
-  });
-  const who = (a.uses || []).map(useName).join(', ');
-  return `<h3>${esc(a.name)}${who ? ` <span class="sub">${esc(who)}</span>` : ''}</h3>${items(lines)}`;
-}
-
 // The project's environment in words: the titles of its plugins but the provider's, '' for a plain git repo.
 const environment = (s) => inWords((s.plugins || []).filter((p) => !p.provider).map((p) => esc(p.title || p.name)));
-
-// What a coding tool gives here, for each feature of a provider (its hooks; docs/PLUGINS.md, A provider): the words
-// with it, and what the queue does without it.
-const toolFeatures = [
-  [['ReadUsage'], 'each account\'s usage, so the workers stop at your lines (Accounts)', 'a reading of the usage: the workers run until the plan refuses, then wait'],
-  [['GetLogin'], 'each account\'s email and plan, and whether it is signed in', 'a reading of a login: every account counts as signed in'],
-  [['SignIn', 'ReadSignIn'], 'the sign-in of an account from this page', 'a sign-in from this page: sign an account in from a terminal'],
-  [['SignOut'], 'the sign-out of an account you remove', 'a sign-out: an account you remove stays signed in'],
-  [['Probe'], 'Ping, a test of an account that is out, and the usage of an idle account', 'Ping: an idle account\'s usage is not read again, and its next run tests an account that is out'],
-  [['Compact'], 'a session that waits at a limit is compacted before it goes on', 'compacting a session that waits at a limit: it goes on whole'],
-  [['ReadStep'], 'the steps of a run (Steps on a worker\'s card)', 'the steps of a run'],
-  [['ReadEnd'], 'the reason a stuck run ended', 'the reason a stuck run ended'],
-];
-
-// One project's coding tool for Details, from its own snapshot: the tool and the plugin that runs it, its models and
-// usage windows, then what it gives here and what it does not.
-function toolInfo(st) {
-  const tool = toolOf(st);
-  if (!tool) return '<p>None: the project names no provider plugin, so no worker of it runs. Run setup again; it names the ones to choose from.</p>';
-  const plugin = (st.plugins || []).find((x) => x.provider);
-  const models = (st.models || []).map((id) => esc(st.modelTitles?.[id] || id));
-  const windows = (st.windows || []).map((win) => `${esc(win.title || win.name)}${win.models ? ' (some models only)' : ''}`);
-  const own = toolHas(st);
-  const k = (tokens) => Math.round(tokens / 1000);
-  // Then what its models.json has: efforts, an advisor, a compact size.
-  const settings = [
-    [own.efforts, `an effort for each complexity (${(st.efforts || []).map(esc).join(', ')})`, 'efforts'],
-    [own.advisor, `an advisor for a run (${esc(st.modelTitles?.[st.advisor?.base] || st.advisor?.base || st.advisor?.model)})`, 'an advisor'],
-    [own.compact, `a compact size for each complexity${st.compactRange?.length === 2 ? ` (${k(st.compactRange[0])} to ${k(st.compactRange[1])} thousand tokens)` : ''}`, 'a compact size for a run'],
-  ];
-  const gives = [...toolFeatures.filter(([hooks]) => has(st, ...hooks)).map(([, yes]) => yes), ...settings.filter(([on]) => on).map(([, yes]) => yes)];
-  const lacks = [...toolFeatures.filter(([hooks]) => !has(st, ...hooks)).map(([, , no]) => no), ...settings.filter(([on]) => !on).map(([, , no]) => no)];
-  return `<p><b>${esc(tool)}</b> runs every session of the workers${plugin ? `, through the plugin ${esc(plugin.title || plugin.name)} ${esc(plugin.version)}` : ''}.</p>${items([
-    models.length && `<b>Models:</b> ${inWords(models)}.`,
-    `<b>Usage windows:</b> ${windows.length ? `${inWords(windows)}.` : 'none.'}`,
-    gives.length && `<b>It gives:</b>${items(gives)}`,
-    lacks.length && `<b>It does not give:</b>${items(lacks)}`,
-  ])}`;
-}
 
 function info(s) {
   const blocking = s.questions.filter((q) => q.blocking).length;
   const advisor = s.advisor;
-  const working = (s.accounts || []).filter((a) => (a.uses || []).some((u) => u.startsWith('worker:')));
-  const plugins = s.plugins || [];
-  // What can differ between the PC's projects, for each of them: its plugins and its coding tool (`of`, its snapshot).
-  const per = s.per || [{ name: '', plugins, of: s }];
+  // What can differ between the PC's projects, for each of them: its coding tool (`of`, its snapshot).
+  const per = s.per || [{ name: '', of: s }];
   const tools = [...new Set(per.map((p) => toolOf(p.of)).filter(Boolean))];
   return [
     section('In short', `<p>Workers are sessions of a coding tool on this PC${tools.length ? ` (${inWords(tools.map(esc))})` : ''}. Each builds tickets (GitHub issues) on its own, one at
@@ -769,78 +700,45 @@ function info(s) {
       'Your phone gets a push for a blocking question, a stuck run, a limit, an account that is out and a merge.',
     ])),
     section('How a ticket goes through', `<ol>
-      <li>A ticket with a priority (P0, P1, P2) waits in the ${setting('Queue', 'queue')}, in this order: the priority,
-        then the larger size (L, M, S), then the older ticket. A ticket with no priority is Parked: no worker takes it.
-        Its cross drops it: it closes on GitHub as not planned, and a ticket "Blocked by" it stops waiting.</li>
-      <li><b>Now</b> gives a queued ticket to one worker at once: first a worker whose ticket in work changes the same
-        files, then a free worker, then the worker whose account has the most room. Its dialog lists every worker that
-        can take the ticket, each with the model it would run on: pick another one there. A worker in a run ends it at
-        the next checkpoint, and that ticket goes back to the queue.</li>
-      <li>A free worker takes, in order: the answers and rebases of its own PRs, its own ticket, the first queued ticket
-        its account has room for (Limits).</li>
-      <li>Two tickets of the same area (the same files) never run at the same time. A ticket "Blocked by" others waits
-        until they close, unless you press Now on it and accept a merge conflict with them.</li>
-      <li>A run ends in a PR, in a question for you, or held at a limit (Limits). The merged PR closes its ticket and can
-        add follow-ups and open questions: a follow-up without a question joins the queue, the others wait under
-        Questions.</li>
+      <li>A ticket with a priority (P0, P1, P2) waits in the ${setting('Queue', 'queue')}: the higher priority first,
+        then the larger size, then the older ticket. With no priority it is Parked.</li>
+      <li>A free worker first answers and rebases its own PRs, then takes the first queued ticket its account has room
+        for. <b>Now</b> gives a ticket to a worker at once.</li>
+      <li>Two tickets of the same area never run at the same time, and one "Blocked by" others waits until they close.</li>
+      <li>A run ends in a PR, a question for you, or held at a limit. The merged PR closes its ticket; its follow-ups
+        join the queue or wait under Questions.</li>
     </ol>`),
-    section('Who builds what', `${items(s.workers.map((w) => {
-      const off = (w.takes || []).filter((t) => !t.on).map((t) => t.name);
-      return `Worker ${esc(w.id)}${w.project ? ` (${esc(w.project)})` : ''}: ${setting(esc(statusNames[w.status] || w.status), 'workers')}${w.account ? ` on ${esc(w.account)}` : ''}${off.length
-        ? `, takes no ${setting(esc(off.join(', ')), 'workers')} tickets` : ''}.`;
-    }))}
-      <p>Active takes tickets. Paused takes none and keeps its ticket; a run that waits at a usage limit or a stop line
+    section('Who builds what', `<p>A worker's ${setting('status', 'workers')}: Active takes tickets. Paused takes none and keeps its ticket; a run that waits at a usage limit or a stop line
         then stays stopped until you set the worker active. Disabled takes none, other workers take its
         ticket, and its plugins close what they opened for it. Force (the arrow on Next) gives a free worker its next
         ticket now, past the limits.</p>
       <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes and how it runs each.${per.length > 1
         ? ` The project on a worker's ${setting('card', 'workers')} moves the worker to another project.` : ''}</p>`),
-    section('Complexities', `<p>A ticket's complexity chooses the model; its size (S, M, L) only says how much usage it
-      takes. A ticket with no complexity label is medium.</p>
-      ${toolHas(s).compact ? `<p>Compacts near: at this context size, the coding tool replaces the older part of a run with a summary. A larger
-        size keeps more in view and uses more each turn.</p>` : ''}
-      <p>A worker's ${setting('Config', 'workers')} holds its mapping: each complexity's model, with the effort, the
-        compact size and the advisor where its coding tool has them, and a switch for whether the worker takes that
-        complexity's tickets. A worker keeps one mapping for each coding tool it was on${per.length > 1
-        ? ' and takes it along to another project' : ''}; a complexity of a project's own has its row only in that
-        project, and its pick waits there while the worker is elsewhere. A worker can use another worker's mapping instead: a change there
-        then counts for both, and the switches stay its own. A pick counts from the worker's next run. A run in progress or on hold keeps its model,
-        effort and advisor.</p>
-      ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
-        not see the advice. A complexity on the advisor's own model runs with none. A run keeps its advisor to the end, but past the stop line of the advisor's own window
-        (Limits) new runs start without it.</p>` : ''}`),
-    section('Coding tool', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${toolInfo(p.of)}`).join('')),
-    section('Plugins', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${(p.plugins || []).length
-      ? items(p.plugins.map((x) => `<b>${esc(x.title || x.name)}</b> ${esc(x.version)}${x.provider ? ' (the coding tool)' : ''}: ${esc(x.description)}`))
-      : '<p>None: a plain git repo.</p>'}`).join('')),
+    section('Complexities', `<p>A ticket's complexity picks the model (no label: medium); its size (S, M, L) only says
+      how much usage it takes. A worker's ${setting('Config', 'workers')} maps each complexity to a model and switches
+      off the ones it does not take. A pick counts from the worker's next run.</p>
+      <p>A worker can use another worker's mapping: the picks are then shared, the switches stay its own.${per.length > 1
+        ? ' A complexity of one project\'s own has its row only there, and its pick waits there while the worker is elsewhere.' : ''}${toolHas(s).compact
+        ? ' Compacts near is the context size at which the coding tool sums up the older part of a run.' : ''}</p>
+      ${advisor?.complexities?.length ? `<p>An advisor gives a run a second opinion when the run asks for one. A complexity
+        on the advisor's own model runs with none, and past the stop line of the advisor's window new runs start
+        without it.</p>` : ''}`),
     section('Limits', `<p>Each account has the usage windows of its plan${(s.windows || []).length ? `: ${inWords((s.windows || []).map((win) => `${esc(win.title || win.name)}${win.models ? ' (some models only)' : ''}`))}` : ''}.
       The workers use all the room you give them and stop at the lines you set (${setting('Accounts', 'accounts')}). A
       run that reaches a stop line ends at its next checkpoint, and its session goes on when the account has room again;
-      a run that the plan's own limit cuts off goes on after the reset.</p>
-      ${working.length ? working.map((a) => withTool(a.provider, () => infoLimits(a))).join('') : quiet('No account has a worker.')}`),
-    section('In the background', `<p>Three kinds of script run on this PC as Windows tasks with no window. They start
-      when you log on and need nothing from you.</p>
-      ${items([
-        `<b>A worker script</b> for each worker has its plugins make its environment ready${plugins.length ? '' : ' (none here)'}, chooses its next job, starts the run and checks how it ended. A free worker looks for a job every few minutes, and at once on Force.`,
-        '<b>The merger</b> looks at the open PRs every few minutes and merges, oldest first, each worker PR that GitHub can merge and no question holds. A PR that conflicts with main, or has a comment of yours its run did not read, goes back to its worker. While No blocking is on, it also hands back what waits on you.',
-        '<b>This page\'s server</b> reads GitHub once a minute and the workers\' files every few seconds, sends the pushes and does what you click. Tailscale puts it on your phone; nothing is open to the internet. With the PC off, the page shows its last state, greyed out.',
-        has(s, 'Probe') ? 'Only the runs use a model, with two small exceptions: a worker with no run for a while reads an account\'s usage with the coding tool\'s cheapest request, and Ping starts an account\'s windows and reads its usage.'
-          : 'Only the runs use a model.',
-        'A change to the queue\'s scripts loads by itself: a worker restarts on the new code between jobs, never in a run.',
-      ])}`),
-    section('GitHub', `<p>GitHub holds the record of all work: the tickets, the PRs, every question and answer. The scripts
-      read what to do from the labels:</p>
-      ${items([
-        '<b>P0, P1, P2</b>, <b>size</b>, <b>complexity</b> and <b>area</b>: the priority, usage, model and files above.',
-        '<b>worker:N</b>: the worker that has the ticket, until its PR merges.',
-        '<b>needs-owner</b>: waits on you. <b>answered</b>: its worker applies your answer. <b>needs-rebase</b>: the PR conflicts with main, and its worker rebases it.',
-        '<b>follow-up</b> and <b>open-question</b>: tickets from a merged PR that wait under Questions.',
-      ])}
-      <p>Each worker writes as its own GitHub bot where it has one, else as you, and starts each comment with "Worker N:".
-        At each checkpoint a run pushes its work to its branch, so a stop loses little. Any other comment is yours: on a
-        ticket or its PR it overrides the ticket, and the run reads it at its next checkpoint, marks it 👀 and replies. An
-        answer on this page goes to GitHub as a comment, and the page sets the labels. GitHub builds and tests nothing:
-        the run's own tests are the check.</p>`),
+      a run that the plan's own limit cuts off goes on after the reset.</p>`),
+    section('In the background', `<p>Three scripts run on this PC as hidden Windows tasks from logon, and need nothing
+      from you: a <b>worker script</b> for each worker, which picks its next job, starts the run and checks how it
+      ended; the <b>merger</b>, which merges each worker PR that GitHub can merge and no question holds, and hands one
+      that conflicts back to its worker; and <b>this page's server</b>, which reaches your phone through Tailscale and is
+      not open to the internet.</p>
+      <p>Only the runs use a model${has(s, 'Probe') ? ', but for Ping and a cheap usage reading of an idle account' : ''}.
+        A change to the scripts loads between jobs, never in a run.</p>`),
+    section('GitHub', `<p>GitHub holds the record: the tickets, the PRs, every question and answer. Labels steer the
+      scripts: <b>P0, P1, P2</b>, <b>size</b>, <b>complexity</b> and <b>area</b> as above, <b>worker:N</b> for the worker
+      that has the ticket, and <b>needs-owner</b>, <b>answered</b> and <b>needs-rebase</b> for what waits on whom.</p>
+      <p>Workers start each comment with "Worker N:". Any other comment is yours and overrides the ticket: the run reads
+        it at its next checkpoint and replies. GitHub builds and tests nothing; the run's own tests are the check.</p>`),
     section('The tabs', items([
       `${setting('Workers', 'workers')}: what each worker does now and takes next, its status, account${per.length > 1 ? ', project' : ''} and Config, and the No blocking switch. The last tile adds a worker; a card's cross removes a disabled worker, and its copy of the project stays on the PC unless you tick Delete in the dialog.`,
       `${setting('Accounts', 'accounts')}: usage and the limits above; drag a handle to move one. ${has(s, 'SignIn', 'ReadSignIn') ? 'The last tile adds an account and signs it in; a' : 'A'} card's cross removes an account that nothing uses.`,

@@ -151,8 +151,6 @@ main { min-width: 0; min-height: 0; display: flex; flex-direction: column; paddi
    A setting is a link to its tab. */
 .info { max-width: 760px; font-size: 14px; line-height: 1.5; }
 .info section + section { margin-top: 28px; }
-.info h3 { margin: 14px 0 4px; font-size: 14px; }
-.info h3 .sub { font-weight: 400; margin-left: 6px; }
 .info p { margin: 0 0 8px; }
 .info :is(ul, ol) { margin: 0 0 8px; padding-left: 20px; }
 .info li + li { margin-top: 4px; }

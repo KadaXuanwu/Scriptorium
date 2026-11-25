@@ -330,10 +330,9 @@ the Queue's select, set to the project, show this colour. With one project on th
 a colour. The models of a complexity are each worker's, in its Config (Workers).
 
 **The info:** what the queue does and what to expect, for someone who does not know it, in plain sections: In short,
-What needs you, How a ticket goes through, Who builds what, Complexities, Coding tool (for each project: the tool and
-the plugin that runs it, its models and usage windows, what it gives here and what it does not, from the provider's
-hooks and its `models.json`), Plugins (each active plugin's title, version
-and description, or "None: a plain git repo"), Limits, In the background, GitHub and The tabs. Each value the owner sets
+What needs you, How a ticket goes through, Who builds what, Complexities, Limits, In the background, GitHub and The
+tabs. It is an overview: what a tab already shows (each worker, each account's readings and lines, each project's
+coding tool and plugins) is not repeated in it. Each value the owner sets
 links to the tab that sets it. Every setting and reading comes from the snapshot; none is typed into the text, and no
 environment is named in it. **A change to a queue rule changes this text in the same pull request.** The settings and
 the text are drawn last, each on its own, and a fault in one shows one line, not a broken page.
