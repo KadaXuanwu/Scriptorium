@@ -206,12 +206,16 @@ option { background: var(--card); color: var(--ink); font-weight: 600; }
   select::picker-icon { color: var(--muted); }
   /* A select that cannot open now shows no arrow. */
   select:disabled::picker-icon { display: none; }
-  ::picker(select) { margin-block: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); }
-  option { padding: 6px 12px; border-radius: 8px; font-size: 14px; }
+  /* No scrollbar: the browser lays an opening list out once with a scrollbar's width and takes it away at the page's
+     next redraw, so the open list got narrower. A list longer than the window still scrolls. */
+  ::picker(select) { margin-block: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); scrollbar-width: none; }
+  option { padding: 6px 12px; border-radius: 8px; font-size: 14px; letter-spacing: normal; text-transform: none; }
   option:hover, option:focus-visible { background: var(--raised); outline: none; }
   option:checked { color: var(--accent); }
   option::checkmark { display: none; }
-  /* A group of options (the accounts of one coding tool) stands apart from the group above it. */
+  /* A group of options (the accounts of one coding tool): its title is a label as the page's headings are, not an
+     option, and the group stands apart from the group above it. */
+  optgroup { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
   optgroup + optgroup { margin-top: 10px; }
 }
 textarea, input:not([type="range"]):not([type="checkbox"]) {
