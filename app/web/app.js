@@ -1141,7 +1141,11 @@ async function addWorker() {
 
 // One account more: its name and email, then the sign-in on this tab (loginBox).
 async function addAccount() {
-  const values = await ask('Add an account', 'Then sign in as that account: this tab shows the link and a box for the code.',
+  // The dialog names the coding tool the account is signed in to: the one of this page's project. An account has no
+  // tool of its own yet, so there is none to choose.
+  const tool = toolOf(states[home]);
+  const values = await ask(tool ? `Add a ${tool} account` : 'Add an account',
+    `${tool ? `It is signed in to ${tool}, the coding tool of ${home}. ` : ''}Then sign in as that account: this tab shows the link and a box for the code.`,
     'Add and sign in', {
       fields: `<label>Name<input name="account" required pattern="[a-zA-Z0-9][a-zA-Z0-9\\-]{0,30}" title="Letters, digits and dashes"
           placeholder="e.g. temp1" autocomplete="off" autocapitalize="none"></label>
