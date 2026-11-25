@@ -101,9 +101,9 @@ const clock = (time) => new Date(time).toLocaleString([], { weekday: 'short', ho
 const percent = (share) => `${Math.round((share ?? 0) * 100)}\u00a0%`; // a no-break space: never apart from its number
 const dollars = (cost) => `$${Math.round(cost)}`;
 
+// A model's name on the page: the one the provider's models.json gives it (`title`), else its id.
 function modelName(id) {
-  const match = /claude-(\w+)-(\d+)-(\d+)/.exec(id || '');
-  return match ? `${match[1][0].toUpperCase()}${match[1].slice(1)} ${match[2]}.${match[3]}` : (id || '');
+  return state.modelTitles?.[id] || id || '';
 }
 
 // Questions and tickets arrive as markdown: links, bold, code, italics and line breaks are enough to read them. A link
@@ -459,14 +459,15 @@ const accountStates = {
   refused: ['bad', 'alert', 'Takes no runs'],
 };
 
-// The Fable week's key (limits.ps1, $FableWindow): only a Fable request reads it, and it has its own stop line. From
-// there no worker starts a Fable run on the account and no run gets the Fable advisor, until the reset.
-const fableWindow = 'seven_day_overage_included';
+// The provider's usage windows (the snapshot's `windows`, from limits.ps1): the account's own, then the ones of some
+// models. Only a run on its models reads such a window, and it has its own stop line: from there no run gets one of
+// them as its advisor, until the reset.
+const usageWindows = () => state.windows || [];
 
 // What each use in the account register means, in a word.
 const useName = (use) => (use.startsWith('worker:') ? `worker ${use.slice(7)}` : { frontdesk: 'front desk', personal: 'you' }[use] || use);
 
-// A guard: a human use of the account that keeps room under the week's stop line (docs/QUEUE.md, The budget).
+// A guard: a human use of the account that keeps room under the stop line of one window (docs/QUEUE.md, The budget).
 const guardNames = { frontdesk: 'Front desk', personal: 'You' };
 // The ticket sizes, in the order of their pick-up limits on a meter: the biggest stops being taken first.
 const sizes = ['L', 'M', 'S'];
@@ -481,30 +482,35 @@ function reckon(w) {
 
 // One usage window as a meter: the fill is the share used, the handle is the stop line (drag it), the hatched part
 // right of it is what the workers leave. Left of it lies what each guard keeps now, in the guard's colour; it ends
-// at the handle and moves with it. Under the meter each guard has a slider: its share of a whole week. It keeps the
+// at the handle and moves with it. Under the meter each guard has a slider: its share of the whole window. It keeps the
 // part of that share for the time left, so its row gives both figures and the slider's track shows the part.
-// Above the 5-hour track stand the pick-up limits, a small handle under the letter of each ticket size: from there
-// the workers take no new ticket of that size. A run in flight goes on to the stop line. The week has none.
-// $inner goes under the meter, above the guards: the Fable week under the week. The Fable week
-// has one pick-up limit, its design line (D): from there no new `design` ticket starts, so the Fable runs in flight end
-// under the stop line and the advisor goes on.
-function windowMeter(account, key, label, w, inner = '') {
+// Above the track stand the window's pick-up limits, where it has them, a small handle under the letter of each ticket
+// size: from there the workers take no new ticket of that size. A run in flight goes on to the stop line.
+// $inner goes under the meter, above the guards: the windows of some models under the account's last one. Such a
+// window has one pick-up limit, under the name the provider gave it: from there no new run starts on its models, so
+// the runs in flight end under the stop line and the advisor goes on.
+function windowMeter(account, win, w, inner = '') {
+  const key = win.name;
+  const label = esc(win.title || win.name);
   const read = w.used != null;
   const stop = Math.round(w.stopAt * 100);
   const guards = w.guards || [];
   const keeps = guards.map((g) => `;--keep-${esc(g.use)}:${g.kept * 100}%`).join('');
   const rows = guards.map((g) => `<label class="guard ${esc(g.use)}">
       <span class="key"></span><span>${esc(guardNames[g.use] || g.use)}</span>
-      <input type="range" min="0" max="50" value="${Math.round(g.share * 100)}" data-guard="${esc(g.use)}" data-account="${esc(account.name)}" data-left="${w.left}" aria-label="${esc(guardNames[g.use] || g.use)}: its share of a whole week" style="--pos:${g.share * 200}%">
+      <input type="range" min="0" max="50" value="${Math.round(g.share * 100)}" data-guard="${esc(g.use)}" data-account="${esc(account.name)}" data-left="${w.left}" aria-label="${esc(guardNames[g.use] || g.use)}: its share of the whole window" style="--pos:${g.share * 200}%">
       <span class="amount"><b>${percent(g.share)}</b><small>${keptNow(g.kept)}</small></span></label>`).join('');
-  const fable = key === fableWindow;
-  const order = fable ? ['design'] : sizes;
-  const picks = !w.pickUp ? '' : order.map((size) => `<input type="range" class="pick" min="0" max="100" value="${Math.round(w.pickUp[size] * 100)}" data-pick="${size}" data-account="${esc(account.name)}" data-window="${key}" aria-label="${label}: no new ${size} ticket from this share">
-      <span class="flag" style="left:var(--pick-${size})">${fable ? 'D' : size}</span>`).join('');
-  const limits = !w.pickUp ? '' : order.map((size) => `;--pick-${size}:${w.pickUp[size] * 100}%`).join('');
-  const news = !w.pickUp ? '' : fable ? `<span>New design tickets to <b data-figure="design">${percent(w.pickUp.design)}</b></span>`
-    : `<span>New tickets: ${sizes.map((size) => `${size} to <b data-figure="${size}">${percent(w.pickUp[size])}</b>`).join(', ')}</span>`;
-  const hint = rows ? `<div class="hint">${(w.left * 7).toFixed(1)} of 7 days left: a guard keeps ${percent(w.left)} of its share</div>` : '';
+  const scoped = !!win.models;
+  const order = !w.pickUp ? [] : scoped ? Object.keys(w.pickUp) : sizes.filter((size) => size in w.pickUp);
+  const picks = order.map((size) => `<input type="range" class="pick" min="0" max="100" value="${Math.round(w.pickUp[size] * 100)}" data-pick="${esc(size)}" data-account="${esc(account.name)}" data-window="${esc(key)}" aria-label="${label}: no new ${esc(size)} ticket from this share">
+      <span class="flag" style="left:var(--pick-${esc(size)})">${esc(scoped ? size[0].toUpperCase() : size)}</span>`).join('');
+  const limits = order.map((size) => `;--pick-${esc(size)}:${w.pickUp[size] * 100}%`).join('');
+  const news = !order.length ? '' : scoped ? `<span>${order.map((name) => `New ${esc(name)} tickets to <b data-figure="${esc(name)}">${percent(w.pickUp[name])}</b>`).join(', ')}</span>`
+    : `<span>New tickets: ${order.map((size) => `${size} to <b data-figure="${size}">${percent(w.pickUp[size])}</b>`).join(', ')}</span>`;
+  // The window's length in days, or in hours for a short one.
+  const days = (win.seconds || 0) / 86400;
+  const whole = days >= 2 ? `${(w.left * days).toFixed(1)} of ${Math.round(days)} days` : `${(w.left * days * 24).toFixed(1)} of ${Math.round(days * 24)} hours`;
+  const hint = rows ? `<div class="hint">${whole} left: a guard keeps ${percent(w.left)} of its share</div>` : '';
   return `<div class="window" style="--stop:${stop}%${keeps}${limits};--left:${w.left ?? 1}">
     <div class="window-head"><b>${label}</b><span>${read ? `${percent(w.used)} used` : 'no reading yet'}</span>
       <span class="when">${w.resetsAt ? `resets ${clock(w.resetsAt * 1000)}` : ''}</span></div>
@@ -512,9 +518,18 @@ function windowMeter(account, key, label, w, inner = '') {
       <div class="fill" style="width:${Math.min(100, (w.used || 0) * 100)}%"></div>
       <div class="zones">${guards.map((g) => `<div class="kept ${esc(g.use)}"></div>`).join('')}<div class="off"></div></div>
       ${picks}
-      <input type="range" min="0" max="100" value="${stop}" data-stop="${esc(account.name)}" data-window="${key}" aria-label="${label}: the stop line">
+      <input type="range" min="0" max="100" value="${stop}" data-stop="${esc(account.name)}" data-window="${esc(key)}" aria-label="${label}: the stop line">
     </div>
-    <div class="window-foot">${news}<span class="stop">${fable ? 'Fable advisor stops' : 'Workers stop'} at <b>${percent(w.ceiling)}</b></span></div>${inner}${rows ? `<div class="guards">${rows}${hint}</div>` : ''}</div>`;
+    <div class="window-foot">${news}<span class="stop">${scoped ? 'Advisor stops' : 'Workers stop'} at <b>${percent(w.ceiling)}</b></span></div>${inner}${rows ? `<div class="guards">${rows}${hint}</div>` : ''}</div>`;
+}
+
+// An account's meters: its own windows, shortest first, and under the last one the windows of some models that it
+// has a reading of.
+function accountMeters(a) {
+  const own = usageWindows().filter((win) => !win.models && a[win.name]);
+  const scoped = usageWindows().filter((win) => win.models && a[win.name]).map((win) => windowMeter(a, win, a[win.name])).join('');
+  if (!own.length) return scoped;
+  return own.map((win, i) => windowMeter(a, win, a[win.name], i === own.length - 1 ? scoped : '')).join('');
 }
 
 function accountCard(a) {
@@ -529,14 +544,13 @@ function accountCard(a) {
   const name = esc(a.name);
   // Sign in only while the account is signed out: to change the login of an account, remove it and add one.
   const buttons = a.status === 'signedout' ? [`<button class="primary" data-login="${name}">Sign in</button>`] : [];
-  if (a.signedIn) buttons.push(`<button data-ping="${name}" title="Starts its 5-hour window now (about 770 tokens)">Ping</button>`);
+  if (a.signedIn) buttons.push(`<button data-ping="${name}" title="Sends the cheapest request: it starts the account's windows now">Ping</button>`);
   const card = `account:${a.name}`;
   return `<article class="card account ${tone}${busyClass(card)}" data-card="${name}"${busyAttr(card)}>
     <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
       <span class="chip ${tone}">${icon(glyph)}${words}</span>${cross('account', a.name, a.name)}</div>
     <div class="meta"><span class="email">${esc(a.signedIn ? a.email || '' : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${out}</div>
-    ${windowMeter(a, 'five_hour', '5 hours', a.five_hour)}${windowMeter(a, 'seven_day', 'Week', a.seven_day,
-      a[fableWindow] ? windowMeter(a, fableWindow, 'Fable week', a[fableWindow]) : '')}
+    ${accountMeters(a)}
     <div class="buttons">${buttons.join('')}</div></article>`;
 }
 
@@ -566,29 +580,30 @@ const setting = (text, tab) => `<a class="val" href="#${tab}">${text}</a>`;
 const items = (lines) => `<ul>${lines.filter(Boolean).map((line) => `<li>${line}</li>`).join('')}</ul>`;
 const section = (title, body) => `<section><h2>${title}</h2>${body}</section>`;
 
-// One account's limits. Each window starts with its reading now, so a line and the usage never read as the same number.
+// One account's limits, a line for each of the provider's windows. Each starts with its reading now, so a line and
+// the usage never read as the same number.
 function infoLimits(a) {
   const at = (share) => setting(percent(share), 'accounts');
   const now = (w) => (w.used != null ? `${percent(w.used)} used${w.resetsAt ? `, resets ${clock(w.resetsAt * 1000)}` : ''}. ` : '');
-  const five = a.five_hour || {};
-  const week = a.seven_day || {};
-  const fable = a[fableWindow];
-  const guards = (week.guards || []).map((g) => `${esc((guardNames[g.use] || g.use).toLowerCase())} ${at(g.share)}`);
-  const design = fable?.pickUp?.design ?? 1;
-  const fableNow = !fable || fable.used == null ? ''
-    : fable.used >= fable.ceiling ? ' Both lines are passed now.'
-      : fable.used >= design ? ' The design line is passed now.' : '';
-  const lines = [
-    five.pickUp && `<b>5 hours:</b> ${now(five)}No new L ticket from ${at(five.pickUp.L)}, M from ${at(five.pickUp.M)},
-      S from ${at(five.pickUp.S)}. Workers stop at ${at(five.ceiling)}.`,
-    week.stopAt != null && `<b>Week:</b> ${now(week)}${guards.length
-      ? `Your stop line is ${at(week.stopAt)}. Below it the workers leave room for people (${guards.join(' and ')} of a
-        week, less as the reset comes closer): now ${percent(week.kept)}, so they stop at ${percent(week.ceiling)}.`
-      : `Workers stop at ${at(week.stopAt)}.`}`,
-    fable ? `<b>Fable week:</b> ${now(fable)}Only Fable runs update it. No new design ticket from ${at(design)}, and no
-        Fable advisor for new runs from ${at(fable.ceiling)}.${fableNow}`
-      : '<b>Fable week:</b> no reading yet. The first Fable run gives one.',
-  ];
+  const lines = usageWindows().map((win) => {
+    const w = a[win.name];
+    const title = `<b>${esc(win.title || win.name)}:</b>`;
+    if (win.models) {
+      if (!w) return `${title} no reading yet. The first run on its models gives one.`;
+      const marks = Object.values(w.pickUp || {});
+      const start = marks.length ? Math.min(...marks, w.ceiling) : w.ceiling;
+      const passed = w.used == null ? '' : w.used >= w.ceiling ? ' Both lines are passed now.' : w.used >= start ? ' The first line is passed now.' : '';
+      return `${title} ${now(w)}Only runs on its models update it. No new run on them from ${at(start)}, and none of them
+        as the advisor of a new run from ${at(w.ceiling)}.${passed}`;
+    }
+    if (!w || w.stopAt == null) return '';
+    const picks = sizes.filter((size) => w.pickUp && size in w.pickUp).map((size, i) => `${size}${i ? '' : ' ticket'} from ${at(w.pickUp[size])}`);
+    const guards = (w.guards || []).map((g) => `${esc((guardNames[g.use] || g.use).toLowerCase())} ${at(g.share)}`);
+    return `${title} ${now(w)}${picks.length ? `No new ${picks.join(', ')}. ` : ''}${guards.length
+      ? `Your stop line is ${at(w.stopAt)}. Below it the workers leave room for people (${guards.join(' and ')} of the
+        whole window, less as the reset comes closer): now ${percent(w.kept)}, so they stop at ${percent(w.ceiling)}.`
+      : `Workers stop at ${at(w.ceiling)}.`}`;
+  });
   const who = (a.uses || []).map(useName).join(', ');
   return `<h3>${esc(a.name)}${who ? ` <span class="sub">${esc(who)}</span>` : ''}</h3>${items(lines)}`;
 }
@@ -604,7 +619,7 @@ function info(s) {
   // What can differ between the PC's projects, for each of them: its plugins.
   const per = s.per || [{ name: '', plugins }];
   return [
-    section('In short', `<p>Workers are Claude sessions on this PC. Each builds tickets (GitHub issues) on its own, one at
+    section('In short', `<p>Workers are sessions of a coding tool on this PC${s.provider ? ` (${esc(s.provider)})` : ''}. Each builds tickets (GitHub issues) on its own, one at
       a time, in its own copy of the project${plugins.length ? `, with its environment (${environment(s)})` : ''}. It tests
       its work and opens a pull request (PR), and a merger merges the PR into main. You decide what to build; the scripts
       do the rest.</p>`),
@@ -651,18 +666,18 @@ function info(s) {
         ? ` The project on a worker's ${setting('card', 'workers')} moves the worker to another project.` : ''}</p>`),
     section('Complexities', `<p>A ticket's complexity chooses the model; its size (S, M, L) only says how much usage it
       takes. A ticket with no complexity label is medium.</p>
-      <p>Compacts near: at this context size, Claude Code replaces the older part of a run with a summary. A larger
+      <p>Compacts near: at this context size, the coding tool replaces the older part of a run with a summary. A larger
         size keeps more in view and uses more each turn.</p>
       <p>${setting('Details', 'details')} (above) sets each complexity's model, effort, compact size and advisor for all
         workers${per.length > 1 ? ' of its project' : ''}, from the next run. A run in progress or on hold keeps its
         model, effort and advisor.</p>
       ${advisor?.complexities?.length ? `<p>A run with an advisor asks it for a second opinion when it decides to; you do
-        not see the advice. A run keeps its advisor to the end, but past the Fable advisor line (Limits) new runs start
-        without it.</p>` : ''}`),
+        not see the advice. A run keeps its advisor to the end, but past the stop line of the advisor's own window
+        (Limits) new runs start without it.</p>` : ''}`),
     section('Plugins', per.map((p) => `${per.length > 1 ? `<h3>${esc(p.name)}</h3>` : ''}${(p.plugins || []).length
       ? items(p.plugins.map((x) => `<b>${esc(x.title || x.name)}</b> ${esc(x.version)}: ${esc(x.description)}`))
       : '<p>None: a plain git repo.</p>'}`).join('')),
-    section('Limits', `<p>Each account has three usage windows: 5 hours, the week and the Fable week (Fable runs only).
+    section('Limits', `<p>Each account has the usage windows of its plan${(s.windows || []).length ? `: ${inWords((s.windows || []).map((win) => `${esc(win.title || win.name)}${win.models ? ' (some models only)' : ''}`))}` : ''}.
       The workers use all the room you give them and stop at the lines you set (${setting('Accounts', 'accounts')}). A
       run that reaches a stop line ends at its next checkpoint, and its session goes on when the account has room again;
       a run that the plan's own limit cuts off goes on after the reset.</p>
@@ -1746,8 +1761,10 @@ document.addEventListener('change', async (e) => {
       keys: [`account:${data.account}`],
       apply: (s) => {
         // The use keeps its share on whatever account it is on.
+        const keep = (s.windows || []).find((win) => win.keep)?.name;
         for (const a of s.accounts) {
-          const w = a.seven_day;
+          const w = a[keep];
+          if (!w) continue;
           const guard = (w.guards || []).find((g) => g.use === data.guard);
           if (!guard) continue;
           Object.assign(guard, { share: value, kept: value * w.left });

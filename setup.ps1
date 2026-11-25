@@ -3,11 +3,14 @@
 Sets up Scriptorium for one project on this PC (README.md). Safe to run again.
 
 .DESCRIPTION
-1. Checks the tools: git, the GitHub CLI signed in, Claude Code, a GitHub origin. It stops at a missing one.
+1. Checks the tools: git, the GitHub CLI signed in, a GitHub origin. It stops at a missing one.
 2. Writes a first scriptorium.json when the project has none (docs/CONFIG.md): the name from the folder, and each plugin
-   of plugins.json whose detect patterns match a file in the project (or -Plugins).
-3. Installs the plugins (clones a git source into plugins\<name>, or pulls it) and checks what each requires.
-4. Adds .queue/ to the project's .gitignore, and the ticket skill. It replaces a ticket skill that is not the current
+   of plugins.json whose detect patterns match a file in the project (or -Plugins). A project needs one provider, the
+   plugin that runs the coding tool (docs/PLUGINS.md, A provider): setup adds the listed one where the project names
+   none and plugins.json lists exactly one.
+3. Installs the plugins (clones a git source into plugins\<name>, or pulls it) and checks what each requires. It stops
+   when no plugin is a provider, and names the listed ones.
+4. Adds .queue/ to the project's .gitignore, and the ticket skill in the provider's skills folder. It replaces a ticket skill that is not the current
    one when PROJECT.md is beside it: that file holds the project's own rules for tickets, and setup never changes it.
 5. Writes the settings: the project's .queue/settings.json (a push topic), and the PC's part (the workers of the
    project on the command-line login, each with a number that no other project of the PC has).
@@ -71,7 +74,6 @@ $install = if ($OnWindows) { 'winget install --id ' } elseif ($OnMac) { 'brew in
 $tools = [ordered]@{
     git = if ($install) { "install it: $install$(if ($OnWindows) { 'Git.Git' } else { 'git' })" } else { 'install it with your package manager, for example: sudo apt install git' }
     gh = if ($install) { "install the GitHub CLI: $install$(if ($OnWindows) { 'GitHub.cli' } else { 'gh' })" } else { 'install the GitHub CLI: https://github.com/cli/cli#installation' }
-    claude = 'install Claude Code: https://claude.com/claude-code'
 }
 foreach ($tool in $tools.Keys) {
     Add-Check ([bool](Get-Command $tool -ErrorAction SilentlyContinue)) "$tool on the PATH" "$($tools[$tool]), then open a new terminal"
@@ -93,12 +95,6 @@ if (Get-Command gh -ErrorAction SilentlyContinue) {
     $ghReady = $LASTEXITCODE -eq 0
     $ErrorActionPreference = 'Stop'
     Add-Check $ghReady 'the GitHub CLI signed in' 'run: gh auth login'
-}
-if (Get-Command claude -ErrorAction SilentlyContinue) {
-    # The command-line login, the one setup gives a new worker: signed in while it holds a refresh token. Only -Check
-    # stops on it: a PC whose workers all run on accounts added on the page may leave it signed out.
-    $claudeReady = (Get-CredentialsText '') -match '"refreshToken"'
-    Add-Check $claudeReady 'Claude Code signed in' 'run claude, then /login with your Claude Pro or Max plan' (-not $Check)
 }
 $main = ''
 $slug = ''
@@ -153,9 +149,21 @@ $owner = if ($slug) { $slug.Split('/')[0] } else { '<owner>' }
 $added = @()
 $registry = Get-Content (Join-Path $PSScriptRoot 'plugins.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $configFile = Join-Path $main 'scriptorium.json'
+# The listed providers (docs/PLUGINS.md, A provider). A project that names none of them, and no plugin from a source
+# of its own (that one may be a provider), gets the listed one when there is exactly one. With several, setup stops
+# after step 3 and names them.
+$providers = @($registry.PSObject.Properties | Where-Object { $_.Value.provider } | ForEach-Object { $_.Name })
+function Add-Provider($names, $entries) {
+    $own = @($entries | Where-Object { $_ } | ForEach-Object { $_.PSObject.Properties } | Where-Object { $_.Value.source })
+    if ($providers.Count -eq 1 -and -not $own -and -not @($names | Where-Object { $providers -contains $_ })) {
+        return @($providers) + @($names)
+    }
+    return @($names)
+}
 if (Test-Path $configFile) {
     $config = Read-Project $main
-    $missing = @($Plugins | Where-Object { $_ -and -not $config.plugins.$_ })
+    $wanted = Add-Provider (@($config.plugins.PSObject.Properties | ForEach-Object { $_.Name }) + @($Plugins | Where-Object { $_ })) $config.plugins
+    $missing = @($wanted | Where-Object { $_ -and -not $config.plugins.$_ } | Select-Object -Unique)
     if ($missing) {
         foreach ($name in $missing) {
             $config.plugins | Add-Member -NotePropertyName $name -NotePropertyValue ([pscustomobject]@{})
@@ -175,6 +183,7 @@ if (Test-Path $configFile) {
             @(@($_.Value.detect | Where-Object { $_ }) | Where-Object { Test-Path (Join-Path $main $_) }).Count -gt 0
         } | ForEach-Object { $_.Name })
     }
+    $names = @(Add-Provider $names $null)
     $entries = [ordered]@{}
     foreach ($plugin in $names) {
         $entries[$plugin] = [pscustomobject]@{}
@@ -184,12 +193,13 @@ if (Test-Path $configFile) {
         Set-Content $configFile $text -Encoding utf8
     }
     $added += 'scriptorium.json'
-    $config = [pscustomobject]@{ name = $name; port = 8770; repos = @(); allowedTools = @(); plugins = [pscustomobject]$entries }
+    $config = [pscustomobject]@{ name = $name; port = 8770; repos = @(); commands = @(); allowedTools = @(); plugins = [pscustomobject]$entries }
 }
-$complexities = Get-Complexities (Read-Models) $config
 
 # 3. The plugins: installed, loaded, and what each requires checked.
 $loaded = @()
+# A plugin that -WhatIf did not clone: it may be the provider.
+$pending = $false
 foreach ($property in @($config.plugins.PSObject.Properties)) {
     $name = $property.Name
     $entry = $property.Value
@@ -209,6 +219,7 @@ foreach ($property in @($config.plugins.PSObject.Properties)) {
     }
     if (-not (Test-Path (Join-Path $dir 'plugin.ps1'))) {
         Write-Output "What if: load the plugin $name once it is cloned, check what it requires and run its hooks"
+        $pending = $true
         continue
     }
     try {
@@ -226,6 +237,25 @@ foreach ($property in @($config.plugins.PSObject.Properties)) {
     }
     $loaded += , $plugin
 }
+# The provider: its models give the complexities their labels, and its skills folder takes the ticket skill.
+$provider = Get-Provider $loaded
+if (-not $provider -and -not $pending) {
+    $listed = @($registry.PSObject.Properties | Where-Object { $_.Value.provider } | ForEach-Object { "$($_.Name) ($($_.Value.description))" })
+    $lines = @("the project has no provider, the plugin that runs the coding tool (docs/PLUGINS.md, A provider): run setup again with -Plugins <name>" +
+        $(if ($listed) { ". Listed: $($listed -join '; ')" } else { '' }))
+    if (-not $WhatIf) {
+        Stop-Setup $lines
+    }
+    $lines | ForEach-Object { Write-Output "What if: setup would stop here: $_" }
+}
+Set-Provider $provider @{ Project = $main; Copy = $main }
+$complexities = Get-Complexities (Read-Models) $config
+# The command-line login, the one setup gives a new worker. No stop: a PC whose workers all run on accounts added on
+# the page may leave it signed out.
+$login = Invoke-Provider 'GetLogin' @{ Login = '' }
+if ($login -and -not $login.SignedIn) {
+    Write-Output "The command-line login of $($provider.Title) is signed out: sign it in (the plugin's README says how), or add an account on the page (Accounts)."
+}
 
 # 4. .gitignore and the ticket skill.
 $ignore = Join-Path $main '.gitignore'
@@ -238,30 +268,34 @@ if (-not ((Test-Path $ignore) -and (Select-String -Path $ignore -Pattern '^/?\.q
 # SKILL.md is Scriptorium's: setup replaces a copy that differs. The project's own rules are in PROJECT.md beside it,
 # which setup writes once and never changes. A skill with no PROJECT.md is from an older setup and may hold the
 # project's rules, so it stays.
-$skillDir = Join-Path $main '.claude/skills/ticket'
+# The skill goes where the provider's tool reads a project's skills (its manifest, `skills`).
+$skills = if ($provider -and $provider.Skills) { $provider.Skills.Trim('/', '\') } else { '' }
+$skillDir = Join-Path $main "$skills/ticket"
 $skill = Join-Path $skillDir 'SKILL.md'
 $rules = Join-Path $skillDir 'PROJECT.md'
 $template = Join-Path $PSScriptRoot 'templates/skills/ticket'
 # Without the line ends: git writes them as the PC wants them.
 $read = { param($file) (Get-Content -LiteralPath $file -Raw -Encoding UTF8) -replace "`r", '' }
-if (-not (Test-Path $skill)) {
-    Invoke-Step 'Add the ticket skill: .claude/skills/ticket (SKILL.md, and PROJECT.md for the rules of this project)' {
+if (-not $skills) {
+    Write-Output 'No ticket skill: the provider names no skills folder (or is not cloned yet).'
+} elseif (-not (Test-Path $skill)) {
+    Invoke-Step "Add the ticket skill: $skills/ticket (SKILL.md, and PROJECT.md for the rules of this project)" {
         New-Item -ItemType Directory -Force $skillDir | Out-Null
         Copy-Item (Join-Path $template 'SKILL.md') $skill
         if (-not (Test-Path $rules)) {
             Copy-Item (Join-Path $template 'PROJECT.md') $rules
         }
     }
-    $added += '.claude/skills/ticket/SKILL.md', '.claude/skills/ticket/PROJECT.md'
+    $added += "$skills/ticket/SKILL.md", "$skills/ticket/PROJECT.md"
 } elseif ((& $read $skill) -ne (& $read (Join-Path $template 'SKILL.md'))) {
     if (Test-Path $rules) {
-        Invoke-Step 'Replace the ticket skill with the current one: .claude/skills/ticket/SKILL.md' {
+        Invoke-Step "Replace the ticket skill with the current one: $skills/ticket/SKILL.md" {
             Copy-Item (Join-Path $template 'SKILL.md') $skill -Force
         }
-        $added += '.claude/skills/ticket/SKILL.md'
+        $added += "$skills/ticket/SKILL.md"
     } else {
         Write-Output ("The ticket skill is not the current one, and it stays: it has no PROJECT.md beside it, so it may hold rules of " +
-            "this project. To take the current one, move those rules to .claude/skills/ticket/PROJECT.md (copy " +
+            "this project. To take the current one, move those rules to $skills/ticket/PROJECT.md (copy " +
             "$(Join-Path $template 'PROJECT.md') when the project has none) and run setup again.")
     }
 }

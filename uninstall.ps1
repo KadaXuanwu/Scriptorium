@@ -11,7 +11,7 @@ Takes Scriptorium off one project on this PC (README.md, Uninstall). Safe to run
 5. With -Repo, also takes Scriptorium out of the repo: the queue's labels on GitHub, scriptorium.json, the ticket skill
    and the `.queue/` line of .gitignore. -Commit commits and pushes that change.
 
-It never touches tickets, pull requests, branches or the Claude accounts. -WhatIf prints each step and changes nothing.
+It never touches tickets, pull requests, branches or the accounts' logins. -WhatIf prints each step and changes nothing.
 Runs in Windows PowerShell 5.1, and in PowerShell 7.4 or later (pwsh) on macOS and Linux.
 
 .EXAMPLE
@@ -44,6 +44,15 @@ try {
 } catch {
     Write-Output "No scriptorium.json in ${main}: uninstall goes by the logon tasks and folders alone."
 }
+# The project's provider, where its plugins still load: it names the complexities' labels and the skills folder.
+$provider = $null
+if ($config) {
+    try {
+        $provider = Get-Provider (Import-Plugins $PSScriptRoot $config)
+    } catch {
+    }
+}
+Set-Provider $provider
 
 # 1. The scripts. A task is the project's by the -Project of its arguments, so another project of the same name is
 # never touched. The page and the merger end first: the page could start a worker again.
@@ -167,7 +176,7 @@ if ($Repo) {
     }
 
     $removed = @()
-    foreach ($path in @('scriptorium.json', '.claude/skills/ticket')) {
+    foreach ($path in @('scriptorium.json') + @(if ($provider -and $provider.Skills) { "$($provider.Skills.Trim('/', '\'))/ticket" })) {
         if (Test-Path -LiteralPath (Join-Path $main $path)) {
             Invoke-Step "Delete $path" { Remove-Item -LiteralPath (Join-Path $main $path) -Recurse -Force }
             $removed += $path

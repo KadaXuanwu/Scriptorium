@@ -483,7 +483,7 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 
 /* Accounts: a window's meter. The handle is the stop line; the part right of it the workers leave. */
 .account { row-gap: 12px; }
-/* The Fable week sits in the week's part, under its meter. */
+/* A window of some models sits in the part of the account's last window, under its meter. */
 .window .window { margin-top: 12px; }
 .account .buttons { align-self: end; }
 .account.bad { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }

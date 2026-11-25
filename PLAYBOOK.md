@@ -1,11 +1,12 @@
 # Playbook
 
-The rules of a run: one headless Claude session that does one job in a worker's copy of the repo. The worker script
+The rules of a run: one headless session of a coding tool that does one job in a worker's copy of the repo. The worker script
 starts it with a job: a ticket (branch `t<N>`), a held PR that is now `answered`, or a PR to rebase. The queue's parts,
 labels, dispatching, models and settings are in [docs/QUEUE.md](docs/QUEUE.md). A run does not need them.
 
 A run reads three playbooks in this order: this one, the `PLAYBOOK.md` of each plugin, and the project's own. Where two
-differ, the later one wins.
+differ, the later one wins. The plugin of your coding tool (the provider) says there what holds for that tool: its
+shell, the project's rules file that it loads, how it compacts.
 
 Five parts of this playbook that few runs need are files in its folder, `PLAYBOOK-<part>.md`. A line below says when to
 read each.
@@ -13,7 +14,7 @@ read each.
 **Nobody is there.** Never ask, never wait: no question prompts.
 
 **Turns.** Each request reads your whole context again: that is half of a run's cost. Before each message, list the
-reads, searches and commands that do not need each other's result, and send them all in that one message: in Bash, as
+reads, searches and commands that do not need each other's result, and send them all in that one message: in your shell, as
 one call that chains them with `;`. One command for each message is the wrong default. Read the part of a file that you
 need once, in one range. Keep a command's output short (`-q`, `| head`, `| tail`).
 
@@ -44,7 +45,7 @@ you ship: the owner may leave or come back during a run.
 (each starts with a banner picture), read `PLAYBOOK-pictures.md`.
 
 **Writing.** Comments, questions, PR bodies, follow-up tickets and commit messages follow the style of the project's
-`CLAUDE.md`, with its terms.
+rules file, with its terms.
 
 **Comments.** Everything a run writes on GitHub starts `**Worker <id>:**`. Any other comment from someone with write
 access is the owner's (or the front desk's for them), and it overrides the ticket. Read comments only with the command
@@ -66,8 +67,8 @@ one line what you do with it (`**Worker 1:** Read. Moving the check to the serve
 4. Look for the four notes by name: `ls <queue folder>/{limit,stop,comments,away}.md 2>/dev/null`. Never list the whole
    queue folder: it holds the files of every run before you.
 
-Claude Code compacts your context when it grows large: the checkpoint's commit and `progress.json` are what you find
-again after it.
+Your coding tool may compact your context when it grows large: the checkpoint's commit and `progress.json` are what
+you find again after it.
 
 **Comment note.** `comments.md` in the queue folder means the owner commented on the ticket or the job's PR, and the run
 has not read it. While a run works, the worker script checks every 2 minutes and writes the note, with each place and
@@ -85,10 +86,10 @@ and one handoff comment on the ticket, and no PR. The script then compacts your 
 the account has room: checkpoint first, then carry on. It is not a failure. If the plan's own limit cuts you off first,
 the script resumes the same session after the reset.
 
-**Fable limit:** when the script resumes your session on another model at the account's weekly Fable limit, read
-`PLAYBOOK-fable.md`.
+**A model's limit:** when the script resumes your session on another model because the account reached the limit of
+the model you ran on, read `PLAYBOOK-limit.md`.
 
-**One shell.** You have one shell, Bash. Run a PowerShell command through it as
+**One shell.** Use one shell for the whole run, the one your coding tool gives you. Run a PowerShell command through it as
 `powershell -NoProfile -Command '<one line>'`; more than one line goes in a `.ps1` file in the queue folder, run with
 `-File`. On macOS and Linux the command is `pwsh`, here and in every playbook.
 
@@ -99,8 +100,9 @@ the script resumes the same session after the reset.
    `-x`) clear an old run. If `origin/t<N>` exists (a run before you, an answer, a rejected PR), run
    `git checkout -B t<N> origin/t<N>` and `git rebase origin/main`. Else run `git checkout -B t<N> origin/main`.
 2. **Read** `gh issue view <N> --json title,body` (plain `gh issue view` prints nothing headless) and the comments
-   (Comments): the ticket, its decisions, any answers, why an earlier PR was closed. The project's `CLAUDE.md`
-   is in your context already: do not read it again. Read the docs that it names for this work.
+   (Comments): the ticket, its decisions, any answers, why an earlier PR was closed. The project's rules file
+   is in your context already where your coding tool loads it: do not read it again. Read the docs that it names for
+   this work.
 3. **Build to done.** The code, its tests, and the docs the work makes wrong. Run the project's checks (the plugins'
    playbooks and the project's own say which) as far as the change needs. While you build, run the part of a check that
    covers your change. A whole check that takes minutes runs once, last: after the rebase (5), when nothing changes the
@@ -163,7 +165,7 @@ the script resumes the same session after the reset.
 
 **Another repository:** when the ticket has a `repo:<Name>` label, read `PLAYBOOK-repo.md` before step 1.
 
-**No AI attribution anywhere:** no `Co-Authored-By`, no "Generated with Claude Code" line, in commits, PR descriptions
+**No AI attribution anywhere:** no `Co-Authored-By`, no "Generated with" line of your coding tool, in commits, PR descriptions
 or comments. The `**Worker <id>:**` prefix is the only signature.
 
 **Stay in your lane:** only branch `t<N>`, your ticket and your PR. Never push or merge main, never touch another

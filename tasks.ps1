@@ -65,7 +65,7 @@ function Split-Arguments([string] $arguments) {
 }
 
 # The text of a task's launchd agent ($mac) or systemd service, with the PATH of setup's shell: a service gets almost
-# none of its own, and git, gh and claude are often in Homebrew's or ~/.local/bin. The script starts again after a
+# none of its own, and git, gh and the coding tool are often in Homebrew's or ~/.local/bin. The script starts again after a
 # restart on new code (restart.ps1, $RestartCode): launchd starts an agent again after any exit that is not 0, systemd
 # only after that code.
 function Get-UnitText([string] $name, [string] $arguments, [string] $main, [string] $shell, [string] $path, [bool] $mac) {
