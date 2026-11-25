@@ -116,9 +116,10 @@ More rules:
 
 - **Pick-up limits:** an account has one for each ticket size: the share of a window from which its workers take no
   new ticket of that size (Settings, `pickUp`). A bigger ticket stops being taken earlier, so a run seldom reaches
-  the stop line. The account's shortest window always has them: the provider's defaults, else the base's
-  (`$BasePickUp` in [limits.ps1](../limits.ps1)). A provider can give them to a longer window too. A window with none
-  holds a new ticket back only at its ceiling.
+  the stop line. The account's shortest window has them: the provider's defaults, else the base's
+  (`$BasePickUp` in [limits.ps1](../limits.ps1)) when the account has a longer window too. A provider can give them to
+  a longer window too. A window with none, as the only window of an account, holds a new ticket back only at its
+  ceiling.
 - **Complexity switches:** the owner switches a complexity off and on for each worker (Settings,
   `workers.<id>.complexity`; the worker's Config). Off: that worker takes no new ticket of it, forced or not, and the
   answers and rebases of its PRs of it wait. A ticket already started goes on, also a held run that resumes. The test is

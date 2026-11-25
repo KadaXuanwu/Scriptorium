@@ -304,7 +304,7 @@ A window:
 | `seconds` | its length |
 | `title` | its name on the page |
 | `stopAt` | the default stop line, the share where the workers stop. Left out: 1 |
-| `pickUp` | the default pick-up limits by ticket size, `S`, `M` and `L` ([QUEUE.md](QUEUE.md), The budget). Left out: the shortest window of the whole account has the base's, and in any other window only the ceiling holds a new ticket back. For a shortest window that holds no size back, set each to 1 |
+| `pickUp` | the default pick-up limits by ticket size, `S`, `M` and `L` ([QUEUE.md](QUEUE.md), The budget). Left out: the shortest window of the whole account has the base's when it is not the only one, and in any other window only the ceiling holds a new ticket back. For a shortest window that holds no size back, set each to 1 |
 | `keep` | this window holds the room kept for the owner's own use. One window at most |
 | `models` | a wildcard of model names: the window holds those models only, and one that is used up stops them, not the account ([QUEUE.md](QUEUE.md), A model's limit). Its `pickUp` then has one limit, under a name of the provider's: the start line. Its `stopAt` is the line for those models as advisors |
 | `after` | for a window with `models`: the pick a job goes on with when the window is used up |

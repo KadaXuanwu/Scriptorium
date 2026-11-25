@@ -510,6 +510,10 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .window .window { margin-top: 12px; }
 /* The buttons stand in the card's last row, at its bottom, also on a card with fewer windows than its neighbour. */
 .account .buttons { align-self: end; grid-row-end: -1; }
+/* The meters stand in the rows above the buttons, the last in the last: on a card with one window that window sits where
+   its neighbour's longest one does, not where the shorter one does. */
+.account > .window:nth-last-child(2) { grid-row-end: -2; }
+.account > .window:nth-last-child(3) { grid-row-end: -3; }
 .account.bad { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
 .account-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 16px; }
 .account-head .chip { margin-left: auto; }

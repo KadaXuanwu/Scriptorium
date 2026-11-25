@@ -21,8 +21,9 @@ $DefaultStopAt = @{}
 # stop line, where it ends at its next checkpoint. A window of some models has one under a name of its own: from it no
 # new run starts on its models. A window with none holds a new ticket back only at its ceiling.
 $DefaultPickUp = @{}
-# The pick-up limits of the account's shortest window when the provider gives that window none, so every provider
-# that reads its usage has them. Placeholders: what a ticket takes of a window depends on the plan.
+# The pick-up limits of the account's shortest window when the provider gives that window none and the account has a
+# longer one: an account with one window holds a new ticket back only at its ceiling. Placeholders: what a ticket takes
+# of a window depends on the plan.
 $BasePickUp = @{ S = 0.90; M = 0.75; L = 0.50 }
 # The window that keeps room for the human uses of an account (Get-Reserve), '' for none.
 $KeepWindow = ''
@@ -31,7 +32,8 @@ $ShortWindow = ''
 $LongWindow = ''
 
 # Reads the provider's windows into the tables above. Each window: `seconds`, and where it has them `title`, `stopAt`
-# (else 1), `pickUp` (@{ S; M; L } for sizes; the shortest window of the whole account has $BasePickUp without it),
+# (else 1), `pickUp` (@{ S; M; L } for sizes; without it the shortest window of the whole account has $BasePickUp, when it is not the
+# only one),
 # `keep` (it holds the kept share), `models` and `after`.
 function Set-Windows($windows) {
     $script:WindowSeconds = [ordered]@{}
@@ -65,7 +67,7 @@ function Set-Windows($windows) {
     $names = @($script:WindowSeconds.Keys)
     $script:ShortWindow = if ($names.Count) { $names[0] } else { '' }
     $script:LongWindow = if ($names.Count) { $names[-1] } else { '' }
-    if ($script:ShortWindow -and -not $script:DefaultPickUp.ContainsKey($script:ShortWindow)) {
+    if ($names.Count -gt 1 -and -not $script:DefaultPickUp.ContainsKey($script:ShortWindow)) {
         $script:DefaultPickUp[$script:ShortWindow] = $BasePickUp.Clone()
     }
 }
