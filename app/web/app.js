@@ -583,6 +583,9 @@ function accountMeters(a) {
   return own.map((win, i) => windowMeter(a, win, a[win.name], i === own.length - 1 ? scoped : '')).join('');
 }
 
+// An email with only the first three letters of its name shown: the page is on screen in a call or in a screenshot.
+const maskEmail = (email) => (email ? email.replace(/^([^@]{0,3})[^@]*/, '$1\u2022\u2022\u2022') : '');
+
 function accountCard(a) {
   const [tone, glyph, label] = accountStates[a.status] || accountStates.ready;
   const words = a.status === 'refused' && outNames[a.out?.kind] ? outNames[a.out.kind] : label;
@@ -601,7 +604,7 @@ function accountCard(a) {
   return `<article class="card account ${tone}${busyClass(card)}" data-card="${name}"${busyAttr(card)}>
     <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${toolBadge(toolOf(state))}${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
       <span class="chip ${tone}">${icon(glyph)}${words}</span>${cross('account', a.name, a.name)}</div>
-    <div class="meta"><span class="email">${esc(a.signedIn ? a.email || '' : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${out}</div>
+    <div class="meta"><span class="email">${esc(a.signedIn ? maskEmail(a.email) : '')}</span>${badges(a.uses.filter((use) => !use.startsWith('worker:')).map(useName))}${out}</div>
     ${accountMeters(a)}
     <div class="buttons">${buttons.join('')}</div></article>`;
 }
