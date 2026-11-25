@@ -1906,17 +1906,10 @@ document.addEventListener('change', async (e) => {
     });
   } else if (data.follow) {
     // Whose mapping a worker uses (its Config): another worker's, or its own again, which starts from the picks it
-    // ran on. A link takes the worker's own picks for this tool away, so the owner confirms it.
+    // ran on.
     e.target.blur();
     const worker = data.follow;
     const target = e.target.value;
-    const before = workerOf(states[project], worker)?.mapping?.follows || '';
-    const other = pcWorkers().find((w) => w.id === target);
-    if (target && !before && !(await ask(`Use the mapping of ${other ? workerLabel(other) : `worker ${target}`}?`,
-      'This worker then runs on that worker\'s models, efforts, compact sizes and advisor, from its next run. Its own picks for this coding tool go away; its switches stay.', 'Use it'))) {
-      e.target.value = before;
-      return;
-    }
     await act(project, { action: 'follow', worker, target }, {
       keys: [`mapping:${worker}`],
       apply: (s) => { const w = workerOf(s, worker); w.mapping = { ...w.mapping, follows: target }; },
