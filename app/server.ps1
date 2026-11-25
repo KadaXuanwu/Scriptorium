@@ -300,6 +300,42 @@ function Save-Settings($settings) {
     Save-ProjectSettings $Main $settings
 }
 
+# What an action on a worker's mapping needs (docs/QUEUE.md, A worker's mapping): the settings to edit, the worker's
+# coding tool by its plugin's name, with that tool's provider set, its models, the project's own complexities there,
+# the worker's mapping and its complexities. Throws for a worker that is not this project's, and for one whose tool
+# has no plugin here.
+function Get-MappingContext([string] $worker) {
+    if ($worker -notmatch '^\d+$' -or -not (Test-Path (Join-Path $mainQueue "worker-$worker.json"))) {
+        throw "no worker $worker"
+    }
+    $settings = Read-SettingsToEdit
+    $tool = Get-WorkerProvider $settings $worker (Get-KnownProviders)
+    if (-not $tool) {
+        throw "worker $worker has no coding tool here"
+    }
+    Select-Provider $tool
+    $list = Read-Models
+    $toolConfig = Get-ProviderConfig $config ($tool.Name -eq $defaultProvider.Name)
+    $own = @(Get-OwnComplexities $list $toolConfig)
+    $here = @(Get-ChildItem (Join-Path $mainQueue 'worker-*.json') | ForEach-Object { $_.BaseName.Substring(7) })
+    $mapping = Get-WorkerMapping $settings $worker $tool.Name $own $here
+    return @{ settings = $settings; tool = [string]$tool.Name; models = $list; own = $own; here = $here; mapping = $mapping
+        complexities = @(Get-Complexities $list $toolConfig $mapping.picks) }
+}
+
+# The entry of a worker's mapping that an action changes (state.ps1, Get-MappingToEdit). Throws for a row that is
+# another worker's: a worker that follows one has its own picks only for the complexities it keeps. $name: the
+# complexity, or '' for the advisor's model.
+function Get-MappingRow($context, [string] $worker, [string] $name) {
+    if ($name -and @($context.complexities | ForEach-Object { $_.name }) -cnotcontains $name) {
+        throw "no complexity $name"
+    }
+    if ($context.mapping.follows -and $context.mapping.kept -notcontains $name) {
+        throw "worker $worker uses the mapping of worker $($context.mapping.end): change it there"
+    }
+    return Get-MappingToEdit $context.settings $worker $context.tool
+}
+
 # This project's control, or the control of the project in $queue (a worker's move).
 function Save-Control($control, [string] $queue = $mainQueue) {
     $control | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $queue 'control.json') -Encoding utf8
@@ -461,7 +497,7 @@ function Update-Snapshot {
         usage = Read-Json (Join-Path $PcDir 'usage.json'); out = Read-Json (Join-Path $PcDir 'out.json'); settings = $saved
         runs = Read-Runs; gh = $script:gh; appUrl = $appUrl; dispatch = Read-Json (Join-Path $mainQueue 'dispatch.json')
         name = $config.name; projects = $script:projects
-        logins = @{}; login = Get-LoginView; complexities = Get-Complexities (Read-Models) $config $saved; plugins = $plugins
+        logins = @{}; login = Get-LoginView; complexities = Get-Complexities (Read-Models) $config $null; plugins = $plugins
         config = $config
     }
     if ($data.settings -and $data.settings.accounts) {
@@ -544,7 +580,8 @@ function Select-Account($settings, [string] $name) {
 }
 
 # The owner's actions (docs/APP.md). One that writes to GitHub returns its calls. Each starts with the project's
-# default provider set: Details sets its models. An account's action sets the account's own (Select-Account).
+# default provider set. An account's action sets the account's own (Select-Account), and one on a worker's mapping
+# the worker's own (Get-MappingContext).
 function Invoke-Action($request) {
     Select-Provider $defaultProvider
     $worker = [string]$request.worker
@@ -599,7 +636,8 @@ function Invoke-Action($request) {
         }
         'now' {
             # Now (docs/QUEUE.md, Now): the queued ticket goes into the force file of the worker that the page showed
-            # for it (Select-NowWorker), with `now`. That worker takes it before every other job. Its run in progress
+            # for it (Select-NowWorker), with `now`: the server's pick, or the one of its list that the owner chose
+            # (`worker`). That worker takes it before every other job. Its run in progress
             # ends at its next checkpoint, and that run's ticket goes back to the queue.
             $number = [int]$request.number
             $row = $script:snapshot.queued | Where-Object { [int]$_.number -eq $number } | Select-Object -First 1
@@ -609,12 +647,16 @@ function Invoke-Action($request) {
             if (-not $row.now.worker) {
                 throw [string]$row.now.why
             }
-            $file = Join-Path $mainQueue "force-$($row.now.worker).json"
+            $pick = if ($worker) { $row.now.able | Where-Object { $_.worker -eq $worker } | Select-Object -First 1 } else { $row.now }
+            if (-not $pick) {
+                throw "worker $worker cannot take ticket $number now"
+            }
+            $file = Join-Path $mainQueue "force-$($pick.worker).json"
             if (Test-Path $file) {
-                throw "worker $($row.now.worker) has a forced ticket already"
+                throw "worker $($pick.worker) has a forced ticket already"
             }
             Set-Content $file (@{ ticket = $number; now = $true } | ConvertTo-Json -Compress) -Encoding utf8
-            return "now: #$number on worker $($row.now.worker)"
+            return "now: #$number on worker $($pick.worker)"
         }
         'rename-worker' {
             # The worker's name on the page (docs/APP.md, Worker status): the PC's, so it stays with a move.
@@ -727,7 +769,8 @@ function Invoke-Action($request) {
             Stop-Run $worker $state | Out-Null
             Remove-Item $file
             Remove-Item (Join-Path $mainQueue "force-$worker.json") -ErrorAction SilentlyContinue
-            Save-Settings (Set-WorkerEntry $settings $worker $false)
+            # A worker that followed its mapping keeps those picks (state.ps1, Remove-MappingLinks).
+            Save-Settings (Set-WorkerEntry (Remove-MappingLinks $settings $worker) $worker $false)
             Save-Control (Set-WorkerStatus (Read-Json (Join-Path $mainQueue 'control.json')) $worker 'active' '' $false).control
             return "removed: worker $worker$(if ($request.deleteCopy -eq $true) { Remove-Copy $Main $worker })"
         }
@@ -809,39 +852,46 @@ function Invoke-Action($request) {
             return "keep: $use $value"
         }
         'compact-at' {
-            # The compact size of a complexity's runs on this PC (docs/QUEUE.md, Settings,
-            # `complexities.<name>.compactAt`).
+            # The compact size of a complexity's runs in a worker's mapping (docs/QUEUE.md, Settings,
+            # `workers.<id>.mapping`): one of the sizes the worker's coding tool takes.
             $name = [string]$request.complexity
-            if (@(Get-Complexities (Read-Models) $config | ForEach-Object { $_.name }) -cnotcontains $name) {
-                throw "no complexity $name"
-            }
-            $at = ConvertTo-CompactAt $request.value 'compactAt'
-            $settings = Read-SettingsToEdit
-            Get-ComplexitySettings $settings $name | Add-Member -NotePropertyName compactAt -NotePropertyValue $at -Force
-            Save-Settings $settings
-            return "compact at: $name $at"
+            $context = Get-MappingContext $worker
+            $at = ConvertTo-CompactAt $request.value 'compactAt' @($context.models.compactRange)
+            Get-ComplexitySettings (Get-MappingRow $context $worker $name) $name | Add-Member -NotePropertyName compactAt -NotePropertyValue $at -Force
+            Save-Settings $context.settings
+            return "compact at: worker $worker $name $at"
         }
         'model' {
-            # The model and effort of a complexity's runs on this PC (state.ps1, Set-ComplexityModel).
-            $settings = Read-SettingsToEdit
-            $list = Read-Models
-            Save-Settings (Set-ComplexityModel $settings $list (Get-Complexities $list $config $settings) ([string]$request.complexity) ([string]$request.model) ([string]$request.effort))
-            return "model: $($request.complexity) $($request.model)@$($request.effort)"
+            # The model and effort of a complexity's runs in a worker's mapping (state.ps1, Set-ComplexityModel).
+            $name = [string]$request.complexity
+            $context = Get-MappingContext $worker
+            Set-ComplexityModel (Get-MappingRow $context $worker $name) $context.models $context.complexities $name ([string]$request.model) ([string]$request.effort) | Out-Null
+            Save-Settings $context.settings
+            return "model: worker $worker $name $($request.model)$(if ($request.effort) { "@$($request.effort)" })"
         }
         'advisor' {
-            # Whether a complexity's runs get the advisor, and their effort without it (state.ps1,
-            # Set-ComplexityAdvisor).
-            $settings = Read-SettingsToEdit
-            $list = Read-Models
-            $complexities = Get-Complexities $list $config $settings
+            # Whether a complexity's runs get the advisor, and their effort without it, in a worker's mapping
+            # (state.ps1, Set-ComplexityAdvisor).
             $name = [string]$request.complexity
-            Save-Settings (Set-ComplexityAdvisor $settings $list $complexities $name ([bool]$request.on) ([string]$request.fallback))
-            return "advisor: $($request.complexity) $(if ($request.on) { 'on' } else { 'off' }) $($request.fallback)"
+            $context = Get-MappingContext $worker
+            Set-ComplexityAdvisor (Get-MappingRow $context $worker $name) $context.models $context.complexities $name ([bool]$request.on) ([string]$request.fallback) | Out-Null
+            Save-Settings $context.settings
+            return "advisor: worker $worker $name $(if ($request.on) { 'on' } else { 'off' }) $($request.fallback)"
         }
         'advisor-model' {
-            # The advisor's model for this project (state.ps1, Set-AdvisorModel).
-            Save-Settings (Set-AdvisorModel (Read-SettingsToEdit) (Read-Models) ([string]$request.model))
-            return "advisor model: $($request.model)"
+            # The advisor's model in a worker's mapping (state.ps1, Set-AdvisorModel).
+            $context = Get-MappingContext $worker
+            Set-AdvisorModel (Get-MappingRow $context $worker '') $context.models ([string]$request.model) | Out-Null
+            Save-Settings $context.settings
+            return "advisor model: worker $worker $($request.model)"
+        }
+        'follow' {
+            # A worker's mapping is another worker's (`target`), or its own again ('') (state.ps1, Set-WorkerFollow).
+            $target = [string]$request.target
+            $context = Get-MappingContext $worker
+            $toolOf = Get-WorkerTools $context.settings $context.here (Get-KnownProviders)
+            Save-Settings (Set-WorkerFollow $context.settings $worker $context.tool $target $toolOf $context.mapping.picks $context.own)
+            return "mapping: worker $worker $(if ($target) { "follows worker $target" } else { 'has its own' })"
         }
         'away' {
             # The owner is away (docs/QUEUE.md, No blocking): the PC's switch, so it counts for every project. Left out when off.

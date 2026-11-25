@@ -422,8 +422,16 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 @media (max-width: 760px) {
   .worker-tools > button > .i { display: none; }
 }
-#config { width: min(620px, calc(100vw - 32px)); }
-.takes { display: flex; flex-wrap: wrap; gap: 8px; }
+#config { width: min(780px, calc(100vw - 32px)); }
+/* Whose mapping the worker uses, above its rows. */
+.mapping-of { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; }
+.mapping-of label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.mapping-of small { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+/* The rows of a mapping in two groups: the ones the worker has in every project, then, apart, the project's own. */
+.config-group { margin: 16px 0 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.config-group.project { margin-top: 40px; padding-top: 16px; border-top: 2px solid var(--line); }
+.config-group .badge { vertical-align: middle; }
+.config-group + .takes-note { margin-top: 4px; }
 .takes-note { margin: 12px 0 0; font-size: 12px; color: var(--muted); }
 /* Details: one block for each project, its head with its mark and colour, then a row for each complexity. The head
    and each row stand on one grid. The defaults, where a pick is another, go under the lists; the advisor's switch
@@ -433,15 +441,19 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .settings-head h2 { margin: 0; }
 .settings-head input[type="color"] { display: inline-block; width: 44px; height: 32px; padding: 2px; }
 .info .repo-link { margin: 28px 0 0; font-size: 13px; }
-.settings-note { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 /* Each row is a grid of its own: fixed outer columns in px keep the head's labels over the rows' fields (the compact
    field is 131px wide). */
-.config-head, .config-row { display: grid; grid-template-columns: 135px minmax(0, 1fr) minmax(0, 1fr) 132px; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.config-head, .config-row { display: grid; grid-template-columns: 160px minmax(0, 1fr) minmax(0, 1fr) 132px; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .config-head { font-size: 12px; font-weight: 600; color: var(--muted); }
 .config-row > small { grid-column: 2 / -1; }
 .config-row > small { font-size: 11px; color: var(--muted); }
 .config-row select { min-width: 0; }
 .config-name b { display: block; text-transform: capitalize; }
+/* A complexity's name is its switch, with the (i) button beside it. */
+.config-name.switch { display: flex; align-items: center; gap: 2px; }
+.config-name.switch .take { flex: 1; min-width: 0; }
+/* The advisor's switch stands under the model, so the first column holds only the complexities' own switches. */
+.config-row > .take { grid-column: 2; }
 .config-name small { display: block; font-size: 11px; color: var(--muted); }
 /* A complexity's (i) button and its description (app.js, complexityRow): the text opens under the button where the
    browser can anchor it, else in the middle of the screen. */
@@ -459,6 +471,7 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
   .config-head > :last-child { text-align: right; }
   .config-row > small { grid-column: 1 / -1; }
   .config-row > .config-name:first-child { order: -2; }
+  .config-row > .take { grid-column: auto; }
   .config-row .compact { order: -1; justify-self: end; }
 }
 .compact { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }

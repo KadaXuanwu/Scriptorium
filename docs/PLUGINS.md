@@ -179,8 +179,8 @@ manifest says `"provider": true` is one.
 - **A worker runs on the provider of its account** ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`), in
   any project. Its runs get that provider's hooks and playbook, and no other provider's.
 - **A project's scripts have** the providers that its `scriptorium.json` lists and each other one in the install's
-  `plugins` folder. The first that the project lists is its default: the models of `scriptorium.json` and of the
-  page's Details are its, and setup puts a new worker on its account.
+  `plugins` folder. The first that the project lists is its default: the models of `scriptorium.json` are its, and
+  setup puts a new worker on its account.
 - **The page's server** serves the accounts and the workers of every provider it has, each with its own hooks,
   models and windows.
 - With no provider, the page still shows the queue, and each worker's card says that it has no provider. A provider

@@ -130,6 +130,10 @@ $testAccount = $shown.accounts[1]
 Assert-Equal "$($bareAccount.month.used) $($bareAccount.ContainsKey('short')) $($testAccount.short.used) $($testAccount.ContainsKey('month'))" '1 False 0.2 False' 'each account with the windows of its own tool'
 Assert-Equal (($shown.workers | ForEach-Object { "$($_.id)=$($_.provider)/$($_.takes[0].model)" }) -join ' ') '1=bare/only 2=test/main-1 3=bare/only' 'each worker with its tool and that tool''s models; worker 3, in no entry, is on the command-line login''s tool'
 Assert-Equal "$($shown.provider) | $($shown.tools.bare.title) $($shown.tools.bare.hooks.Count) $(($shown.tools.bare.windows | ForEach-Object { $_.name }) -join ',') | $($shown.tools.test.hooks.Count) $($shown.tools.test.windows.Count)" 'The test provider | The bare provider 0 month | 9 3' 'the default tool, and each tool with its features and windows'
+# What a worker's mapping offers is its own tool's: the bare one has no efforts, no compact size and no advisor.
+$bareTake = $shown.workers[0].takes[0]
+Assert-Equal "$($shown.tools.bare.models -join ',') $($shown.tools.bare.efforts.Count) $($shown.tools.bare.compactRange.Count) '$($shown.tools.bare.advisor)' | '$($bareTake.effort)' $($bareTake.compactAt) '$($bareTake.advisor)' '$($shown.workers[0].mapping.advisor)'" "only 0 0 '' | '' 0 '' ''" 'a tool with no efforts, no compact size and no advisor'
+Assert-Equal "$($shown.tools.test.models.Count) $($shown.tools.test.efforts.Count) $($shown.tools.test.compactRange -join '-') $($shown.tools.test.advisor) $($shown.modelTitles.'deep-1')" '4 5 67000-967000 deep-1 Deep 1' 'a tool with all of them'
 Assert-Equal "$($script:Provider.Name) $($shown.ContainsKey('loginTaken'))" 'test False' 'the default provider is set again after the snapshot'
 # Now: each worker's account is read with the windows of the worker's own tool. Worker 1's month is used up, so the
 # ticket goes to worker 2, though the default tool's windows show nothing used on worker 1's account.
@@ -257,18 +261,24 @@ Assert-Equal "$($take.model) $($take.effort)" 'some-model xhigh' 'a model not in
 $own = '{"workers":{"1":{"model":"small-1@low"}}}' | ConvertFrom-Json
 $take = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $own; workers = $idle }).workers[0].takes[0]
 Assert-Equal "$($take.model) $($take.effort)" 'main-1 medium' 'a worker''s own model is no model'
-# Details: the project's colour (a valid one only), the settings' `model`, the advisor's model with its default, and
-# each complexity's advisor switch as the owner set it, apart from the advisor that its run gets.
-$owner = '{"color":"#A0B1C2","model":"mid-1@high","advisor":{"model":"main-1"},
-    "complexities":{"design":{"advisor":true},"low":{"advisor":true,"advisorFallback":"max"}}}' | ConvertFrom-Json
-$details = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = $owner
-    complexities = Get-Complexities (Read-Models) $null $owner }
-Assert-Equal "$($details.color) $($details.settingsModel) $($details.advisor.model) $($details.advisor.base)" '#a0b1c2 mid-1@high main-1 deep-1' 'the colour, the settings'' model and the advisor''s model'
-$low = $details.complexities | Where-Object { $_.name -eq 'low' }
-Assert-Equal "$($low.advisorOn) $($low.advisorFallback) $($low.baseAdvisor) '$($low.baseFallback)' '$($low.advisor)'" "True max False '' ''" 'on, and no advisor for a run on the advisor''s own model'
-$design = $details.complexities | Where-Object { $_.name -eq 'design' }
-Assert-Equal "$($design.advisorOn) $($design.baseAdvisor) $($design.advisor)" 'True False main-1' 'a complexity that the owner gave the advisor'
-Assert-Equal (@($details.advisor.complexities) -join ',') 'low,medium,high,design' 'the switches of the owner in the rule'
+# Details: the project's colour (a valid one only) and the settings' `model`. A worker's mapping: the advisor's model
+# with its default, and each complexity's advisor switch as the owner set it, apart from the advisor that its run gets.
+$owner = '{"color":"#A0B1C2","workers":{"1":{"mapping":{"test":{"advisor":{"model":"main-1"},
+    "complexities":{"design":{"advisor":true},"low":{"advisor":true,"advisorFallback":"max"}}}}}}}' | ConvertFrom-Json
+$details = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = $idle; settings = $owner }
+$mapping = $details.workers[0].mapping
+Assert-Equal "$($details.color) '$($mapping.follows)' $($mapping.end) $($mapping.advisor) $($mapping.baseAdvisor)" "#a0b1c2 '' 1 main-1 deep-1" 'the colour, and the advisor''s model of the worker''s mapping'
+Assert-Equal (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = @{ model = 'mid-1@high' } }).settingsModel 'mid-1@high' 'the settings'' model'
+$low = $details.workers[0].takes | Where-Object { $_.name -eq 'low' }
+Assert-Equal "$($low.advisorOn) $($low.advisorFallback) $($low.baseAdvisor) '$($low.baseFallback)' '$($low.advisor)' $($low.linked) $($low.own)" "True max False '' '' False False" 'on, and no advisor for a run on the advisor''s own model'
+$design = $details.workers[0].takes | Where-Object { $_.name -eq 'design' }
+Assert-Equal "$($design.advisorOn) $($design.baseAdvisor) $($design.advisor) $($design.compactAt) $($design.description -ne '')" 'True False main-1 250000 True' 'a complexity that the owner gave the advisor'
+# A worker that follows another shows that worker's picks, marked as linked.
+Set-JsonProperty $owner.workers '2' ('{"mapping":{"test":{"follows":"1"}}}' | ConvertFrom-Json)
+$pair = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $owner
+    workers = @($idle[0], @{ id = '2'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }) }
+$low = $pair.workers[1].takes | Where-Object { $_.name -eq 'low' }
+Assert-Equal "$($pair.workers[1].mapping.follows) $($pair.workers[1].mapping.end) $($pair.workers[1].mapping.advisor) $($low.advisorFallback) $($low.linked)" '1 1 main-1 max True' 'a worker that follows another'
 foreach ($bad in 'red', '#abc', "#a0b1c2`nx", '') {
     $color = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = @{ color = $bad } }).color
     Assert-Equal "'$color'" "''" "no colour on the page: '$bad'"
@@ -466,6 +476,9 @@ $flight = @($urgent, (Issue 21 @('P1', 'area:ui', 'worker:1')), (Issue 22 @('P1'
 $accounts = @((Account 'a' 0.2), (Account 'b' 0.6))
 $idle = @{ id = '4'; status = 'active'; activity = 'free'; account = 'b' }
 Assert-Equal (Now (Select-NowWorker $urgent $flight @((Working '1' 21 'a' 100), (Working '3' 23 'a' 200), $idle) $null $accounts)) "4 stops 0 busy 'api'" 'a free worker first; another ticket in flight still holds the area'
+# Every worker that can take it, the pick first: the owner may choose another.
+$choice = (Select-NowWorker $urgent $flight @((Working '1' 21 'a' 100), (Working '3' 23 'a' 200), $idle) $null $accounts).able
+Assert-Equal (($choice | ForEach-Object { "$($_.worker):$($_.stops)" }) -join ' ') '4:0 3:23 1:21' 'the workers the owner can choose from, in the order of the pick'
 Assert-Equal (Now (Select-NowWorker $urgent $flight @((Working '1' 21 'a' 100), (Working '3' 23 'a' 200)) $null $accounts)) "3 stops 23 busy 'api'" 'one account: the run that started last'
 Assert-Equal (Now (Select-NowWorker $urgent $flight @((Working '1' 21 'b' 100), (Working '3' 23 'a' 50)) $null $accounts)) "3 stops 23 busy 'api'" 'the account with the most room'
 Assert-Equal (Now (Select-NowWorker $urgent $flight @((Working '2' 22 'b' 50), (Working '3' 23 'a' 200), $idle) $null $accounts)) "2 stops 22 busy ''" 'before all, the worker whose ticket holds the area: its end frees it'

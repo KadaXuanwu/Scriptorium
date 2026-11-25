@@ -41,7 +41,8 @@ A ticket's `complexity:<name>` label picks the model and effort of its run. Scri
 `high` and `design`. Their models are in the provider's `models.json` ([PLUGINS.md](PLUGINS.md), A provider).
 What this file says of models, the advisor and the compact size holds for the project's default provider. A worker on
 another coding tool takes only the names and descriptions of the project's own complexities from here
-([QUEUE.md](QUEUE.md), Complexities).
+([QUEUE.md](QUEUE.md), Complexities). The picks of a worker's own mapping go over this file's, on any tool
+([QUEUE.md](QUEUE.md), Models, A worker's mapping).
 
 An entry under `complexities` changes one of the four or adds one of the project's own:
 
@@ -53,10 +54,10 @@ An entry under `complexities` changes one of the four or adds one of the project
 | `advisorFallback` | The effort its runs get when the account has no advisor left |
 | `compactAt` | The compact size of its runs, where it is not the project's |
 
-`setup.ps1` makes the label of each complexity. The page shows every complexity with its model on the Details tab.
-There the owner can pick another model and effort for a complexity of the project, and the pick goes over `models`
-([QUEUE.md](QUEUE.md), Models, The owner's pick). The owner's advisor switch and fallback effort go over `advisor` and
-`advisorFallback` in the same way. A complexity of the project's own stands between `high` and `design`.
+`setup.ps1` makes the label of each complexity. The page shows every complexity with its model in each worker's
+Config. There the owner can pick another model and effort for a complexity on that worker, and the pick goes over
+`models` ([QUEUE.md](QUEUE.md), Models, A worker's mapping). The worker's advisor switch and fallback effort go over
+`advisor` and `advisorFallback` in the same way. A complexity of the project's own stands between `high` and `design`.
 
 ## The compact size
 
@@ -68,8 +69,8 @@ no such size has none (no `compactAt` in its `models.json`), and this part does 
 its `models.json`). Anything else stops the scripts with an error: a tool once read `250k` as its least without a
 word. A run gets the compact size of its ticket's complexity, from the first of these that has one:
 
-1. The owner's own size for the complexity in the project: the page's Details tab sets it, and saves it in
-   `.queue/settings.json` ([QUEUE.md](QUEUE.md), Settings).
+1. The size for the complexity in the worker's mapping: the worker's Config on the page sets it, and saves it in
+   the PC's settings ([QUEUE.md](QUEUE.md), Settings, `workers.<id>.mapping`).
 2. The complexity's `compactAt` in `scriptorium.json`.
 3. The project's `compactAt` in `scriptorium.json`.
 4. The `compactAt` of the provider's `models.json`.
@@ -77,7 +78,7 @@ word. A run gets the compact size of its ticket's complexity, from the first of 
 A size above the model's own context window has no effect: the tool compacts before that window is full.
 
 A larger size keeps more of the work in view and costs more for each turn. A smaller one compacts more often, and
-each compaction loses detail. The page shows the compact size of each complexity on its Details tab, and the worker
+each compaction loses detail. The page shows the compact size of each complexity in a worker's Config, and the worker
 script writes the size of each run into its log.
 
 The worker script names the size to the provider for each run ([PLUGINS.md](PLUGINS.md), `Run`), which turns it

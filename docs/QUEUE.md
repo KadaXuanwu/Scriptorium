@@ -167,9 +167,10 @@ in [project.ps1](../project.ps1)): `low`, `medium`, `high` and `design`. The pro
 ([CONFIG.md](CONFIG.md), Complexities). One list, `Get-Complexities` in [project.ps1](../project.ps1), gives them to
 the worker script, the merger, setup and the page.
 
-The models that `scriptorium.json` and the page's Details name are the ones of the project's default provider, the
-first provider it lists. A worker on another coding tool (Settings, `accounts.<name>.provider`) runs each complexity
-on the models of that tool's own `models.json`, and a complexity of the project's own on that tool's `medium` models.
+The models that `scriptorium.json` names are the ones of the project's default provider, the first provider it lists.
+A worker on another coding tool (Settings, `accounts.<name>.provider`) starts from the models of that tool's own
+`models.json`, and for a complexity of the project's own from that tool's `medium` models. The picks of the worker's
+own mapping go over these, on any tool (Models, A worker's mapping).
 
 | Complexity | For |
 | ---------- | --- |
@@ -178,7 +179,7 @@ on the models of that tool's own `models.json`, and a complexity of the project'
 | `high` | Hard to get right: core rules, work across parts, a bug nobody can explain |
 | `design` | The ticket does not give the shape of the solution: the worker finds it, and the choice stays |
 
-The page's Details tab shows the model and effort of each.
+A worker's Config on the page shows the model and effort of each for that worker.
 
 `design` is how a feature works, a final look, or a code structure that is expensive to change later. The test: if the
 ticket names the structure and the rule, and the work is to build them, it is not `design`. Judgement at a few points is
@@ -198,17 +199,42 @@ A run gets its model and effort and names both in its PR. The effort is the mode
 candidate names after `@` (`<model>@high`). Runs use the plan logins, never an API key. A pick-up limit is the same for
 every model: a ticket on a dearer model reaches the stop line sooner.
 
-**The owner's pick:** the page's Details tab picks the model and effort of a complexity for the project
-([APP.md](APP.md), Details; Settings, `complexities.<name>.model`). The pick is then the complexity's one candidate,
-from the next run. The page offers the models of `models` and the efforts of `efforts`, and the server saves nothing
-else: a coding tool may take an effort it does not know without a word. A model that `scriptorium.json` names for the
-complexity stays a valid pick. Two things do not follow the pick: a held run resumes on the model it started on, and a
-run without its advisor takes the complexity's `advisorFallback` effort (Without the advisor).
+**A worker's mapping:** the owner's picks are each worker's. The worker's Config on the page sets, for each
+complexity, the model and effort of that worker's runs, their compact size and their advisor ([APP.md](APP.md),
+Workers, Config; Settings, `workers.<id>.mapping`). One function gives a worker's mapping to the worker script and
+the page: `Get-WorkerMapping` in [project.ps1](../project.ps1).
+
+- **A pick** is the complexity's one candidate, from the worker's next run. The page offers the models of `models`
+  and the efforts of `efforts`, and the server saves nothing else: a coding tool may take an effort it does not know
+  without a word. With a tool that lists no efforts, a pick is the model alone. A model that `scriptorium.json` names
+  for the complexity stays a valid pick. Two things do not follow the pick: a held run resumes on the model it started
+  on, and a run without its advisor takes the complexity's `advisorFallback` effort (Without the advisor).
+- **One for each coding tool:** a worker has a mapping for each tool it was on, under the provider plugin's name. On
+  an account of another tool it runs on its mapping for that tool, and it finds the old one again when it comes back.
+- **In any project:** the mapping is the PC's, so the worker takes it along to another project. A complexity of a
+  project's own has its row only while the worker is in that project; the pick is kept for the worker's return.
+- **A link:** a worker can use another worker's mapping instead of its own (`follows`), so one change counts for
+  both.
+  - A link goes over any number of workers: the picks are those of the last worker of the chain.
+  - Only a worker on the same tool can be followed, and no link leads back to the worker itself.
+  - The complexity switches are never linked: each worker keeps its own.
+  - A worker that links loses its own picks for that tool, but for a project's own complexities. Its own again, it
+    starts from the picks it ran on, so the change alters no run.
+- **A link into another project:** the last worker of the chain then has no row for this project's own complexities.
+  Those rows stay the following worker's own.
+- **The followed worker goes to another tool:** the link stays. The picks are the ones that worker has for this tool,
+  which it keeps.
+- **A worker is removed:** a worker that followed it follows the worker that it followed. Where it followed nobody,
+  the follower gets its picks as its own (`Remove-MappingLinks` in [app/state.ps1](../app/state.ps1)).
+- **The dispatcher** judges each idle worker by that worker's own mapping: whether its account still has a model of
+  the ticket's complexity (`Test-ModelLeft` in [worker.ps1](../worker.ps1)).
+- **Before this, the picks were the project's** (`complexities.<name>` and `advisor.model` in the project's
+  settings). Those keys are no longer read.
 
 **The advisor,** with a provider that has one (`advisor.model` in its `models.json`): a run of a complexity with
 `advisor` gets that model as its advisor (`Get-AdvisorRule` in [project.ps1](../project.ps1), `Get-Advisor` in
-[limits.ps1](../limits.ps1)). Details sets the switch and the fallback effort of each complexity and the advisor's
-model for the project, over the files (Settings, `complexities.<name>.advisor`, `.advisorFallback`, `advisor.model`).
+[limits.ps1](../limits.ps1)). A worker's mapping sets the switch and the fallback effort of each complexity and the
+advisor's model for that worker, over the files (Settings, `workers.<id>.mapping`).
 The run calls it when it decides to, inside its own turn. A run on the advisor's own model gets none, nor does a run
 whose account has the advisor's model no longer (A model's limit). The worker script names the advisor of each run to
 the provider, which switches it on for that run alone. A session keeps its advisor through a hold, a resume and a
@@ -301,23 +327,26 @@ between runs.
   nothing. The page's guard sliders set it.
 - `away` (the PC's): `true` while the owner is away: nothing that waits on the owner stops the work (No blocking). Left out:
   not away. The No blocking switch on the page's Workers tab sets it.
-- `complexities.<name>.compactAt`: the compact size of a complexity's runs in the project, for example
-  `{ "design": { "compactAt": 250000 } }`, over `scriptorium.json`'s ([CONFIG.md](CONFIG.md), The compact size). It is
-  the same for every worker. Details sets it.
-- `complexities.<name>.model`: the owner's pick of a complexity's model and effort in the project, as `model@effort`,
-  for example `{ "medium": { "model": "<a model id>@high" } }`, over the complexity's candidates (Models, The
-  owner's pick). It is the same for every worker. Details sets it, and takes it away when the pick is the base's own.
-- `complexities.<name>.advisor`: the owner's advisor switch of a complexity, `true` or `false`, over the files'
-  `advisor` (Models, The advisor). Details sets it, and takes it away when it equals the files' value.
-- `complexities.<name>.advisorFallback`: the effort of a run of the complexity without its advisor, an effort of
-  `models.json`'s `efforts`, or `""` for the same effort (Without the advisor). Over the files' value. Details sets
-  it, and takes it away when it equals the files' value.
-- `advisor.model`: the advisor's model in the project, a model of `models.json`, over `models.json`'s `advisor.model`.
-  Details sets it, and takes it away for `models.json`'s own.
+- `workers.<id>.mapping.<provider>` (the PC's): the worker's mapping for the coding tool of that provider plugin
+  (Models, A worker's mapping). The worker's Config sets it. Left out: the files' values. In it:
+  - `follows`: the number of the worker whose mapping this worker uses. Left out: its own.
+  - `complexities.<name>.model`: the pick of a complexity's model and effort, as `model@effort`, for example
+    `{ "medium": { "model": "<a model id>@high" } }`, over the complexity's candidates. The model alone with a tool
+    that lists no efforts. Taken away when the pick is the base's own.
+  - `complexities.<name>.compactAt`: the compact size of the complexity's runs, for example
+    `{ "design": { "compactAt": 250000 } }`, over `scriptorium.json`'s ([CONFIG.md](CONFIG.md), The compact size).
+  - `complexities.<name>.advisor`: the advisor switch of a complexity, `true` or `false`, over the files' `advisor`
+    (Models, The advisor). Taken away when it equals the files' value.
+  - `complexities.<name>.advisorFallback`: the effort of a run of the complexity without its advisor, an effort of
+    `models.json`'s `efforts`, or `""` for the same effort (Without the advisor). Over the files' value, and taken
+    away when it equals it.
+  - `advisor.model`: the advisor's model, a model of `models.json`, over `models.json`'s `advisor.model`. Taken away
+    for `models.json`'s own.
 - `color`: the project's colour on the page, `#rrggbb` ([APP.md](APP.md), Details). Left out: a colour from the
   project's name. Details sets it.
 - `model`: overrides the complexities' models for every run: a full id, at its effort in `models.json` (`models.json`'s
-  `effort` if it is not listed). It goes over the page's pick too, and Details then says so. Left out: the complexity picks.
+  `effort` if it is not listed). It goes over the mapping of every worker on the project's default provider too, and
+  the worker's Config then says so. Left out: the complexity picks.
 - `ghConfigDir`: a `gh` login folder (`GH_CONFIG_DIR`) signed in as a GitHub bot account for the worker. Its comments,
   PRs, pushes and commits are the bot's, so GitHub notifies the owner of them. Sign a folder in once:
   `$env:GH_CONFIG_DIR = '<folder>'; gh auth login`, in a browser signed in as the bot. Left out, or not signed in: the
@@ -325,7 +354,7 @@ between runs.
 - `merger.ghConfigDir`: the same for the merger, which then merges as that bot.
 - `plugins.<name>`: settings of a plugin for this PC, over its entry in `scriptorium.json` ([PLUGINS.md](PLUGINS.md)).
 - `ntfy.topic`, `ntfy.server`: the page's pushes ([APP.md](APP.md), Notifications).
-- `workers.<id>` (the PC's): `ghConfigDir` for that worker only, `enabled`, `assignedOnly`, `complexity` and `name`
+- `workers.<id>` (the PC's): `ghConfigDir` for that worker only, `enabled`, `assignedOnly`, `complexity`, `mapping` and `name`
   (the worker's name on the page only; [APP.md](APP.md), Workers, Names).
 - `workers.<id>.complexity`: the worker's complexity switches, for example `{ "design": false }`: it takes no ticket of
   a complexity set to false (Dispatching). Left out: every complexity is on. The worker's Config sets it.
@@ -471,6 +500,9 @@ the click.
 **Now** on the page's Queue tab gives one queued ticket to one worker at once ([APP.md](APP.md), Queue). The server
 writes the ticket to that worker's force file with `now` (`.queue/force-<N>.json`).
 
+- **The worker** is the server's pick ([APP.md](APP.md), Queue), or another worker that can take the ticket, which
+  the owner chooses in the dialog: each worker runs the ticket on the models of its own mapping (Models, A worker's
+  mapping). A worker with the ticket's complexity off is not among them.
 - **The ticket** waits for that worker. No other worker takes it, and the page shows it as that worker's next.
 - **A blocked ticket** takes Now too: the owner accepts a merge conflict with its blocker. The run's first message
   names the open blockers and tells the run to build on main as it is, without waiting or asking.
