@@ -608,8 +608,8 @@ function infoLimits(a) {
   return `<h3>${esc(a.name)}${who ? ` <span class="sub">${esc(who)}</span>` : ''}</h3>${items(lines)}`;
 }
 
-// The project's environment in words: its plugins' titles, '' for a plain git repo.
-const environment = (s) => inWords((s.plugins || []).map((p) => esc(p.title || p.name)));
+// The project's environment in words: the titles of its plugins but the provider's, '' for a plain git repo.
+const environment = (s) => inWords((s.plugins || []).filter((p) => !p.provider).map((p) => esc(p.title || p.name)));
 
 function info(s) {
   const blocking = s.questions.filter((q) => q.blocking).length;
@@ -620,7 +620,7 @@ function info(s) {
   const per = s.per || [{ name: '', plugins }];
   return [
     section('In short', `<p>Workers are sessions of a coding tool on this PC${s.provider ? ` (${esc(s.provider)})` : ''}. Each builds tickets (GitHub issues) on its own, one at
-      a time, in its own copy of the project${plugins.length ? `, with its environment (${environment(s)})` : ''}. It tests
+      a time, in its own copy of the project${environment(s) ? `, with its environment (${environment(s)})` : ''}. It tests
       its work and opens a pull request (PR), and a merger merges the PR into main. You decide what to build; the scripts
       do the rest.</p>`),
     section('What needs you', items([

@@ -218,9 +218,9 @@ The repo may be private, so the server fetches each one once with the owner's `g
 - **Now** (on a ticket of Up next, also a blocked one): one worker does the ticket at once ([QUEUE.md](QUEUE.md), Now).
   - The server picks the worker (`Select-NowWorker`). It must be active with no change of status to come, free or in a
     run, with no force on it and with the ticket's complexity on. Its account must take the ticket's size now. For a
-    ticket that runs on Fable, the account must be under the design line of its Fable week.
+    ticket whose model has a window of its own, the account must be under that window's start line.
   - Of those, the first is a worker whose ticket in work holds an area of this one. Then a free worker, then the
-    account with the most 5-hour room, then the most weekly room, then the run that started last.
+    account with the most room in its shortest window, then in its longest, then the run that started last.
   - The page asks first. It names the worker, the run that ends, and the areas that another ticket still holds.
   - With no such worker the button is off, and its tooltip says why.
   - A pause or a disable of the worker ends a Now that still waits.
@@ -234,15 +234,16 @@ The repo may be private, so the server fetches each one once with the owner's `g
 ### Accounts
 
 Per account: a status (Ready, At its stop line, Signed out, Subscription refused, Runs do not start, Not used), its
-email and plan, the human uses on it (front desk, you), and a meter for each window. Under the week's meter, the
-**Fable week**, where the account has a reading of it ([QUEUE.md](QUEUE.md), The Fable limit), with two handles: the
-**D** handle is the design line, the other the stop line of the Fable advisor ("Fable advisor stops at").
+email and plan, the human uses on it (front desk, you), and a meter for each of the provider's windows
+([PLUGINS.md](PLUGINS.md), A provider). Under the last one stands each window of some models that the account has a
+reading of ([QUEUE.md](QUEUE.md), A model's limit), with two handles: the one under a letter is the start line, the
+other the stop line for those models as advisors ("Advisor stops at").
 
 **The meter** shows where the workers stop. The fill is the share used. The handle is the **stop line**: drag it to set
 the share where this account's workers stop (`stopAt`). The hatched part right of it is what they leave.
 
-**The pick-up limits.** Above the 5-hour meter stand three small handles, each under the letter of a ticket size: L, M
-and S. Drag one to set the share from which this account's workers take no new ticket of that size (`pickUp`).
+**The pick-up limits.** Above the meter of a window that has them stand three small handles, each under the letter of
+a ticket size: L, M and S. Drag one to set the share from which this account's workers take no new ticket of that size (`pickUp`).
 
 **The usage guards.** On the week's meter, each human use of the account (the front desk, the owner's own use) keeps room
 left of the handle, in its colour. Under the meter each guard has a slider: its share of a whole week, from 0 % to 50 %
@@ -258,10 +259,11 @@ of that name. The last tile adds an account: a dialog asks for its name and emai
 sign-in starts on this tab. The cross on a card removes an account that nothing uses: its login is signed out, and its
 folder stays.
 
-- **The sign-in** is `claude auth login`, run by the server. The page shows its link: open it on any device, sign in as
-  that account (not your own: the browser may already be signed in), and paste the code it shows.
-- **Ping:** one Haiku reply of one dot, with no tools, settings, plugins or `CLAUDE.md`, about 770 tokens. It starts the
-  account's 5-hour window now. It is the only action here that uses tokens.
+- **The sign-in** is the provider's sign-in command, run by the server ([PLUGINS.md](PLUGINS.md), SignIn). The page
+  shows its link: open it on any device, sign in as that account (not your own: the browser may already be signed in),
+  and paste the code it shows. With a provider that has no sign-in for the page, sign the folder in from a terminal.
+- **Ping:** the provider's cheapest request (Probe). It starts the account's windows now. It is the only action here
+  that uses tokens.
 
 ### History
 
