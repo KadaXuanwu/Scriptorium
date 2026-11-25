@@ -482,7 +482,7 @@ Not built. Each needs a trial before it is worth its cost.
 
 - **A cheaper helper model.** A run hands its searching and the reading of docs to a cheap model, and gets back only
   the answer. It needs the provider to give a run its tool for helpers and a rule in the playbook.
-  Measured with one coding tool: that tool is 2,702 tokens on every turn. Estimated from 328 run logs of
+  Measured with one coding tool: its tool for helpers is 2,702 tokens on every turn. Estimated from 328 run logs of
   one project (November 2026): searching and the reading of docs were about 6 % of the runs' cost, which is the most
   that a helper can save, and the helper tool would cost about 1.5 %. Not known: how often a run would hand work
   over, which decides the gain. The risk: a thin or wrong answer makes the run read the files anyway, and it pays
