@@ -174,6 +174,9 @@ function Set-Provider($plugin, [hashtable] $scope = @{}) {
     }
 }
 
+# The provider's hooks that are features (docs/PLUGINS.md, A provider): every one but GetCommand and ReadRun.
+$ProviderFeatures = @('ReadUsage', 'Probe', 'Compact', 'GetLogin', 'SignIn', 'ReadSignIn', 'SignOut', 'ReadStep', 'ReadEnd')
+
 # Whether the provider has a hook: each one but GetCommand and ReadRun is a feature it may leave out.
 function Test-ProviderHook([string] $hook) {
     return [bool]($script:Provider -and $script:Provider.Hooks[$hook])
