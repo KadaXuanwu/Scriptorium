@@ -615,12 +615,14 @@ function windowMeter(account, win, w, inner = '') {
 }
 
 // An account's meters: its own windows, shortest first, and under the last one the windows of some models that it
-// has a reading of.
+// has a reading of. The card has two rows for them (the grid's subgrid): with one window an empty slot comes first, so
+// the window stands where its neighbour's longest one does.
 function accountMeters(a) {
   const own = usageWindows().filter((win) => !win.models && a[win.name]);
   const scoped = usageWindows().filter((win) => win.models && a[win.name]).map((win) => windowMeter(a, win, a[win.name])).join('');
   if (!own.length) return scoped;
-  return own.map((win, i) => windowMeter(a, win, a[win.name], i === own.length - 1 ? scoped : '')).join('');
+  return '<div class="empty"></div>'.repeat(Math.max(0, 2 - own.length))
+    + own.map((win, i) => windowMeter(a, win, a[win.name], i === own.length - 1 ? scoped : '')).join('');
 }
 
 // An email with only the first three letters of its name shown: the page is on screen in a call or in a screenshot.

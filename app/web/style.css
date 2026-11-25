@@ -510,10 +510,18 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .window .window { margin-top: 12px; }
 /* The buttons stand in the card's last row, at its bottom, also on a card with fewer windows than its neighbour. */
 .account .buttons { align-self: end; grid-row-end: -1; }
-/* The meters stand in the rows above the buttons, the last in the last: on a card with one window that window sits where
-   its neighbour's longest one does, not where the shorter one does. */
-.account > .window:nth-last-child(2) { grid-row-end: -2; }
-.account > .window:nth-last-child(3) { grid-row-end: -3; }
+/* A part of the card where a neighbour has a window this account has not (a shorter window, one of some models, the
+   guards) is hatched, with no text: a whole row of its own, or what the row leaves under the last meter, 12px under it.
+   A row of its own is hatched 6px in from each end: a card with no neighbour still has a few pixels there (the page's
+   gap and the card's differ), and a hatch of no height draws nothing. */
+.account > .window { display: flex; flex-direction: column; }
+.account > .window::after, .account > .empty {
+  content: '';
+  flex: 1 0 0;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 25%, transparent) 0 2px, transparent 2px 6px)
+    0 12px / 100% calc(100% - 12px) no-repeat;
+}
+.account > .empty { background-position: 0 50%; }
 .account.bad { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
 .account-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 16px; }
 .account-head .chip { margin-left: auto; }
@@ -525,7 +533,7 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .window-head { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
 .window-head .when, .window-foot { color: var(--muted); }
 .window-head .when { margin-left: auto; }
-.window-foot { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 12px; margin-top: 2px; }
+.window-foot { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 12px; }
 /* The stop line's figure stands at the end of the line, under its handle. */
 .window-foot .stop { margin-left: auto; }
 .window-foot b { color: var(--ink); }
