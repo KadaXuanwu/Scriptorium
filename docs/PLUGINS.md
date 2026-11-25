@@ -191,6 +191,11 @@ Claude Code" is Claude Code on a worker's card.
 `Login` is the folder of an account's login (`configDir` in the settings), `''` for the command-line login. The page
 makes the folder of a new account: `~/.<the plugin's name>-<the account's name>`.
 
+A provider gets only its own accounts: an account names its provider ([QUEUE.md](QUEUE.md), Settings,
+`accounts.<name>.provider`). The PC has one command-line login, and it is one provider's. On a PC where it is
+another's, a provider's first account has a folder too. A tool that keeps its login elsewhere (in the OS keyring)
+need not read that folder: it is then only the account's key in the usage records.
+
 A hook that throws on a log never loses a run's end: the run then counts as one whose process died.
 
 **`Run`**, what a run starts from:

@@ -29,12 +29,39 @@ function Get-Names($item) {
     return @(foreach ($label in $item.labels) { $label.name })
 }
 
+# Whether an account's entry is this project's: of its provider (docs/QUEUE.md, Accounts). A project with no provider
+# runs nothing, and its page shows every account.
+function Test-OwnAccount($entry) {
+    return [bool]($entry -and (-not $script:Provider -or (Test-AccountOf $entry $script:Provider.Name)))
+}
+
+# The entry of this project's account $name. Throws for a name the register doesn't have, and for another coding
+# tool's account: this project's provider cannot read, sign in or sign out that login.
+function Get-OwnAccount($settings, [string] $name) {
+    $entry = if ($settings.accounts) { $settings.accounts.$name }
+    if (-not $entry) {
+        throw "no account $name"
+    }
+    if (-not (Test-OwnAccount $entry)) {
+        throw "account $name is another coding tool's: change it on a project of that tool"
+    }
+    return $entry
+}
+
+# Whether this project's workers cannot run on the command-line login: it is another coding tool's account.
+function Test-OwnLoginTaken($settings) {
+    return [bool]($script:Provider -and (Test-LoginTaken $settings $script:Provider.Name))
+}
+
 # The register after moving a worker to an account ('' for the command-line login: in no entry). Throws for an
-# account the register doesn't have.
+# account the register doesn't have, for another coding tool's account, and for the command-line login where that is
+# another coding tool's.
 function Set-WorkerAccount($settings, [string] $worker, [string] $account) {
     $use = "worker:$worker"
-    if ($account -and -not ($settings.accounts -and $settings.accounts.$account)) {
-        throw "no account $account"
+    if ($account) {
+        [void](Get-OwnAccount $settings $account)
+    } elseif (Test-OwnLoginTaken $settings) {
+        throw "the command-line login is another coding tool's account: pick an account"
     }
     foreach ($property in $settings.accounts.PSObject.Properties) {
         $uses = @($property.Value.uses | Where-Object { $_ -and $_ -ne $use })
@@ -989,6 +1016,10 @@ function New-Snapshot($data) {
     $keys = @{}
     if ($data.settings -and $data.settings.accounts) {
         foreach ($property in $data.settings.accounts.PSObject.Properties) {
+            # The accounts of this project's provider: another coding tool's are on the pages of its projects.
+            if (-not (Test-OwnAccount $property.Value)) {
+                continue
+            }
             $key = if ($property.Value.configDir) { $property.Value.configDir } else { 'default' }
             $uses = @($property.Value.uses)
             $usage = if ($data.usage) { $data.usage.$key } else { $null }
@@ -1137,7 +1168,7 @@ function New-Snapshot($data) {
         }
     }
     $snapshot = @{
-        now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; login = $data.login; github = [bool]$data.gh
+        now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; loginTaken = (Test-OwnLoginTaken $data.settings); login = $data.login; github = [bool]$data.gh
         # This project's name and the PC's projects, for the page's project switch.
         name = [string]$data.name; projects = @($data.projects | Where-Object { $_ })
         # The owner's order of the cards (Set-CardOrder), the same in every project's snapshot.

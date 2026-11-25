@@ -325,20 +325,9 @@ try {
         $settings = [pscustomobject]@{}
     }
     $changed = $false
-    $uses = @($ids | ForEach-Object { "worker:$_" })
-    if (-not $settings.accounts) {
-        Set-JsonProperty $settings 'accounts' ([pscustomobject]@{ main = [pscustomobject]@{ uses = [object[]]($uses + 'personal') } })
+    # Each worker of the project on an account of its provider (pc.ps1, Set-WorkerAccounts).
+    if (Set-WorkerAccounts $settings ([string[]]@($ids | ForEach-Object { "$_" })) $(if ($provider) { $provider.Name } else { '' }) $HOME) {
         $changed = $true
-    } else {
-        # A PC with accounts: a new worker goes to the entry of the command-line login. With no such entry it is in
-        # none, and it runs on that login all the same.
-        $claimed = @($settings.accounts.PSObject.Properties | ForEach-Object { $_.Value.uses })
-        $new = @($uses | Where-Object { $claimed -notcontains $_ })
-        $login = $settings.accounts.PSObject.Properties | Where-Object { -not $_.Value.configDir } | Select-Object -First 1
-        if ($new.Count -and $login) {
-            Set-JsonProperty $login.Value 'uses' ([object[]](@($login.Value.uses | Where-Object { $_ }) + $new))
-            $changed = $true
-        }
     }
     if (-not $settings.ntfy -or -not $settings.ntfy.topic) {
         $topic = "$($config.name.ToLowerInvariant())-" + (-join ((48..57) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ }))

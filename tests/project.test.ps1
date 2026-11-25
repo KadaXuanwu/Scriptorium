@@ -338,6 +338,65 @@ Move-PcRecords $one
 $usage = Get-Content (Join-Path $PcDir 'usage.json') -Raw | ConvertFrom-Json
 Assert-Equal "$($usage.default.at) $($usage.default.short.used) $($usage.default.deep.used) $($usage.x.at)" '9 0.3 0.4 1' 'the usage of two projects in one file'
 Assert-Equal "$(Test-Path (Join-Path $one '.queue/usage.json')) $(Test-Path (Join-Path $one '.queue/out.json')) $(Test-Path (Join-Path $PcDir 'out.json'))" 'False False False' 'the project keeps no record; one that does not parse is dropped'
+
+# An account is one provider's (docs/QUEUE.md, Accounts). A PC from before that has accounts with no provider: a
+# project whose worker is on one of them claims them all, in any order of the projects. A project that is new on the
+# PC has no worker there, so it claims none, whichever starts first.
+function Claim([string] $json, [string[]] $workers, [string] $provider) {
+    $settings = $json | ConvertFrom-Json
+    $changed = Set-AccountProviders $settings $workers $provider
+    return "$changed $(($settings.accounts.PSObject.Properties | ForEach-Object { "$($_.Name)=$($_.Value.provider)" }) -join ' ')"
+}
+$old = '{"accounts":{"main":{"stopAt":{"short":0.97},"pickUp":{"short":{"S":0.92}},"uses":["personal","frontdesk","worker:1","worker:3"]},"second":{"configDir":"C:/u/.one-second","uses":[]}}}'
+Assert-Equal (Claim $old @('3') 'one') 'True main=one second=one' 'the old project claims every account that names no provider'
+Assert-Equal (Claim $old @('6') 'two') 'False main= second=' 'a project that is new on the PC claims none'
+Assert-Equal (Claim $old @() 'two') 'False main= second=' 'a project with no worker claims none'
+Assert-Equal (Claim $old @('3') '') 'False main= second=' 'a project with no provider claims none'
+$claimed = $old | ConvertFrom-Json
+[void](Set-AccountProviders $claimed @('1') 'one')
+Assert-Equal ($claimed | ConvertTo-Json -Depth 8 -Compress) '{"accounts":{"main":{"stopAt":{"short":0.97},"pickUp":{"short":{"S":0.92}},"uses":["personal","frontdesk","worker:1","worker:3"],"provider":"one"},"second":{"configDir":"C:/u/.one-second","uses":[],"provider":"one"}}}' 'a claim changes nothing else of an account'
+Assert-Equal (Claim ($claimed | ConvertTo-Json -Depth 8 -Compress) @('1') 'two') 'False main=one second=one' 'an account keeps its provider'
+# The new project first, then the old one: the same end.
+$mixed = '{"accounts":{"main":{"uses":["worker:1"]},"two":{"provider":"two","configDir":"C:/u/.two-two","uses":["worker:6"]}}}'
+Assert-Equal (Claim $mixed @('6') 'two') 'False main= two=two' 'the new project''s own account is no reason to claim the old ones'
+Assert-Equal (Claim $mixed @('1') 'one') 'True main=one two=two' 'the old project claims its own after the new one'
+# Whose the command-line login is: the PC's one entry with no folder.
+$pcAccounts = $mixed | ConvertFrom-Json
+Assert-Equal "$(Test-AccountOf $pcAccounts.accounts.two 'two') $(Test-AccountOf $pcAccounts.accounts.two 'one') $(Test-AccountOf $pcAccounts.accounts.main 'one') $(Test-AccountOf $pcAccounts.accounts.two '')" 'True False False False' 'an account is of the provider it names'
+Assert-Equal "$(Test-LoginTaken $pcAccounts 'two') $(Test-LoginTaken $pcAccounts 'one')" 'True True' 'a command-line login that no provider has claimed is taken'
+[void](Set-AccountProviders $pcAccounts @('1') 'one')
+Assert-Equal "$(Test-LoginTaken $pcAccounts 'two') $(Test-LoginTaken $pcAccounts 'one') $(Test-LoginTaken ('{"accounts":{"x":{"configDir":"C:/x"}}}' | ConvertFrom-Json) 'two') $(Test-LoginTaken $null 'two')" 'True False False False' 'the command-line login is taken from every provider but its own; a PC without such an entry has none taken'
+# Setup puts a project's workers on accounts of its provider.
+function Place([string] $json, [string[]] $workers, [string] $provider) {
+    $settings = $json | ConvertFrom-Json
+    $changed = Set-WorkerAccounts $settings $workers $provider 'C:\Users\me'
+    return "$changed $($settings.accounts | ConvertTo-Json -Depth 8 -Compress)"
+}
+Assert-Equal (Place '{}' @('1', '2') 'one') 'True {"main":{"uses":["worker:1","worker:2","personal"],"provider":"one"}}' 'a PC with no accounts gets the command-line login, of the project''s provider'
+Assert-Equal (Place '{}' @('1') '') 'True {"main":{"uses":["worker:1","personal"]}}' 'a project with no provider: an account with none'
+# The shape of a PC from before an account had a provider: the project's own setup claims the accounts and changes
+# nothing else; a worker more goes to the command-line login.
+$real = '{"accounts":{"main":{"weeklyOverride":false,"stopAt":{"long":1,"short":0.97},"pickUp":{"short":{"S":0.92,"M":0.86,"L":0.76}},"uses":["personal","frontdesk","worker:1","worker:2","worker:3"]},"second":{"configDir":"C:/Users/me/.one-second","stopAt":{"short":0.95},"uses":[]}}}'
+Assert-Equal (Place $real @('3') 'one') 'True {"main":{"weeklyOverride":false,"stopAt":{"long":1,"short":0.97},"pickUp":{"short":{"S":0.92,"M":0.86,"L":0.76}},"uses":["personal","frontdesk","worker:1","worker:2","worker:3"],"provider":"one"},"second":{"configDir":"C:/Users/me/.one-second","stopAt":{"short":0.95},"uses":[],"provider":"one"}}' 'the setup of an old project claims its accounts'
+Assert-Equal ((Place $real @('3', '4') 'one') -like '*"worker:3","worker:4"]*') $true 'a worker more goes to the command-line login of its provider'
+# A project of another coding tool, new on that PC, before and after the old project claimed: its worker never goes
+# on the command-line login. It gets an account of its own, named after the provider, with a folder as its key.
+$expected = '"two":{"configDir":"C:/Users/me/.two-two","provider":"two","uses":["worker:6"]}}'
+Assert-Equal ((Place $real @('6') 'two').EndsWith($expected)) $true 'a new tool''s first worker gets an account of its own'
+Assert-Equal ((Place $real @('6') 'two') -match '"uses":\["personal","frontdesk","worker:1","worker:2","worker:3"\]\},"second"') $true 'the old accounts stay as they are, with no provider'
+$after = (Place $real @('3') 'one').Substring(5)
+Assert-Equal ((Place "{`"accounts`":$after}" @('6') 'two').EndsWith($expected)) $true 'the same after the old project claimed'
+# Its second worker goes to that account, and a name that is taken gets a number.
+Assert-Equal ((Place "{`"accounts`":$((Place $real @('6') 'two').Substring(5))}" @('6', '7') 'two').EndsWith('"two":{"configDir":"C:/Users/me/.two-two","provider":"two","uses":["worker:6","worker:7"]}}')) $true 'a second worker goes to the provider''s first account'
+Assert-Equal ((Place '{"accounts":{"two":{"provider":"one","uses":["worker:1"]}}}' @('6') 'two').EndsWith('"two-2":{"configDir":"C:/Users/me/.two-two-2","provider":"two","uses":["worker:6"]}}')) $true 'a name that is taken gets a number'
+# A PC whose accounts all have folders: a new worker is in none, as before.
+Assert-Equal (Place '{"accounts":{"a":{"provider":"one","configDir":"C:/a","uses":["worker:1"]}}}' @('1', '2') 'one') 'False {"a":{"provider":"one","configDir":"C:/a","uses":["worker:1"]}}' 'no command-line login entry: a new worker is in no entry'
+# Under the lock, on the PC's file: a project's settings come back with the claim.
+New-Item -ItemType Directory -Force $PcDir, (Join-Path $one '.queue') | Out-Null
+Set-Content (Join-Path $PcDir 'settings.json') $old -Encoding utf8
+Update-AccountProviders $one @('1') 'one'
+Assert-Equal ((Read-ProjectSettings $one).accounts.second.provider) 'one' 'the claim is saved in the PC''s file'
+
 Remove-Item (Split-Path $PcDir) -Recurse -Force
 
 Write-Output 'ok'

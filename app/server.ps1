@@ -39,6 +39,11 @@ Get-CommandLines -Shells |
     ForEach-Object { Stop-ProcessTree $_.ProcessId }
 
 $mainQueue = Join-Path $Main '.queue'
+# A PC from before an account had a provider: the accounts this project's workers are on become its provider's.
+if ($script:Provider) {
+    Update-AccountProviders $Main @(Get-ChildItem (Join-Path $mainQueue 'worker-*.json') -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.BaseName.Substring(7) }) $script:Provider.Name
+}
 $web = Join-Path $PSScriptRoot 'web'
 $logFile = Join-Path $mainQueue 'app.log'
 Set-Location $Main
@@ -444,6 +449,10 @@ function Update-Snapshot {
     }
     if ($data.settings -and $data.settings.accounts) {
         foreach ($property in $data.settings.accounts.PSObject.Properties) {
+            # Only this project's provider can read a login of its own.
+            if (-not (Test-OwnAccount $property.Value)) {
+                continue
+            }
             $key = if ($property.Value.configDir) { $property.Value.configDir } else { 'default' }
             $data.logins[$key] = Get-LoginInfo $property.Value.configDir
         }
@@ -597,7 +606,9 @@ function Invoke-Action($request) {
             # An account's name (docs/APP.md, Accounts): only its key in the register; its folder and records stay.
             $old = [string]$request.account
             $new = [string]$request.name
-            Save-Settings (Rename-Account (Read-SettingsToEdit) $old $new)
+            $settings = Read-SettingsToEdit
+            [void](Get-OwnAccount $settings $old)
+            Save-Settings (Rename-Account $settings $old $new)
             # A sign-in of it goes on in the same folder; only its box shows the name.
             if ($script:login -and $script:login.account -eq $old) {
                 $script:login.account = $new
@@ -823,8 +834,11 @@ function Invoke-Action($request) {
             if ($request.new -and $entry) {
                 throw "an account named $name exists: pick another name, or remove that account first"
             }
-            if (-not $entry) {
-                $entry = [pscustomobject]@{ configDir = (Get-NewAccountDir $settings $name $HOME); uses = [object[]]@() }
+            if ($entry) {
+                $entry = Get-OwnAccount $settings $name
+            } else {
+                $entry = [pscustomobject]@{ configDir = (Get-NewAccountDir $settings $name $HOME); uses = [object[]]@()
+                    provider = [string]$script:Provider.Name }
                 $settings.accounts | Add-Member -NotePropertyName $name -NotePropertyValue $entry
                 Save-Settings $settings
             }
@@ -853,10 +867,7 @@ function Invoke-Action($request) {
         'ping' {
             # The provider's cheapest request (docs/PLUGINS.md, Probe): it starts the account's windows.
             $name = [string]$request.account
-            $entry = (Read-SettingsToEdit).accounts.$name
-            if (-not $entry) {
-                throw "no account $name"
-            }
+            $entry = Get-OwnAccount (Read-SettingsToEdit) $name
             if (-not (Test-ProviderHook 'Probe')) {
                 throw 'the provider has no ping'
             }
@@ -871,10 +882,7 @@ function Invoke-Action($request) {
             # Only an account nothing runs on; its login is signed out, its folder kept (the queue's history names it).
             $name = [string]$request.account
             $settings = Read-SettingsToEdit
-            $entry = $settings.accounts.$name
-            if (-not $entry) {
-                throw "no account $name"
-            }
+            $entry = Get-OwnAccount $settings $name
             if (@($entry.uses | Where-Object { $_ }).Count) {
                 throw "move $(@($entry.uses) -join ', ') to another account first"
             }
@@ -957,10 +965,7 @@ function Invoke-Action($request) {
                 throw 'the stop line is a share between 10 % and 100 % of a window'
             }
             $settings = Read-SettingsToEdit
-            $entry = $settings.accounts.$name
-            if (-not $entry) {
-                throw "no account $name"
-            }
+            $entry = Get-OwnAccount $settings $name
             if (-not $entry.stopAt) {
                 $entry | Add-Member -NotePropertyName stopAt -NotePropertyValue ([pscustomobject]@{}) -Force
             }
@@ -980,10 +985,7 @@ function Invoke-Action($request) {
                 throw 'a pick-up limit is a share between 0 % and 100 %, of a window that has that limit'
             }
             $settings = Read-SettingsToEdit
-            $entry = $settings.accounts.$name
-            if (-not $entry) {
-                throw "no account $name"
-            }
+            $entry = Get-OwnAccount $settings $name
             if (-not $entry.pickUp) {
                 $entry | Add-Member -NotePropertyName pickUp -NotePropertyValue ([pscustomobject]@{}) -Force
             }

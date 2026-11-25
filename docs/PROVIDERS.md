@@ -1,11 +1,13 @@
 # Providers
 
-**Status: the base has no provider, and Claude Code is a plugin.** The contract is in [PLUGINS.md](PLUGINS.md), A
-provider, and the first provider is [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode).
-No second provider is written. This page keeps the research and says what a second one still needs.
+**Status: the base has no provider, and two providers are plugins.** The contract is in [PLUGINS.md](PLUGINS.md), A
+provider. The first provider is [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode).
+The second is [Scriptorium for Antigravity](https://github.com/KadaXuanwu/Scriptorium-Antigravity): its hooks work
+with the real tool, and no ticket has run through it yet. This page keeps the research.
 
-The research is a snapshot of 2026-11-24, taken from each tool's own docs. Only the Claude Code column rests on
-running code. Nothing was run with the other tools.
+The research is a snapshot of 2026-11-24, taken from each tool's own docs. The Claude Code column rests on running
+code. The Antigravity column is the docs' too: where the real tool differs, [What the real Antigravity
+does](#what-the-real-antigravity-does) says so. Nothing was run with the other tools.
 
 ## Terms
 
@@ -20,7 +22,9 @@ running code. Nothing was run with the other tools.
    notifications and the budget arithmetic. **Built.**
 2. Each provider is a plugin. Claude Code is the first one. **Built.**
 3. An owner who buys another tool's subscription adds its plugin and signs an account in. Workers on that account
-   build tickets like any other worker. **Not built:** a project runs on one provider, and no second one exists.
+   build tickets like any other worker. **Built in part:** an account is one provider's
+   ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`), so projects on two tools share one PC. A project
+   still runs on one provider.
 
 ## Decided, and built
 
@@ -172,8 +176,9 @@ another plan, effort levels depend on the model, and a usage reading exists for 
    Not done.
 2. **Move Claude Code behind the new hooks.** Done, together with step 4.
 3. **Write the second provider** against those hooks, and change the hooks where it does not fit. A contract drawn
-   from one provider is that provider's shape under a neutral name; only the second one shows what is common. Not
-   done.
+   from one provider is that provider's shape under a neutral name; only the second one shows what is common. Done
+   for Antigravity, with no change to the hooks. What did not fit: a tool whose usage is read with a command of its
+   own, not from a run's log, so the usage is read only between runs; and a tool with one login for each OS user.
 4. **Move Claude Code to a plugin of its own.** Done. The contract is not fixed: step 3 may still change it.
 
 ### Which providers
@@ -214,6 +219,22 @@ The test, with a subscription signed in:
 If the first step gives nothing a script can read, an Antigravity worker runs until refused, and large tickets are
 cut off in the middle.
 
+### What the real Antigravity does
+
+Found on 2026-11-25 with agy 1.5.17 on Windows and a free plan, while its plugin was written. Its README lists what
+was proven and what was not.
+
+| The table above says | The real tool |
+| -------------------- | ------------- |
+| Read the share used: not documented | `agy -p /usage --output-format stream-json` gives each window's share left and its reset as data, and asks the model nothing |
+| Tool rules for one run: no | `--settings <file>` takes rules for one run and saves nothing. It is in the tool's help, not in its docs |
+| Compact before a hold | `/compact` with `--conversation <id>` compacts that session |
+| Model and effort: `--model` and `--effort` | A model's name holds its effort, and `--effort` beside it is refused |
+| Know a limit refusal: not documented | Seen: the service's own shortage (error 503). The plan's limit was not reached |
+
+Not in the docs at all: a run's commands start in a sandbox that cannot write to `.git` and has no network. A
+command that an allow rule covers may start outside it, alone in its call.
+
 ### A smaller first step
 
 A plugin that allows `agy` as a command, with a playbook line that says when a Claude Code run calls it (a second
@@ -231,8 +252,8 @@ How each stands after the split. The owner can still decide otherwise before a s
 3. **No usage reading:** the workers run until the plan refuses, and large tickets are cut off at the limit. The base
    keeps no estimate of its own.
 4. **The rules file:** the base names none. The provider's playbook says which file its tool loads.
-5. **Which tickets go to which provider:** open. A project has one provider, so the question does not come up yet. It
-   needs a provider for each account, and the accounts' records by provider.
+5. **Which tickets go to which provider:** open. A project has one provider, so the question does not come up yet. An
+   account has a provider now; a project with two providers would also need a provider for each worker.
 
 ## Not checked
 
