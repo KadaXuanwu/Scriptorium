@@ -1,7 +1,7 @@
 # Providers
 
 **Status: the base has no provider, and Claude Code is a plugin.** The contract is in [PLUGINS.md](PLUGINS.md), A
-provider, and the first provider is [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-Claude).
+provider, and the first provider is [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode).
 No second provider is written. This page keeps the research and says what a second one still needs.
 
 The research is a snapshot of 2026-11-24, taken from each tool's own docs. Only the Claude Code column rests on

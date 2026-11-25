@@ -1,6 +1,6 @@
 {
     "claude": {
-        "source": "https://github.com/KadaXuanwu/Scriptorium-Claude",
+        "source": "https://github.com/KadaXuanwu/Scriptorium-ClaudeCode",
         "description": "Runs the workers on Claude Code with a Claude plan.",
         "provider": true
     },

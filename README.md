@@ -7,7 +7,7 @@ them. One web page shows what runs, what waits, what it costs and what only you 
 It runs on Windows, macOS and Linux and works on any git repo on GitHub. The base knows no coding tool and no
 environment: plugins add them.
 
-- **A provider** runs the coding tool. [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-Claude)
+- **A provider** runs the coding tool. [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode)
   runs Claude Code on a Claude plan.
 - **An environment plugin** prepares what a run builds in, for example
   [Scriptorium for Unity](https://github.com/KadaXuanwu/Scriptorium-Unity): one Unity editor for each worker (Windows
@@ -90,7 +90,7 @@ environment: plugins add them.
 
 These are the base's, for every coding tool. A provider adds the ones of its tool, such as the tools and skills a run
 never needs, and its README lists them:
-[Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-Claude#token-savings).
+[Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode#token-savings).
 
 The model, effort, advisor and compact size of each complexity are yours to set on the page, and a per-run cost cap
 in the provider's `models.json`. `report.ps1` prints each run's cost and token numbers ([docs/QUEUE.md](docs/QUEUE.md)).
@@ -116,7 +116,7 @@ it.
   [PowerShell 7.4 or later](https://aka.ms/powershell) (`pwsh`). Linux needs systemd.
 - [git](https://git-scm.com) and the [GitHub CLI](https://cli.github.com), signed in with write access to the repo.
 - A provider's coding tool, signed in with a subscription. The listed one,
-  [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-Claude), needs
+  [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode), needs
   [Claude Code](https://claude.com/claude-code) with a Claude Pro or Max plan.
 - Optional: [Tailscale](https://tailscale.com) for the page on your phone, and [ntfy](https://ntfy.sh) for
   notifications.
