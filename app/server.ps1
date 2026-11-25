@@ -640,13 +640,16 @@ function Invoke-Action($request) {
                 throw "no worker $worker"
             }
             # The worker runs on its account's coding tool, so an account of another tool changes its tool: not
-            # while it has a run in flight (state.ps1, Get-ToolRefusal).
+            # while it has a run in flight (state.ps1, Get-ToolRefusal). A run that it holds counts by its file in
+            # the worker's copy, as for a move to another project: a disabled worker's state does not name it.
             $settings = Read-SettingsToEdit
             $known = Get-KnownProviders
             $from = Get-WorkerProvider $settings $worker $known
             $settings = Set-WorkerAccount $settings $worker ([string]$request.account)
             $state = Read-Json (Join-Path $mainQueue "worker-$worker.json")
-            $refusal = Get-ToolRefusal $from (Get-WorkerProvider $settings $worker $known) ($state.state -eq 'running' -or [bool]($state.ticket -and $state.resetsAt))
+            $inFlight = $state.state -eq 'running' -or [bool]($state.ticket -and $state.resetsAt) -or
+                (Test-Path (Join-Path (Get-Clone $worker $state) '.queue/paused.json'))
+            $refusal = Get-ToolRefusal $from (Get-WorkerProvider $settings $worker $known) $inFlight
             if ($refusal) {
                 throw "worker ${worker}: $refusal"
             }
