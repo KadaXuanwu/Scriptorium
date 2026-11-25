@@ -222,8 +222,8 @@ the first ones.
 ```json
 {
   "accounts": {
-    "main": { "uses": ["worker:1", "frontdesk", "personal"] },
-    "second": { "configDir": "C:/Users/<you>/.<provider>-second", "uses": ["worker:2"] }
+    "main": { "provider": "<provider>", "uses": ["worker:1", "frontdesk", "personal"] },
+    "second": { "provider": "<provider>", "configDir": "C:/Users/<you>/.<provider>-second", "uses": ["worker:2"] }
   },
   "workers": { "2": { "ghConfigDir": "..." } }
 }
@@ -254,6 +254,17 @@ between runs.
   login (`default` in the queue's files), shared with the owner's terminal sessions. The page adds, signs in and
   removes accounts and moves workers between them ([APP.md](APP.md), Accounts); the provider's README says how to sign
   a folder in by hand. A worker in no entry runs on the command-line login.
+- `accounts.<name>.provider`: **an account is one provider's**, the plugin's name. A project has only the accounts of
+  its own provider: its workers run on no other, its page reads and changes no other, and the server refuses another's.
+  So projects on two coding tools share the PC's list and never each other's logins or usage records.
+  - Setup and the page's Add write it.
+  - The PC has one command-line login, the entry with no `configDir`, and it is one provider's. Setup puts a new
+    worker there when it is the project's provider's. Otherwise the worker goes to that provider's first account, or
+    to a new one named after the provider, with a folder as its key in the usage records. A worker of such a project
+    that is in no entry does not run: its card says that it has no account.
+  - An account from before this key names no provider. A project claims those accounts when one of its workers is on
+    one of them: its scripts then write its provider into each. A project that is new on the PC claims none. Until a
+    project claims it, such an account is no project's.
 - `accounts.<name>.stopAt`: the account's stop lines, by the provider's names of its windows, for example
   `{ "<short window>": 0.9, "<long window>": 0.8 }`: the share of each window where its workers stop. Left out: the
   provider's. In a window of some models: the share from which no new session gets one of them as its advisor (A

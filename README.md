@@ -166,6 +166,10 @@ first, and after the pull run setup for each project, which adds the provider. T
 restart by itself after this pull. Restart each project's page: `Stop-ScheduledTask "Scriptorium <name> app"`, then
 `Start-ScheduledTask "Scriptorium <name> app"`.
 
+An update from a version whose accounts named no provider: nothing to do. Each project's scripts write their
+provider into the accounts that their workers are on ([docs/QUEUE.md](docs/QUEUE.md), Settings,
+`accounts.<name>.provider`).
+
 To add another project, run step 3 with its folder; it joins the same page. Only setup and uninstall add or remove a
 project, not the page.
 

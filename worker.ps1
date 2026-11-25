@@ -68,6 +68,10 @@ New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir 
 $provider = Get-Provider $plugins
 Set-Provider $provider @{ Project = $Project; Copy = $Clone; Worker = $Id; QueueDir = $queueDir
     Machine = { Read-Settings }; Log = { param($text) Write-Log "$text" } }
+# A PC from before an account had a provider: the accounts this worker is on become its provider's (pc.ps1).
+if ($provider) {
+    Update-AccountProviders $Project @("$Id") $provider.Name
+}
 # Every turn reads the whole context again, so a run's context is compacted at the compact size of the job's
 # complexity, where the provider can (docs/CONFIG.md, The compact size). A run never hands off to a fresh session:
 # that cost 24 turns of reading, a compaction 7.
@@ -252,6 +256,10 @@ function Get-Accounts {
     $accounts = @()
     if ($json -and $json.accounts) {
         foreach ($property in $json.accounts.PSObject.Properties) {
+            # Only the accounts of this project's provider: another coding tool's login is no login here.
+            if (-not (Test-AccountOf $property.Value $provider.Name)) {
+                continue
+            }
             $uses = @($property.Value.uses | Where-Object { $_ })
             $accounts += @{
                 Name = $property.Name; ConfigDir = $property.Value.configDir; Account = Get-Account $property.Value.configDir
@@ -1631,6 +1639,13 @@ while ($true) {
         # The worker restarts when scriptorium.json changes (Start-CodeWatch), so a provider added there is found.
         if (-not $provider) {
             Write-State 'error' @{ error = 'no provider: add a provider plugin to scriptorium.json and run setup.ps1 (docs/PLUGINS.md, A provider)' }
+            Start-Sleep 30
+            continue
+        }
+        # In no account of its provider, the worker would run on the command-line login, which is another coding
+        # tool's account on this PC: its usage record is that tool's.
+        if (-not (Get-Accounts | Where-Object { $_.Uses -contains "worker:$Id" }) -and (Test-LoginTaken (Read-Settings) $provider.Name)) {
+            Write-State 'error' @{ error = "no account: this worker is on no account of $($provider.Title -replace '^Scriptorium for ', ''), and the command-line login is another coding tool's. Put it on an account (the page, Workers)." }
             Start-Sleep 30
             continue
         }

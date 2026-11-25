@@ -84,22 +84,44 @@ Assert-Equal (Status 'stopped' 'stop' $false) 'disabled' 'a disabled worker with
 
 # Accounts: moving a worker takes it off every other account; the command-line login is in no entry; the round trip
 # through JSON keeps single uses as lists.
-$settings = '{"accounts":{"main":{"uses":["worker:1","frontdesk"]},"temp":{"configDir":"C:/t","uses":["worker:3"]}}}' | ConvertFrom-Json
+$settings = '{"accounts":{"main":{"provider":"test","uses":["worker:1","frontdesk"]},"temp":{"provider":"test","configDir":"C:/t","uses":["worker:3"]}}}' | ConvertFrom-Json
 $settings = (Set-WorkerAccount $settings '1' 'temp' | ConvertTo-Json -Depth 8) | ConvertFrom-Json
 Assert-Equal ($settings.accounts.main.uses -join ',') 'frontdesk' 'worker 1 left main'
 Assert-Equal ($settings.accounts.temp.uses -join ',') 'worker:3,worker:1' 'worker 1 on temp'
 $settings = (Set-WorkerAccount $settings '3' '' | ConvertTo-Json -Depth 8) | ConvertFrom-Json
 Assert-Equal (@($settings.accounts.temp.uses).Count) 1 'worker 3 on the command-line login'
-Assert-Equal ($settings | ConvertTo-Json -Depth 8 -Compress) '{"accounts":{"main":{"uses":["frontdesk"]},"temp":{"configDir":"C:/t","uses":["worker:1"]}}}' 'lists stay lists'
+Assert-Equal ($settings | ConvertTo-Json -Depth 8 -Compress) '{"accounts":{"main":{"provider":"test","uses":["frontdesk"]},"temp":{"provider":"test","configDir":"C:/t","uses":["worker:1"]}}}' 'lists stay lists'
 $threw = $false
 try { Set-WorkerAccount $settings '1' 'nope' | Out-Null } catch { $threw = $true }
 Assert-Equal $threw $true 'unknown account'
 
+# An account is one provider's (docs/QUEUE.md, Accounts). On a PC with two coding tools, a project has only its own
+# provider's accounts: its page lists no other, no worker of it goes on another tool's account, and none goes on the
+# command-line login where that is another tool's. An account with no provider is no project's until one claims it.
+$two = '{"accounts":{"main":{"provider":"other","uses":["worker:1","personal"]},"mine":{"provider":"test","configDir":"C:/m","uses":["worker:2"]},"old":{"configDir":"C:/o","uses":[]}}}'
+function Fails([scriptblock] $block) {
+    try { & $block | Out-Null } catch { return [string]$_ }
+    return ''
+}
+$register = $two | ConvertFrom-Json
+Assert-Equal "$(Test-OwnAccount $register.accounts.mine) $(Test-OwnAccount $register.accounts.main) $(Test-OwnAccount $register.accounts.old) $(Test-OwnLoginTaken $register)" 'True False False True' 'only the accounts of the project''s provider are its own'
+Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' 'main' }) "account main is another coding tool's: change it on a project of that tool" 'no worker on another tool''s account'
+Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' 'old' }) "account old is another coding tool's: change it on a project of that tool" 'no worker on an account that no provider has claimed'
+Assert-Equal (Fails { Set-WorkerAccount ($two | ConvertFrom-Json) '2' '' }) "the command-line login is another coding tool's account: pick an account" 'no worker on the command-line login of another tool'
+Assert-Equal (Fails { Get-OwnAccount ($two | ConvertFrom-Json) 'mine' }) '' 'its own account'
+$shown = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $register; workers = @(@{ id = '2'; state = [pscustomobject]@{ state = 'idle'; at = 0 } })
+    usage = ('{"default":{"at":9,"short":{"used":0.9,"resetsAt":99}}}' | ConvertFrom-Json) }
+Assert-Equal "$(($shown.accounts | ForEach-Object { $_.name }) -join ',') $($shown.loginTaken)" 'mine True' 'the page lists the project''s own accounts, and says that the command-line login is taken'
+# The same register for a project of the other tool.
+$register.accounts.mine.provider = 'other'
+$register.accounts.main.provider = 'test'
+Assert-Equal "$(Test-OwnLoginTaken $register) '$(Fails { Set-WorkerAccount $register '2' '' })'" "False ''" 'the command-line login of its own provider is free'
+
 # Rename: an account keeps its place, its folder and its uses; a taken or bad name changes nothing; a new account
 # may not take a renamed account's folder.
-$register = '{"accounts":{"main":{"uses":["frontdesk"]},"temp":{"configDir":"C:/t","uses":["worker:1"]}}}'
+$register = '{"accounts":{"main":{"provider":"test","uses":["frontdesk"]},"temp":{"provider":"test","configDir":"C:/t","uses":["worker:1"]}}}'
 $renamed = (Rename-Account ($register | ConvertFrom-Json) 'main' 'first' | ConvertTo-Json -Depth 8 -Compress)
-Assert-Equal $renamed '{"accounts":{"first":{"uses":["frontdesk"]},"temp":{"configDir":"C:/t","uses":["worker:1"]}}}' 'renamed in its place'
+Assert-Equal $renamed '{"accounts":{"first":{"provider":"test","uses":["frontdesk"]},"temp":{"provider":"test","configDir":"C:/t","uses":["worker:1"]}}}' 'renamed in its place'
 foreach ($bad in @('temp', 'Bad', '-x', '')) {
     $threw = $false
     try { Rename-Account ($register | ConvertFrom-Json) 'main' $bad | Out-Null } catch { $threw = $true }
@@ -140,7 +162,7 @@ Assert-Equal "$(@($none.Keys | Sort-Object) -join ',') $(@($none.workers).Count)
 Assert-Equal (Get-FreeWorkerId @('1', '3')) '2' 'a removed worker''s number comes back'
 Assert-Equal (Get-FreeWorkerId @()) '1' 'the first worker'
 Assert-Equal (Get-FreeWorkerId @('1', '2', '2')) '3' 'a number with a state file and a task is taken once'
-$roster = '{"accounts":{"main":{"uses":["frontdesk"]},"temp":{"configDir":"C:/t","uses":["worker:1"]}},"workers":{"2":{"enabled":false,"ghConfigDir":"C:/g"}}}' | ConvertFrom-Json
+$roster = '{"accounts":{"main":{"provider":"test","uses":["frontdesk"]},"temp":{"provider":"test","configDir":"C:/t","uses":["worker:1"]}},"workers":{"2":{"enabled":false,"ghConfigDir":"C:/g"}}}' | ConvertFrom-Json
 $roster = (Set-WorkerEntry $roster '2' $true 'temp' | ConvertTo-Json -Depth 8) | ConvertFrom-Json
 Assert-Equal ($roster.workers.'2' | ConvertTo-Json -Compress) '{"enabled":true}' 'a new worker starts fresh and active'
 Assert-Equal ($roster.accounts.temp.uses -join ',') 'worker:1,worker:2' 'a new worker on its account'
@@ -252,7 +274,7 @@ foreach ($case in @(@('t@x', 0.5), @('old@x', $null))) {
 }
 # The stop line: the default and the account's own; under the week's, what each human use's share keeps for the time
 # left (here half a week); at the ceiling, the account is at its limit.
-$stops = '{"keep":{"personal":0.3},"accounts":{"temp":{"configDir":"C:/t","uses":["worker:1","frontdesk","personal"],"stopAt":{"short":0.5,"long":0.9},"pickUp":{"short":{"L":0.4}}}}}' | ConvertFrom-Json
+$stops = '{"keep":{"personal":0.3},"accounts":{"temp":{"provider":"test","configDir":"C:/t","uses":["worker:1","frontdesk","personal"],"stopAt":{"short":0.5,"long":0.9},"pickUp":{"short":{"L":0.4}}}}}' | ConvertFrom-Json
 $usage = [pscustomobject]@{ 'C:/t' = [pscustomobject]@{ email = 't@x'; short = [pscustomobject]@{ used = 0.5; resetsAt = $future }
     long = [pscustomobject]@{ used = 0.2; resetsAt = $future - 1000 + 302400 } } }
 $temp = (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = $stops; usage = $usage; workers = @()
@@ -266,7 +288,7 @@ Assert-Equal (($week.guards | ForEach-Object { "$($_.use) $($_.share) $(& $round
 Assert-Equal $temp.ContainsKey($deep) $false 'no the deep model reading: no deep week'
 # The deep week: its share, reset, read time, stop line and design line (each the default, else the account's own);
 # nothing used once it has reset.
-$own = '{"accounts":{"temp":{"configDir":"C:/t","uses":["worker:1"],"stopAt":{"deep":0.9},"pickUp":{"deep":{"design":0.7}}}}}' | ConvertFrom-Json
+$own = '{"accounts":{"temp":{"provider":"test","configDir":"C:/t","uses":["worker:1"],"stopAt":{"deep":0.9},"pickUp":{"deep":{"design":0.7}}}}}' | ConvertFrom-Json
 foreach ($case in @(@($future, $stops, '0.99 0.98 0.98 50 0.9'), @(5, $stops, '0 0.98 0.98 50 0.9'), @($future, $own, '0.99 0.9 0.9 50 0.7'))) {
     $usage = [pscustomobject]@{ 'C:/t' = [pscustomobject]@{ email = 't@x'
         $deep = [pscustomobject]@{ used = 0.99; resetsAt = $case[0]; at = 50 } } }
@@ -587,7 +609,7 @@ Assert-Equal @(Get-Events $new $after).Count 0 'no push for a resume after a pau
 
 # An account that is out (worker.ps1, Get-Out; `.queue/out.json`): the fact is the account's. Its card and the card
 # of each worker that waits for it name the cause; a worker on another account is not touched.
-$register = '{"accounts":{"main":{"uses":["worker:1","worker:3"]},"third":{"configDir":"C:/third","uses":["worker:2"]}}}' | ConvertFrom-Json
+$register = '{"accounts":{"main":{"provider":"test","uses":["worker:1","worker:3"]},"third":{"provider":"test","configDir":"C:/third","uses":["worker:2"]}}}' | ConvertFrom-Json
 $logins = @{ 'default' = @{ signedIn = $true; email = 'm@x' }; 'C:/third' = @{ signedIn = $true; email = 't@x' } }
 $out = '{"C:/third":{"kind":"subscription","text":"A payment is past due.","at":1000,"login":"1 t@x"}}' | ConvertFrom-Json
 $snapshot = New-Snapshot @{ now = 1010; slug = 'o/r'; runs = @(); settings = $register; logins = $logins; out = $out
@@ -655,7 +677,7 @@ $log = Join-Path ([IO.Path]::GetTempPath()) "queue-app-test-$PID.jsonl"
 [System.IO.File]::WriteAllLines($log, [string[]]@('step one', 'end ok done'))
 Assert-Equal "$(@(Get-Steps $log 3).Count) $(Get-StuckReason $log)" '0 The run''s process ended with no result (a crash or a kill).' 'a log that the provider does not read'
 Remove-Item $log
-$bare = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = ('{"accounts":{"a":{"configDir":"C:/a","uses":["worker:1","personal"]}}}' | ConvertFrom-Json)
+$bare = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); settings = ('{"accounts":{"a":{"provider":"bare","configDir":"C:/a","uses":["worker:1","personal"]}}}' | ConvertFrom-Json)
     workers = @(@{ id = '1'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }); logins = @{ 'C:/a' = @{ signedIn = $true } } }
 Assert-Equal "$(($bare.windows | ForEach-Object { $_.name }) -join ',') $($bare.accounts[0].month.ceiling) $($bare.accounts[0].month.ContainsKey('guards')) $($bare.accounts[0].status)" 'month 1 False ready' 'one window, nothing kept'
 Assert-Equal "'$($bare.advisor.model)' $($bare.efforts.Count) $($bare.workers[0].takes[0].model) '$($bare.workers[0].takes[0].effort)' $($bare.complexities[0].compactAt)" "'' 0 only '' 0" 'no advisor, no effort, no compact size'

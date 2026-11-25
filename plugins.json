@@ -4,6 +4,11 @@
         "description": "Runs the workers on Claude Code with a Claude plan.",
         "provider": true
     },
+    "antigravity": {
+        "source": "https://github.com/KadaXuanwu/Scriptorium-Antigravity",
+        "description": "Runs the workers on Google's Antigravity CLI with a Google AI plan.",
+        "provider": true
+    },
     "unity": {
         "source": "https://github.com/KadaXuanwu/Scriptorium-Unity",
         "description": "One Unity editor for each worker copy, driven with the Unity CLI.",

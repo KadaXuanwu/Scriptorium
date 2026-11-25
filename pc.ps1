@@ -277,6 +277,102 @@ function Read-ProjectSettings([string] $main) {
     return $own
 }
 
+# Whether an account's entry is of the provider named $provider (docs/QUEUE.md, Accounts): its `provider` says so.
+function Test-AccountOf($entry, [string] $provider) {
+    return [bool]($entry -and $provider -and [string]$entry.provider -eq $provider)
+}
+
+# Whether the command-line login is taken from the projects of the provider named $provider: the PC's one entry with
+# no login folder is not that provider's. A worker of such a project in no entry would run on another tool's account.
+# shortcut: on a PC with no such entry, the workers of two providers that are in no entry share the record `default`;
+# give that login an entry when a PC runs so.
+function Test-LoginTaken($settings, [string] $provider) {
+    if (-not $settings -or -not $settings.accounts) {
+        return $false
+    }
+    return [bool]@($settings.accounts.PSObject.Properties | Where-Object { -not $_.Value.configDir -and -not (Test-AccountOf $_.Value $provider) }).Count
+}
+
+# Gives the accounts that name no provider (a PC from before an account had one) the provider named $provider, when a
+# worker of the project ($workers: their numbers) is on one of them: they were that project's all along. A project
+# that is new on the PC has no worker there and claims none. Returns whether it changed $settings.
+function Set-AccountProviders($settings, [string[]] $workers, [string] $provider) {
+    if (-not $provider -or -not $settings -or -not $settings.accounts) {
+        return $false
+    }
+    $bare = @($settings.accounts.PSObject.Properties | Where-Object { -not $_.Value.provider })
+    $uses = @($bare | ForEach-Object { $_.Value.uses })
+    if (-not @($workers | Where-Object { $uses -contains "worker:$_" }).Count) {
+        return $false
+    }
+    foreach ($entry in $bare) {
+        Set-JsonProperty $entry.Value 'provider' $provider
+    }
+    return $true
+}
+
+# Puts each worker of a project ($workers: their numbers) that is on no account yet on an account of the project's
+# provider, named $provider ('' for a project with none: any account). Setup calls it. Returns whether it changed
+# $settings.
+# - A PC with no accounts gets `main`: the command-line login, with the workers and the owner's own use.
+# - A PC from before an account had a provider: this project claims those accounts first (Set-AccountProviders).
+# - A new worker goes to the entry of the command-line login when that is this provider's. Where the PC has no such
+#   entry, the worker is in none and runs on that login all the same.
+# - Where the command-line login is another coding tool's account, the worker goes to this provider's first account,
+#   or to a new one named after the provider. The new one's folder ($homeDir/.<provider>-<name>) is its key in the
+#   usage records, also for a tool that keeps its login elsewhere; the page's sign-in makes the folder.
+function Set-WorkerAccounts($settings, [string[]] $workers, [string] $provider, [string] $homeDir) {
+    $uses = @($workers | ForEach-Object { "worker:$_" })
+    if (-not $settings.accounts) {
+        $first = [pscustomobject]@{ uses = [object[]]($uses + 'personal') }
+        if ($provider) {
+            Set-JsonProperty $first 'provider' $provider
+        }
+        Set-JsonProperty $settings 'accounts' ([pscustomobject]@{ main = $first })
+        return $true
+    }
+    $changed = Set-AccountProviders $settings $workers $provider
+    $claimed = @($settings.accounts.PSObject.Properties | ForEach-Object { $_.Value.uses })
+    $new = @($uses | Where-Object { $claimed -notcontains $_ })
+    if (-not $new.Count) {
+        return $changed
+    }
+    $own = @($settings.accounts.PSObject.Properties | Where-Object { -not $provider -or (Test-AccountOf $_.Value $provider) })
+    $login = $own | Where-Object { -not $_.Value.configDir } | Select-Object -First 1
+    if (-not $login -and $provider -and (Test-LoginTaken $settings $provider)) {
+        $login = $own | Select-Object -First 1
+        if (-not $login) {
+            $name = $provider
+            $number = 2
+            while ($settings.accounts.PSObject.Properties[$name]) {
+                $name = "$provider-$number"
+                $number++
+            }
+            Set-JsonProperty $settings.accounts $name ([pscustomobject]@{
+                    configDir = "$($homeDir.Replace('\', '/'))/.$provider-$name"; uses = [object[]]@(); provider = $provider })
+            $login = $settings.accounts.PSObject.Properties[$name]
+        }
+    }
+    if (-not $login) {
+        return $changed
+    }
+    Set-JsonProperty $login.Value 'uses' ([object[]](@($login.Value.uses | Where-Object { $_ }) + $new))
+    return $true
+}
+
+# The same on the PC's file, under the lock of the settings: a script calls it when it starts.
+function Update-AccountProviders([string] $main, [string[]] $workers, [string] $provider) {
+    $lock = Enter-PcLock 'Settings'
+    try {
+        $settings = Read-ProjectSettings $main
+        if (Set-AccountProviders $settings $workers $provider) {
+            Save-ProjectSettings $main $settings
+        }
+    } finally {
+        Exit-PcLock $lock
+    }
+}
+
 # Saves the settings of a project: the PC keys into the PC's file, every other key into the project's own. The caller
 # holds the 'Settings' lock from its read to this save, so a save of another project's page changes nothing under it.
 function Save-ProjectSettings([string] $main, $settings) {

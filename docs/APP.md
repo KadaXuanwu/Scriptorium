@@ -243,10 +243,12 @@ email and plan, the human uses on it (front desk, you), and a meter for each of 
 reading of ([QUEUE.md](QUEUE.md), A model's limit), with two handles: the one under a letter is the start line, the
 other the stop line for those models as advisors ("Advisor stops at").
 
-**The coding tool.** A card names it beside the plan while every project of the PC runs the same one. With different
-tools a line above the cards says which project runs which, and that the page reads every account with the tool of its
-own project: an account has no tool of its own yet. Sign in, Ping and the last tile show only with a tool that has them
-(the snapshot's `hooks`); a line above the cards says so for a tool with no sign-in from the page.
+**The coding tool.** An account is one coding tool's ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`),
+and its card names the tool beside the plan. Each project gives the page the accounts of its own tool, so the list is
+every project's: the project that gave an account reads its login and takes its actions. Sign in and Ping show only on
+the card of a tool that has them (the snapshot's `hooks`), and the last tile only where some tool has a sign-in; a
+line above the cards names each tool with no sign-in from the page. A worker's account select lists the accounts of
+its own tool, and the command-line login only where that is its tool's.
 
 **The meter** shows where the workers stop. The fill is the share used. The handle is the **stop line**: drag it to set
 the share where this account's workers stop (`stopAt`). The hatched part right of it is what they leave.
@@ -265,7 +267,7 @@ and add one. A double-click on an account's name renames it (Workers, Names): lo
 a name no other account has. Only its key in the register changes: its folder and its records stay, as the queue's
 files know an account by its folder. A new account may not take the old name while the renamed account has the folder
 of that name. The last tile adds an account: a dialog names the coding tool it is signed in to (the
-one of the page's own project: an account has no tool of its own yet, so there is none to choose), asks for its name
+one whose project signs accounts in; with one such tool there is none to choose), asks for its name
 and email, and the sign-in starts on this tab. The cross on a card removes an account that nothing uses: its login is signed out, and its
 folder stays.
 
@@ -350,7 +352,8 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
 - **The mark:** while the PC has two projects or more, each worker, question, ticket and history row carries its
   project's name, in its project's colour (Details). A worker's mark is its project choice (Workers, The project
   choice).
-- **Accounts** are the PC's: one list, with the workers of every project on it. **Details** has the settings of each
+- **Accounts** are the PC's: one list, with the workers of every project on it, each account from a project of
+  its coding tool. **Details** has the settings of each
   project in a block of its own, and one info text: the common part once, and the plugins for each project.
 - **How:** the page stays at its address and loads each other project's state, steps and pictures from that project's
   own server, and it sends each action to the server of the item's project. A page on the PC uses the project's
