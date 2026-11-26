@@ -1,7 +1,7 @@
 # The queue's budget arithmetic (docs/QUEUE.md, Dispatching): whether the workers take a ticket of a size on an account
 # (limits.ps1: the ceiling and the pick-up limits) and which account wants its room spent first; and an account's
-# usage reading as the PC keeps it. Pure functions, but Read-UsageFile and Save-Reading, which read and write the PC's
-# usage file. Dot-sourced by worker.ps1 and app/state.ps1 (the page's Ping saves a reading too), checked by
+# usage reading as the PC keeps it. Pure functions, but Read-RecordFile, Save-Reading and Save-ModelRefused, which read
+# and write the PC's records of the accounts (pc.ps1, $PcRecords). Dot-sourced by worker.ps1 and app/state.ps1 (the page's Ping saves a reading too), checked by
 # budget.test.ps1.
 
 . (Join-Path $PSScriptRoot 'limits.ps1')
@@ -70,28 +70,49 @@ function ConvertTo-Reading($read, [long] $now) {
     return $usage
 }
 
-# Every account's stored reading, by account, from the PC's usage file.
-function Read-UsageFile([string] $file) {
+# One of the PC's records of the accounts (usage.json, out.json, access.json), by account. Missing or unreadable: none,
+# so every account's usage is read again, no account is out and no model is refused. A bad file must not stop a
+# worker, and the next save writes it whole again.
+function Read-RecordFile([string] $file) {
     $all = @{}
     try {
-        (Get-Content $file -Raw -ErrorAction Stop | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $all[$_.Name] = $_.Value }
+        $json = Read-JsonFile $file
+        if ($json) {
+            $json.PSObject.Properties | ForEach-Object { $all[$_.Name] = $_.Value }
+        }
     } catch {
-        # Missing or unreadable: an empty cache, so every account is read again. A bad file must not stop the worker.
     }
     return $all
 }
 
 # Saves an account's reading ($usage, with its login's `email`) in the PC's usage file, which the workers of every
-# project and the pages share. Under the lock of the accounts' records (pc.ps1, 'Usage') and written whole: two
-# workers that saved in the same second once tore the file, and every worker then failed each poll.
+# project and the pages share. Under the lock of the accounts' records (pc.ps1, 'Usage') and written whole
+# (Save-JsonFile): two workers that saved in the same second once tore the file, and every worker then failed each poll.
 function Save-Reading([string] $file, [string] $account, $usage) {
     $lock = Enter-PcLock 'Usage'
     try {
-        $all = Read-UsageFile $file
+        $all = Read-RecordFile $file
         # Merge-Usage changes $usage itself, so the caller's reading is the account's newest too.
         $all[$account] = Merge-Usage $all[$account] $usage
-        $all | ConvertTo-Json -Depth 4 | Set-Content "$file.tmp" -Encoding utf8
-        Move-Item "$file.tmp" $file -Force
+        Save-JsonFile $file $all
+    } finally {
+        Exit-PcLock $lock
+    }
+}
+
+# Saves in the PC's access file that the plan of $account refused $model at $now (worker.ps1, Test-ModelRefused): per
+# account, per model the time of the refusal. Under the same lock and written whole, as Save-Reading.
+function Save-ModelRefused([string] $file, [string] $account, [string] $model, [long] $now) {
+    $lock = Enter-PcLock 'Usage'
+    try {
+        $all = Read-RecordFile $file
+        $mine = @{}
+        if ($all[$account]) {
+            $all[$account].PSObject.Properties | ForEach-Object { $mine[$_.Name] = $_.Value }
+        }
+        $mine[$model] = $now
+        $all[$account] = $mine
+        Save-JsonFile $file $all
     } finally {
         Exit-PcLock $lock
     }

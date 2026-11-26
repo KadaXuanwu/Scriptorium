@@ -444,12 +444,10 @@ function Get-Used($usage, [string] $window) {
 }
 
 function Read-AllUsage {
-    return Read-UsageFile $usageFile
+    return Read-RecordFile $usageFile
 }
 
 # Shared with the other workers of every project of the PC and with the pages, per account (budget.ps1, Save-Reading).
-# The same lock guards the accounts that are out (Set-Out).
-$usageMutex = New-Object System.Threading.Mutex($false, 'Local\Scriptorium-Usage')
 function Save-Usage([string] $account, $usage) {
     $usage.email = Get-LoginEmail $account
     Save-Reading $usageFile $account $usage
@@ -529,13 +527,7 @@ function Get-LoginStamp([string] $account) {
 # wrong setting) has a record of its own, under `worker:<id>`: only that worker stops.
 $outFile = Join-Path $PcDir 'out.json'
 function Read-Out {
-    $out = @{}
-    try {
-        (Get-Content $outFile -Raw -ErrorAction Stop | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $out[$_.Name] = $_.Value }
-    } catch {
-        # Missing or unreadable: no account is out. The next refusal writes it again.
-    }
-    return $out
+    return Read-RecordFile $outFile
 }
 
 # $stamp: what a change of ends the wait early. An account's login (Get-LoginStamp), a worker's settings.
@@ -554,22 +546,19 @@ function Get-SettingsStamp {
         ForEach-Object { if (Test-Path $_) { (Get-Item $_).LastWriteTimeUtc.Ticks } else { 0 } }) -join ' '
 }
 
-# $record: $null removes the account's record. Under the usage mutex and written whole, as usage.json.
+# $record: $null removes the account's record. Under the lock of the accounts' records and written whole, as usage.json
+# (budget.ps1, Save-Reading).
 function Set-Out([string] $account, $record) {
-    try {
-        [void]$usageMutex.WaitOne()
-    } catch [System.Threading.AbandonedMutexException] {
-    }
+    $lock = Enter-PcLock 'Usage'
     try {
         $all = Read-Out
         $all.Remove($account)
         if ($record) {
             $all[$account] = $record
         }
-        $all | ConvertTo-Json -Depth 3 | Set-Content "$outFile.tmp" -Encoding utf8
-        Move-Item "$outFile.tmp" $outFile -Force
+        Save-JsonFile $outFile $all
     } finally {
-        $usageMutex.ReleaseMutex()
+        Exit-PcLock $lock
     }
 }
 
@@ -652,13 +641,10 @@ function Get-Playbooks {
 }
 
 # Models an account was refused (`access.json` in the PC's folder, per account the time of the refusal): skipped for a day, then
-# tried again, so a plan that gains a model finds it. A refused start costs nothing.
+# tried again, so a plan that gains a model finds it. A refused start costs nothing. Saved by Save-ModelRefused
+# (budget.ps1).
 function Read-Access {
-    $access = @{}
-    if (Test-Path $accessFile) {
-        (Get-Content $accessFile -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $access[$_.Name] = $_.Value }
-    }
-    return $access
+    return Read-RecordFile $accessFile
 }
 
 # One of an account's lines in a window of some models, 'stop' or 'start' (queue app, Accounts; limits.ps1,
@@ -681,17 +667,6 @@ function Test-ModelRefused([string] $account, [string] $model, [switch] $Advisor
     }
     $refusedAt = (Read-Access)[$account].$model
     return $refusedAt -and (Get-Now) - [long]$refusedAt -lt 86400
-}
-
-function Set-ModelRefused([string] $account, [string] $model) {
-    $access = Read-Access
-    $mine = @{}
-    if ($access[$account]) {
-        $access[$account].PSObject.Properties | ForEach-Object { $mine[$_.Name] = $_.Value }
-    }
-    $mine[$model] = Get-Now
-    $access[$account] = $mine
-    $access | ConvertTo-Json -Depth 3 | Set-Content $accessFile -Encoding utf8
 }
 
 # Whether an account has a model for a ticket complexity now: the owner's override, else a candidate of the
@@ -1401,7 +1376,7 @@ function Invoke-Worker($job, [string] $log, $paused) {
         if ($kind -eq 'model') {
             # The plan doesn't include the model.
             $modelRefused = $true
-            Set-ModelRefused $account $model
+            Save-ModelRefused $accessFile $account $model (Get-Now)
         } elseif ($kind -eq 'limit') {
             $limited = $true
         } elseif ($kind -eq 'window') {
