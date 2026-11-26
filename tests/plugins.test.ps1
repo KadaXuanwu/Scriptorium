@@ -190,6 +190,23 @@ function Get-Word { 'two' }
     $ran = Invoke-ProviderCommand @{ FilePath = $shell; Arguments = @('-NoProfile', '-Command', 'Write-Output done') } $root 60
     Assert-Equal "$($ran.Ended) $($ran.Text.Trim())" 'True done' 'a command that ends in time'
     Remove-Item Env:SCRIPTORIUM_TEST_SET, Env:SCRIPTORIUM_TEST_GONE
+    # A compaction: GetCompact's command runs in the base, its output goes to the log file and ReadCompact gives the
+    # line. One that failed, one past its time limit, one whose hook throws and the older Compact give their lines too.
+    $compactLog = Join-Path $root 'run.log.compact'
+    $run = @{ Dir = $root; Model = 'main-1' }
+    Assert-Equal (Invoke-ProviderCompact $run 's1' $compactLog) "compaction: compacted s1 Log: $compactLog" 'a compaction that worked'
+    Assert-Equal "$((Get-Content $compactLog -Raw).Trim()) '$($run.Session)'" "compacted s1 ''" 'its output in the log file, and the run as it was'
+    Assert-Equal (Invoke-ProviderCompact $run 'fail' $compactLog) "compaction: failed; the session resumes whole. Log: $compactLog" 'a compaction that failed'
+    $CompactSeconds = 3
+    Assert-Equal (Invoke-ProviderCompact $run 'hang' $compactLog) "compaction: no end after 0.05 minutes, stopped; the session resumes whole. Log: $compactLog" 'a compaction past its time limit'
+    $CompactSeconds = 600
+    $provider.Hooks = @{ Compact = $both.Compact; GetCommand = $both.GetCommand; ReadRun = $both.ReadRun }
+    Assert-Equal "$(Test-ProviderHook 'Compact') $(Invoke-ProviderCompact $run 's1' $compactLog)" "True compaction: compacted s1 Log: $compactLog" 'the older Compact gives the same line'
+    $provider.Hooks = @{ GetCompact = $both.GetCompact; GetCommand = $both.GetCommand; ReadRun = $both.ReadRun }
+    Assert-Equal "$(Test-ProviderHook 'Compact') $($null -eq (Invoke-ProviderCompact $run 's1' $compactLog))" 'False True' 'GetCompact alone is no compaction'
+    $provider.Hooks = @{ GetCompact = $both.GetCompact; ReadCompact = { param($ctx) throw 'no text' }; GetCommand = $both.GetCommand; ReadRun = $both.ReadRun }
+    Assert-Equal (Invoke-ProviderCompact $run 's1' $compactLog) 'compaction error: plugin test, ReadCompact: no text' 'a compaction whose hook throws'
+    $provider.Hooks = $both
     # A provider with only the hooks it must have: every other hook is a feature that is off.
     Set-Provider (Import-Plugin (Join-Path $PSScriptRoot 'bare') 'bare' $null)
     Assert-Equal "$(Test-ProviderHook 'GetCommand') $(Test-ProviderHook 'ReadRun') $(Test-ProviderHook 'Probe') $(Test-ProviderHook 'Compact')" 'True True False False' 'the hooks of a bare provider'

@@ -1566,23 +1566,14 @@ function Test-Outcome($job, [string] $log, [double] $cap) {
 }
 
 # Compacts a session that is held at the workers' limit or for the owner's pause, at once, where the provider can
-# (docs/PLUGINS.md, Compact). Its cache is still warm, so the compaction reads the context cheaply; hours later the
+# (docs/PLUGINS.md, GetCompact). Its cache is still warm, so the compaction reads the context cheaply; hours later the
 # cache is gone, and the resume then reads only the summary. $run: what the run started from, so the cache holds: the
-# same model, tools and settings. A failure is not the job's: the session then resumes whole.
+# same model, tools and settings. A failure is not the job's: the session then resumes whole (plugins.ps1,
+# Invoke-ProviderCompact).
 function Compress-Session($run, [string] $session, [string] $log) {
-    if (-not (Test-ProviderHook 'Compact')) {
-        return
-    }
-    $held = @{}
-    foreach ($key in @($run.Keys)) {
-        $held[$key] = $run[$key]
-    }
-    $held.Session = $session
-    try {
-        $line = Invoke-Provider 'Compact' @{ Copy = $run.Dir; Run = $held; Log = $log }
-        Write-Log "compaction: $line Log: $log"
-    } catch {
-        Write-Log "compaction error: $_"
+    $line = Invoke-ProviderCompact $run $session $log
+    if ($line) {
+        Write-Log $line
     }
 }
 

@@ -302,13 +302,14 @@ function Use-Provider($providerToUse, [scriptblock] $blockToRun) {
 $ProviderFeatures = @('ReadUsage', 'Probe', 'Compact', 'GetLogin', 'SignIn', 'ReadSignIn', 'SignOut', 'ReadStep', 'ReadEnd')
 
 # Whether the provider has a hook: each one but GetCommand and ReadRun is a feature it may leave out. 'Probe' is yes for
-# either form of a probe: GetProbe with ReadProbe, or the older Probe (Invoke-ProviderProbe).
+# either form of a probe: GetProbe with ReadProbe, or the older Probe (Invoke-ProviderProbe). 'Compact' the same, for
+# GetCompact with ReadCompact or the older Compact (Invoke-ProviderCompact).
 function Test-ProviderHook([string] $hook) {
     if (-not $script:Provider) {
         return $false
     }
     $hooks = $script:Provider.Hooks
-    if ($hook -eq 'Probe' -and $hooks.GetProbe -and $hooks.ReadProbe) {
+    if (($hook -eq 'Probe' -and $hooks.GetProbe -and $hooks.ReadProbe) -or ($hook -eq 'Compact' -and $hooks.GetCompact -and $hooks.ReadCompact)) {
         return $true
     }
     return [bool]$hooks[$hook]
@@ -337,8 +338,8 @@ function Invoke-Provider([string] $hook, [hashtable] $fields = @{}) {
 
 # Runs a command that a provider gave (@{ FilePath; Arguments; Env }, as GetCommand gives one) in $dir, with nothing to
 # read on its input. It sets Env for the process (a variable with no value is taken away) and puts the old values back.
-# After $seconds it ends the process and every process it started. @{ Text: what the process printed; Ended: it ended
-# in time }.
+# After $seconds it ends the process and every process it started. @{ Text: what the process printed; Errors: what it
+# wrote to its errors; Ended: it ended in time }.
 function Invoke-ProviderCommand($command, [string] $dir, [int] $seconds) {
     $variables = if ($command.Env) { $command.Env } else { @{} }
     $previous = @{}
@@ -365,11 +366,13 @@ function Invoke-ProviderCommand($command, [string] $dir, [int] $seconds) {
             [void]$process.WaitForExit(5000)
         }
         $text = ''
+        $errors = ''
         try {
             $text = [IO.File]::ReadAllText($outFile)
+            $errors = [IO.File]::ReadAllText($errFile)
         } catch {
         }
-        return @{ Text = $text; Ended = $ended }
+        return @{ Text = $text; Errors = $errors; Ended = $ended }
     } finally {
         foreach ($name in $previous.Keys) {
             [Environment]::SetEnvironmentVariable($name, $previous[$name])
@@ -395,4 +398,46 @@ function Invoke-ProviderProbe([string] $login, [string] $dir) {
         throw "plugin $($script:Provider.Name), GetProbe: no end after $ProbeSeconds seconds, stopped"
     }
     return Invoke-Provider 'ReadProbe' @{ Text = $printed.Text }
+}
+
+# The time limit of a compaction (docs/PLUGINS.md, GetCompact).
+$CompactSeconds = 600
+
+# Compacts the session $session of a run where the provider can (docs/PLUGINS.md, GetCompact): the line for the
+# worker's log, $null for a provider that cannot. $run: what the run started from (GetCommand's Run). The tool's output
+# goes to the file $log, and what it wrote to its errors to "$log.err". A compaction that failed, passed its time limit
+# or threw gives a line too: the session then resumes whole.
+function Invoke-ProviderCompact($run, [string] $session, [string] $log) {
+    if (-not (Test-ProviderHook 'Compact')) {
+        return $null
+    }
+    $held = @{}
+    foreach ($key in @($run.Keys)) {
+        $held[$key] = $run[$key]
+    }
+    $held.Session = $session
+    $fields = @{ Copy = $run.Dir; Run = $held }
+    try {
+        if (-not ($script:Provider.Hooks.GetCompact -and $script:Provider.Hooks.ReadCompact)) {
+            # The older Compact runs the tool itself, and its Log is the file for the tool's output.
+            $fields.Log = $log
+            return "compaction: $(Invoke-Provider 'Compact' $fields) Log: $log"
+        }
+        $printed = Invoke-ProviderCommand (Invoke-Provider 'GetCompact' $fields) $run.Dir $CompactSeconds
+        [IO.File]::WriteAllText($log, $printed.Text)
+        if ($printed.Errors) {
+            [IO.File]::WriteAllText("$log.err", $printed.Errors)
+        }
+        $line = if (-not $printed.Ended) {
+            "no end after $($CompactSeconds / 60) minutes, stopped; the session resumes whole."
+        } else {
+            Invoke-Provider 'ReadCompact' @{ Text = $printed.Text }
+        }
+        if (-not $line) {
+            $line = 'failed; the session resumes whole.'
+        }
+        return "compaction: $line Log: $log"
+    } catch {
+        return "compaction error: $_"
+    }
 }
