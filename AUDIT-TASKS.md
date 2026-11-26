@@ -67,7 +67,7 @@ Base:
 - [x] 8a. Delete `docs/PROVIDERS.md` ([#32](https://github.com/KadaXuanwu/Scriptorium/pull/32))
 - [x] 9. Close four gaps in `docs/PLUGINS.md` ([#33](https://github.com/KadaXuanwu/Scriptorium/pull/33))
 - [x] 10a. No window's name and no unstated currency in base wording ([#34](https://github.com/KadaXuanwu/Scriptorium/pull/34))
-- [ ] 11. The restart watch leaves out every dot folder
+- [x] 11. The restart watch leaves out every dot folder ([#35](https://github.com/KadaXuanwu/Scriptorium/pull/35))
 - [ ] 14. The sign-in email check holds for every shell
 - [ ] 15. A plugin's name must match its key
 - [ ] 16. No default provider by folder name
