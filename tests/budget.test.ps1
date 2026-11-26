@@ -205,13 +205,24 @@ $far = 99999999999
 Save-Reading $file 'C:/a' @{ at = 10; email = 'a@x'; short = @{ used = 0.2; resetsAt = $far; at = 10 }; $deep = @{ used = 0.3; resetsAt = $far; at = 10 } }
 Save-Reading $file 'C:/b' @{ at = 11; email = 'b@x'; short = @{ used = 0.7; resetsAt = $far; at = 11 } }
 Save-Reading $file 'C:/a' @{ at = 20; email = 'a@x'; short = @{ used = 0.5; resetsAt = $far; at = 20 } }
-$all = Read-UsageFile $file
+$all = Read-RecordFile $file
 Assert-Same "$($all.Count) $($all.'C:/a'.short.used) $($all.'C:/a'.$deep.used) $($all.'C:/a'.at) $($all.'C:/b'.short.used)" '2 0.5 0.3 20 0.7' 'a save keeps the other account and a window the new reading has not'
 Save-Reading $file 'C:/a' @{ at = 30; email = 'other@x'; short = @{ used = 0.1; resetsAt = $far; at = 30 } }
-$all = Read-UsageFile $file
+$all = Read-RecordFile $file
 Assert-Same "$($all.'C:/a'.short.used) $($null -eq $all.'C:/a'.$deep) $($all.'C:/a'.email)" '0.1 True other@x' 'another login in the folder: its reading replaces the record'
 Remove-Item $file
-Assert-Same (Read-UsageFile $file).Count 0 'no file: no reading'
+Assert-Same (Read-RecordFile $file).Count 0 'no file: no reading'
+Set-Content $file 'not json' -Encoding utf8
+Assert-Same (Read-RecordFile $file).Count 0 'a file that does not parse: no reading'
+# The PC's access file (Save-ModelRefused): a refusal keeps the account's other models and the other accounts, and a
+# second one moves the time. A file that does not parse is written whole again.
+Save-ModelRefused $file 'C:/a' 'deep-1' 100
+Save-ModelRefused $file 'C:/a' 'main-1' 110
+Save-ModelRefused $file 'C:/b' 'deep-1' 120
+Save-ModelRefused $file 'C:/a' 'deep-1' 130
+$all = Read-RecordFile $file
+Assert-Same "$($all.Count) $($all.'C:/a'.'deep-1') $($all.'C:/a'.'main-1') $($all.'C:/b'.'deep-1') $(Test-Path "$file.tmp")" '2 130 110 120 False' 'the models each account was refused'
+Remove-Item $file
 
 # A probe when a run ends: only with a provider that has a probe and reads no usage from a run's log.
 Assert-Same "$(Test-ProbeAfterRun $false $true) $(Test-ProbeAfterRun $true $true) $(Test-ProbeAfterRun $false $false) $(Test-ProbeAfterRun $true $false)" 'True False False False' 'the usage is read again after a run whose log holds none'
