@@ -530,7 +530,7 @@ const mergedRow = (m) => `<div class="row"><div class="what"><a href="${esc(m.ur
 function runRow(r) {
   const kind = { answered: 'answers', 'needs-rebase': 'rebase' }[r.kind] || (r.partial ? 'part' : '');
   return `<div class="row"><div class="what">${esc(r.title || `Ticket ${r.ticket}`)}
-    <div class="meta">${mark()}${badges([kind, r.size, modelName(r.model), r.duration && duration(r.duration), r.cost != null && `$${Number(r.cost).toFixed(2)}`])}</div></div>
+    <div class="meta">${mark()}${badges([kind, r.size, modelName(r.model), r.duration && duration(r.duration), r.cost > 0 && `$${Number(r.cost).toFixed(2)}`])}</div></div>
     <span class="when">${ago(r.at)}</span></div>`;
 }
 

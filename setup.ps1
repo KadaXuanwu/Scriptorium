@@ -414,7 +414,7 @@ $labels = [ordered]@{
     'open-question' = @('0e8a8a', 'A question merged on its default; waits in Questions for the owner to keep or change it')
     'size:S' = @('bfdadc', 'Small usage: little to read and change')
     'size:M' = @('bfdadc', 'Medium usage: a feature''s worth of reading, changing and testing')
-    'size:L' = @('bfdadc', 'Large usage: many files, long checks; goes to an account with much 5-hour room')
+    'size:L' = @('bfdadc', 'Large usage: many files, long checks; goes to an account with much room left')
 }
 foreach ($complexity in $complexities) {
     $labels["complexity:$($complexity.name)"] = @('d4c5f9', $complexity.description)

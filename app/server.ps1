@@ -837,11 +837,12 @@ function Invoke-Action($request) {
             return "worker $worker comes from $from, $status$(if ($request.deleteCopy -eq $true) { Remove-Copy $old.main $worker })"
         }
         'keep' {
-            # The share of a whole week that a human use's usage guard holds (docs/QUEUE.md, Settings, `keep`).
+            # The share that a human use's usage guard holds of the whole window that the provider marks with `keep`
+            # (docs/QUEUE.md, Settings, `keep`).
             $use = [string]$request.use
             $value = [math]::Round([double]$request.value, 2)
             if (-not $DefaultKeep.ContainsKey($use) -or $value -lt 0 -or $value -gt 0.5) {
-                throw 'a guard keeps a share between 0 % and 50 % of the week'
+                throw 'a guard keeps a share between 0 % and 50 % of its window'
             }
             $settings = Read-SettingsToEdit
             if (-not $settings.keep) {

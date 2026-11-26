@@ -238,7 +238,7 @@ A hook that throws on a log never loses a run's end: the run then counts as one 
 | `Model`, `Effort` | the run's model and effort (`''` with no efforts) |
 | `Advisor` | the advisor's model, `''` for none |
 | `CompactAt` | the context size at which the run compacts, 0 for none |
-| `Cap` | the cap of one run, 0 for none |
+| `Cap` | the cap of one run, 0 for none, in the unit that the provider's README names for `runCap` |
 | `Login` | the folder of the account's login, `''` for the command-line login |
 | `Commands` | the commands the run may start without asking, each by how it starts: `git`, `gh`, `unity command` |
 | `Tools` | the older form: tool rules in the provider's own syntax, from `allowedTools` in `scriptorium.json` and from the plugins' `AllowedTools`. A provider leaves out a rule it cannot read, and takes its own rules from its settings as well (Its own settings, below) |
@@ -258,7 +258,7 @@ A hook that throws on a log never loses a run's end: the run then counts as one 
 | `Capped` | the run reached its cap |
 | `Worked` | the run did work. A run refused at its first request did none and starts fresh |
 | `Text` | the result's words, for the page and for a comment |
-| `Cost` | the session's cost so far, where the tool counts one: for a resumed session, the part from before the pause too. The base takes that part off for the run's own cost |
+| `Cost` | the session's cost so far in US dollars, as the tool counts it. A provider whose tool counts no cost leaves `Cost` out, and the page then shows no price. For a resumed session, the part from before the pause too. The base takes that part off for the run's own cost |
 | `Numbers` | the run's numbers for the history ([QUEUE.md](QUEUE.md), History), any of: `requests`, `toolCalls`, `commands`, `first`, `ctxMean`, `ctxMax`, `read`, `write`, `compactions`, `advisorCalls`, `advisorCost`. `advisorCost` is a total of the session so far, as `Cost` is, and the base takes off its part from before a pause in the same way |
 
 **A usage reading,** from `ReadUsage`, `ReadProbe` and `Probe`:
@@ -317,7 +317,7 @@ provider may keep values of its own there.
 | `effort` | no | the effort of a model that `models` does not list |
 | `advisor` | no | `model`: the advisor's model. Left out: no advisor |
 | `compactAt`, `compactRange` | no | the default compact size, and the least and the most the tool takes ([CONFIG.md](CONFIG.md), The compact size). Left out: runs get no compact size |
-| `runCap` | no | the default cap of one run, in the tool's own count. A project's `runCap` in `scriptorium.json` goes over it ([CONFIG.md](CONFIG.md)). Left out of both: no cap |
+| `runCap` | no | the default cap of one run, in the tool's own count. The base reads no unit into it and hands it on as `Run.Cap`, so the provider's README names the unit. A project's `runCap` in `scriptorium.json` goes over it ([CONFIG.md](CONFIG.md)). Left out of both: no cap |
 | `windows` | no | the usage windows of its plans, by the names its readings use. Left out: no budget |
 
 A window:
