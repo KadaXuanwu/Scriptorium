@@ -222,7 +222,6 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
 - [docs/APP.md](docs/APP.md): the page.
 - [docs/CONFIG.md](docs/CONFIG.md): `scriptorium.json`.
 - [docs/PLUGINS.md](docs/PLUGINS.md): writing a plugin, a provider too.
-- [docs/PROVIDERS.md](docs/PROVIDERS.md): what six coding tools share, and what the second provider showed.
 - [PLAYBOOK.md](PLAYBOOK.md): what a run does.
 - [CONTRIBUTING.md](.github/CONTRIBUTING.md): sending a change.
 
