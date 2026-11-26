@@ -97,6 +97,109 @@ Assert-Same (Get-Hold $true $true $false $false $true) 'limit' 'the limit holds 
 Assert-Same (Get-Hold $false $true $false $true $true) 'pause' 'ended for a stop note the owner withdrew'
 Assert-Same (Get-Hold $false $false $false $true $true) '' 'no note: nothing to hold'
 
+# How a run ends (docs/QUEUE.md: The usage limit, A model's limit, An account that is out, The owner's pause, Now; the
+# cap of a run, Models). One row for each branch, with the whole answer.
+# Get-RunEnd: Session|Limited|ModelRefused|WindowOut|Refusal|Capped|Clean. $held is a held run as paused.json reads.
+function Show-RunEnd($end) { "$($end.Session)|$($end.Limited)|$($end.ModelRefused)|$($end.WindowOut)|$($end.Refusal)|$($end.Capped)|$($end.Clean)" }
+$held = '{ "Session": "s0" }' | ConvertFrom-Json
+$refusedUsage = @{ refused = $true; modelRefused = '' }
+$deepUsage = @{ refused = $false; modelRefused = $deep }
+foreach ($row in @(
+        @(@{ Session = 's1'; Ended = $true; Worked = $true }, $null, $null, 's1|False|False|||False|True', 'a clean end'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Worked = $true }, $null, $null, 's1|False|False|||False|False', 'the run''s own error'),
+        @(@{ Session = 's1' }, $null, $null, 's1|False|False|||False|False', 'no result: a hard stop'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Kind = 'limit' }, $null, $null, 's1|True|False|||False|False', 'the plan''s limit keeps the session the refusal named'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Kind = 'login'; Worked = $true }, $refusedUsage, $null, 's1|True|False|||False|False', 'a refusal under the plan''s limit is the limit'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Kind = 'window'; Window = $deep; Worked = $true }, $null, $null, "s1|False|False|$deep||False|False", 'a window of some models'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Kind = 'window'; Window = 'other'; Worked = $true }, $null, $null, 's1|True|False|||False|False', 'a window models.json does not name is the plan''s limit'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Kind = 'start' }, $deepUsage, $null, "|False|False|$deep||False|False", 'the reading names the window of a run that ended with an error'),
+        @(@{ Session = 's1'; Ended = $true; Worked = $true }, $deepUsage, $null, 's1|False|False|||False|True', 'not after a clean end'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Kind = 'model' }, $null, $null, '|False|True|||False|False', 'a model the plan lacks'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Kind = 'login' }, $null, $null, '|False|False||login|False|False', 'a login refusal that did no work starts fresh'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Kind = 'subscription' }, $null, $held, 's0|False|False||subscription|False|False', 'a resumed one keeps the held session'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Kind = 'login'; Worked = $true }, $null, $null, 's1|False|False||login|False|False', 'one that did work keeps its own'),
+        @(@{ Session = 's1'; Ended = $true; Error = $true; Capped = $true; Worked = $true }, $null, $null, 's1|False|False|||True|False', 'the cap')
+    )) {
+    Assert-Same (Show-RunEnd (Get-RunEnd $row[0] $row[1] $row[2])) $row[3] "Get-RunEnd: $($row[4])"
+}
+# Get-RunHold: an end, Now elsewhere, limit note, stop note, stop note stands, enabled.
+$clean = Get-RunEnd @{ Session = 's1'; Ended = $true; Worked = $true } $null $null
+$limitEnd = Get-RunEnd @{ Session = 's1'; Ended = $true; Error = $true; Kind = 'limit' } $null $null
+$cappedEnd = Get-RunEnd @{ Session = 's1'; Ended = $true; Error = $true; Capped = $true; Worked = $true } $null $null
+Assert-Same (Get-RunHold $clean $true $false $true $true $true) 'freed' 'Get-RunHold: the stop note of a Now for another ticket frees the run'
+Assert-Same (Get-RunHold $clean $true $false $false $false $true) '' 'Get-RunHold: a Now with no stop note holds nothing'
+Assert-Same (Get-RunHold $limitEnd $false $true $false $false $true) '' 'Get-RunHold: the plan''s limit is held by the main loop, not here'
+Assert-Same (Get-RunHold $cappedEnd $false $true $false $false $true) '' 'Get-RunHold: a capped run is never held, not at the workers'' limit either'
+Assert-Same (Get-RunHold $clean $false $true $false $false $true) 'limit' 'Get-RunHold: the workers'' limit'
+Assert-Same (Get-RunHold $clean $false $false $true $true $true) 'pause' 'Get-RunHold: the owner''s pause'
+Assert-Same (Get-RunHold $clean $false $false $true $true $false) '' 'Get-RunHold: a disabled worker keeps nothing'
+# Get-RunMarks: AtLimit|Stopped|Freed|Partial|Compact|Holds, for an end, a hold, resumed, the job's kind, the stop
+# note stands.
+function Show-Marks($marks) { "$($marks.AtLimit)|$($marks.Stopped)|$($marks.Freed)|$($marks.Partial)|$($marks.Compact)|$($marks.Holds)" }
+$fresh = Get-RunEnd @{ Ended = $true; Error = $true; Kind = 'login' } $null $null
+foreach ($row in @(
+        @($clean, $null, $false, 'ticket', $false, 'False|False|False|False|False|True', 'a clean end of a ticket'),
+        @($clean, $null, $true, 'ticket', $false, 'False|False|False|True|False|True', 'a resumed run is a part'),
+        @($clean, $null, $false, 'answered', $false, 'False|False|False|True|False|True', 'a PR''s job is a part'),
+        @($clean, 'limit', $false, 'ticket', $false, 'True|False|False|True|True|True', 'held at the workers'' limit: compacted'),
+        @($clean, 'pause', $false, 'ticket', $true, 'False|True|False|True|True|True', 'held for a pause: compacted'),
+        @($clean, 'pause', $false, 'ticket', $false, 'False|True|False|True|False|True', 'a stop note the owner withdrew: not compacted'),
+        @($fresh, 'pause', $false, 'ticket', $true, 'False|False|False|True|False|False', 'no session: not held for a pause'),
+        @($clean, 'freed', $false, 'ticket', $true, 'False|False|True|True|False|True', 'freed by a Now'),
+        @($limitEnd, $null, $false, 'ticket', $false, 'False|False|False|True|False|True', 'the plan''s limit is a part'),
+        @($fresh, $null, $false, 'rebase', $false, 'False|False|False|True|False|True', 'a PR''s job that did no work is held for its account')
+    )) {
+    Assert-Same (Show-Marks (Get-RunMarks $row[0] $row[1] $row[2] $row[3] $row[4])) $row[5] "Get-RunMarks: $($row[6])"
+}
+# Get-RunAction: Action|Whose|Refusal|StartFails|LoggedOut|Judge. An end as Invoke-Worker returns it: New-End's with
+# the row's fields over it. The row: the end's fields, the job's kind, resumed, the next model, handed on, the model
+# after, the probe's reply, start fails, halted, stop noted.
+function New-End([hashtable] $over) {
+    $end = @{ ModelRefused = $false; Model = 'main-1'; ModelOut = ''; Session = 's1'; Refusal = ''; RefusalText = 'text'
+        Holds = $true; Limited = $false; AtLimit = $false; Stopped = $false; Freed = $false }
+    foreach ($key in $over.Keys) {
+        $end[$key] = $over[$key]
+    }
+    return $end
+}
+function Show-Action($act) { "$($act.Action)|$($act.Whose)|$($act.Refusal)|$($act.StartFails)|$($act.LoggedOut)|$($act.Judge)" }
+$outReply = @{ answered = $true; kind = 'subscription'; text = 'pay' }
+$okReply = @{ answered = $true; kind = ''; text = 'ok' }
+foreach ($row in @(
+        @(@{}, 'ticket', $false, 'main-1', $false, '', $null, 1, $false, $false, 'done|||0|False|True', 'a clean end: judged, and the start fails reset'),
+        @(@{}, 'ticket', $false, 'main-1', $false, '', $null, 0, $false, $true, 'done|||0|False|False', 'after a stop note the owner withdrew: not judged'),
+        @(@{ ModelRefused = $true }, 'ticket', $false, 'small-1', $false, '', $null, 1, $false, $false, 'next-model|||1|False|False', 'a model the plan lacks: the next candidate'),
+        @(@{ ModelRefused = $true }, 'ticket', $false, 'main-1', $false, '', $null, 1, $false, $false, 'requeue-model|||1|False|False', 'no candidate left: the ticket goes back'),
+        @(@{ ModelRefused = $true }, 'ticket', $true, 'small-1', $false, '', $null, 1, $false, $false, 'done|||1|False|True', 'a resumed run is parked'),
+        @(@{ ModelRefused = $true }, 'answered', $false, 'main-1', $false, '', $null, 1, $false, $false, 'done|||1|False|True', 'a PR''s job is parked'),
+        @(@{ ModelOut = $deep }, 'ticket', $false, 'main-1', $true, 'main-1', $null, 0, $false, $false, 'handed-on|||0|False|False', 'a ticket handed on for its first model'),
+        @(@{ ModelOut = $deep; Session = '' }, 'ticket', $false, 'main-1', $false, 'main-1', $null, 0, $false, $false, 'requeue-window|||0|False|False', 'a model window''s limit, no run began'),
+        @(@{ ModelOut = $deep }, 'ticket', $false, 'main-1', $false, '', $null, 0, $false, $false, 'requeue-window|||0|False|False', 'a model window with no model after'),
+        @(@{ ModelOut = $deep }, 'ticket', $false, 'main-1', $false, 'main-1', $null, 0, $false, $false, 'go-on|||0|False|False', 'a run that did work goes on with the model after'),
+        @(@{ ModelOut = $deep; Session = '' }, 'answered', $false, 'main-1', $true, 'main-1', $null, 0, $false, $false, 'go-on|||0|False|False', 'a PR''s job goes on with the model after, and hands nothing on'),
+        @(@{ ModelOut = $deep }, 'rebase', $false, 'main-1', $false, '', $null, 0, $false, $false, 'done|||0|False|True', 'a PR''s job with no model after is parked'),
+        @(@{ Refusal = 'login' }, 'ticket', $false, 'main-1', $false, '', $null, 1, $false, $false, 'suspend|account|login|1|True|False', 'signed out: held for its account'),
+        @(@{ Refusal = 'subscription'; Session = ''; Holds = $false }, 'ticket', $false, 'main-1', $false, '', $null, 0, $false, $false, 'not-started|account|subscription|0|False|False', 'a ticket no run began is not held'),
+        @(@{ Refusal = 'start' }, 'ticket', $false, 'main-1', $false, '', $outReply, 0, $false, $false, 'suspend|account|subscription|0|True|False', 'a start the probe finds out'),
+        @(@{ Refusal = 'start'; Holds = $false }, 'ticket', $false, 'main-1', $false, '', $okReply, 0, $false, $false, 'retry-start||start|1|False|False', 'a start that failed once tries again'),
+        @(@{ Refusal = 'start'; Holds = $false }, 'ticket', $false, 'main-1', $false, '', $null, 1, $false, $false, 'not-started|worker|start|1|False|False', 'a start that failed twice stops the worker'),
+        @(@{ Limited = $true }, 'ticket', $false, 'main-1', $false, '', $null, 0, $false, $false, 'suspend|||0|False|False', 'the plan''s limit: held'),
+        @(@{ AtLimit = $true }, 'ticket', $false, 'main-1', $false, '', $null, 0, $false, $false, 'suspend|||0|False|False', 'the workers'' limit: held'),
+        @(@{ Stopped = $true }, 'ticket', $false, 'main-1', $false, '', $null, 0, $true, $true, 'suspend|||0|False|False', 'the owner''s pause: held'),
+        @(@{ Freed = $true }, 'ticket', $false, 'main-1', $false, '', $null, 0, $true, $true, 'freed|||0|False|False', 'the owner''s Now'),
+        @(@{}, 'ticket', $false, 'main-1', $false, '', $null, 0, $true, $true, 'stopped|||0|False|False', 'a hard stop or a disabled worker'),
+        @(@{ Session = '' }, 'ticket', $false, 'main-1', $false, '', $null, 0, $false, $false, 'done|||0|False|True', 'the cap, or a run with no result: judged')
+    )) {
+    $act = Get-RunAction (New-End $row[0]) $row[1] $row[2] $row[3] $row[4] $row[5] $row[6] $row[7] $row[8] $row[9]
+    Assert-Same (Show-Action $act) $row[10] "Get-RunAction: $($row[11])"
+}
+# Get-Outcome: a finished job is not parked; one that is not gets needs-owner on its ticket or its PR, and the cap is
+# named.
+Assert-Same "$($null -eq (Get-Outcome $true 'ticket' 60 'x.log'))" 'True' 'Get-Outcome: a ticket with a PR or a question'
+Assert-Same "$((Get-Outcome $false 'ticket' 0 'x.log').Pr) $((Get-Outcome $false 'ticket' 0 'x.log').Comment)" 'False stopped without a PR or a question. Log: `x.log`' 'Get-Outcome: a ticket without a PR'
+Assert-Same "$((Get-Outcome $false 'rebase' 0 'x.log').Pr) $((Get-Outcome $false 'rebase' 0 'x.log').Comment)" 'True stopped without finishing (rebase). Log: `x.log`' 'Get-Outcome: a PR''s job that did not finish'
+Assert-Same (Get-Outcome $false 'ticket' 60 'x.log').Comment 'reached the cap of 60 for one run (runCap in scriptorium.json, else in the provider''s models.json) and stopped without a PR or a question. Log: `x.log`' 'Get-Outcome: the cap'
+
 # A saved usage reading keeps each window from the stored reading where that one is further on.
 function New-Reading([string] $email, [double] $five, [long] $fiveReset, [double] $week, [long] $weekReset) {
     return @{ email = $email; short = @{ used = $five; resetsAt = $fiveReset }; long = @{ used = $week; resetsAt = $weekReset } }
