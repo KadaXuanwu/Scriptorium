@@ -30,7 +30,7 @@ settings ([QUEUE.md](QUEUE.md), Settings).
 | `repos` | no | Other repos of the same owner that a ticket may name with a `repo:<Name>` label |
 | `playbook` | no | The path of the project's own rules for a run. A run reads it from `origin/main`, after the base's and the plugins' playbooks |
 | `commands` | no | Commands a run may start without asking, each by how it starts (`dotnet`, `npm run`), on top of `git`, `gh` and what the plugins give |
-| `allowedTools` | no | Tool rules in the syntax of one provider's own tool, for what `commands` cannot say. Every worker's provider gets them, and one leaves out a rule it cannot read |
+| `allowedTools` | no | The older home of tool rules in the syntax of one provider's own tool. Every worker's provider gets them, and one leaves out a rule it cannot read. A tool's own rules go in its provider's entry under `plugins`, under the key that the provider's README names: there only that tool gets them |
 | `port` | no | The port of the page on this PC, 8770 when left out. Two projects on one PC need two ports; setup gives each its own Tailscale address ([APP.md](APP.md), Setup) |
 | `compactAt` | no | The compact size of every run, in tokens (The compact size, below). The provider's when left out |
 | `runCap` | no | The cap of one run, in the tool's own count: a number of 0 or more, 0 for no cap ([QUEUE.md](QUEUE.md), The cap of a run). The provider's when left out. It holds for the project's default provider only |
