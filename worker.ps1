@@ -1223,10 +1223,10 @@ function Invoke-Worker($job, [string] $log, $paused) {
         $prompt += " $($given.Prompt)"
     }
     # What the provider starts the run from (docs/PLUGINS.md, GetCommand): the same for the run and for the compaction
-    # of its session (Compress-Session). The cap of one run (docs/QUEUE.md, Models) and the compact size of the job's
-    # complexity (docs/CONFIG.md, The compact size) are 0 where the provider has none.
+    # of its session (Compress-Session). The cap of one run (docs/QUEUE.md, The cap of a run) and the compact size of
+    # the job's complexity (docs/CONFIG.md, The compact size) are 0 for none.
     $compactAt = Get-ComplexityCompactAt (Get-ProjectComplexities) $job.Complexity
-    $runCap = [double](Read-Models).runCap
+    $runCap = Get-RunCap (Read-Models) (Get-ProviderConfig $config $isDefault)
     $run = @{
         Prompt = $prompt; Session = $session; Model = $model; Effort = $effort; Advisor = $advisor
         CompactAt = $compactAt; Cap = $runCap; Login = [string]$configDir
@@ -1550,12 +1550,12 @@ function Test-Finished($job) {
 }
 
 # A run must end its job (Test-Finished); anything else is parked for the owner, so a failing ticket never loops.
-# $cap: the cap that the run reached (the provider's models.json, runCap), else 0; the comment then names it.
+# $cap: the cap that the run reached (project.ps1, Get-RunCap), else 0; the comment then names it.
 function Test-Outcome($job, [string] $log, [double] $cap) {
     if (Test-Finished $job) {
         return
     }
-    $why = if ($cap) { "reached the cap of $cap for one run (runCap in the provider's models.json) and " } else { '' }
+    $why = if ($cap) { "reached the cap of $cap for one run (runCap in scriptorium.json, else in the provider's models.json) and " } else { '' }
     if ($job.Kind -ne 'ticket') {
         & gh pr edit $job.Pr --add-label needs-owner -R (Get-JobRepo $job) | Out-Null
         Send-Comment $job "${why}stopped without finishing ($($job.Kind)). Log: ``$log``"

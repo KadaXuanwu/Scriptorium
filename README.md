@@ -93,7 +93,7 @@ never needs, and its README lists them:
 [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode#token-savings).
 
 The model, effort, advisor and compact size of each complexity are yours to set on the page, and a per-run cost cap
-in the provider's `models.json`. `report.ps1` prints each run's cost and token numbers ([docs/QUEUE.md](docs/QUEUE.md)).
+is `runCap` in your `scriptorium.json` ([docs/CONFIG.md](docs/CONFIG.md)). `report.ps1` prints each run's cost and token numbers ([docs/QUEUE.md](docs/QUEUE.md)).
 
 ## In the background
 

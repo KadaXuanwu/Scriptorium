@@ -250,6 +250,8 @@ if (-not $provider -and -not $pending) {
 }
 Set-Provider $provider @{ Project = $main; Copy = $main }
 $complexities = Get-Complexities (Read-Models) $config
+# A run cap that is no number stops setup here, not the first run.
+Get-RunCap (Read-Models) $config | Out-Null
 # The command-line login, the one setup gives a new worker. No stop: a PC whose workers all run on accounts added on
 # the page may leave it signed out.
 $login = Invoke-Provider 'GetLogin' @{ Login = '' }

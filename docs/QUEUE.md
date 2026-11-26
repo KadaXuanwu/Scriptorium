@@ -245,10 +245,10 @@ compaction.
 **Without the advisor:** a new run of a complexity with the advisor, on an account that cannot give it now, takes the
 complexity's `advisorFallback` effort, where one is set (`Get-FallbackEffort`), and keeps it through a resume.
 
-**The cap of a run,** with a provider that has one (`runCap` in its `models.json`): the worker script gives each run
-the cap, but not the compaction of its session. A run that reaches it is never an account's refusal, and the run is
+**The cap of a run,** in the tool's own count: `runCap` in `scriptorium.json` ([CONFIG.md](CONFIG.md)), else in the
+provider's `models.json`. The project's holds for its default provider only. The worker script gives each run the cap, but not the compaction of its session. A run that reaches it is never an account's refusal, and the run is
 not held: it is parked like a run without a PR, and the comment names the cap. The next run finds its pushed and its
-uncommitted work ([PLAYBOOK.md](../PLAYBOOK.md), step 1). The cap is insurance. Without `runCap` a run has no cap.
+uncommitted work ([PLAYBOOK.md](../PLAYBOOK.md), step 1). The cap is insurance. Without `runCap` in either file, or with a `runCap` of 0, a run has no cap.
 
 ## Settings
 

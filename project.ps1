@@ -230,6 +230,25 @@ function ConvertTo-CompactAt($value, [string] $where, $range = @()) {
     return [int]"$value"
 }
 
+# The cap of one run (docs/QUEUE.md, The cap of a run), in the tool's own count: `runCap` of scriptorium.json ($config,
+# as Get-ProviderConfig gives it to the provider), else `runCap` of the provider's models.json ($models), else 0 for no
+# cap. Throws for a value that is no number of 0 or more.
+function Get-RunCap($models, $config) {
+    if ($config -and $null -ne $config.runCap) {
+        $value = $config.runCap
+        $where = 'scriptorium.json'
+    } elseif ($models -and $null -ne $models.runCap) {
+        $value = $models.runCap
+        $where = "the provider's models.json"
+    } else {
+        return 0.0
+    }
+    if ($value -isnot [ValueType] -or $value -is [bool] -or "$value" -notmatch '^\d+(\.\d+)?$') {
+        throw "${where}: runCap takes a number of 0 or more, not '$value'"
+    }
+    return [double]$value
+}
+
 # The compact size of a ticket's complexity, from the list Get-Complexities gives; medium's for a name not in it,
 # as Get-TicketComplexity counts such a ticket.
 function Get-ComplexityCompactAt($complexities, [string] $name) {

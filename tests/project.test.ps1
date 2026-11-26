@@ -119,6 +119,15 @@ $picks = '{"compactAt":300000,"complexities":{"high":{"models":["deep-1@max"]},"
 Assert-Equal ((Get-ProviderConfig $picks $true) | ConvertTo-Json -Depth 5 -Compress) ($picks | ConvertTo-Json -Depth 5 -Compress) 'all of it for the default provider'
 Assert-Equal ((Get-ProviderConfig $picks $false) | ConvertTo-Json -Depth 5 -Compress) '{"complexities":{"castle":{"description":"Castles"}}}' 'for another provider: the project''s own complexities, their descriptions only'
 Assert-Equal "$($null -eq (Get-ProviderConfig $null $false))" 'True' 'no config, none for a provider'
+# The cap of a run: scriptorium.json's for the default provider, else models.json's, else none.
+$capped = '{ "runCap": 12.5 }' | ConvertFrom-Json
+Assert-Equal "$(Get-RunCap $models (Get-ProviderConfig $capped $true)) $(Get-RunCap $models (Get-ProviderConfig $capped $false)) $(Get-RunCap $models $null) $(Get-RunCap ('{}' | ConvertFrom-Json) $null)" '12.5 60 60 0' 'the project''s cap, the provider''s, none'
+Assert-Equal (Get-RunCap $models ('{ "runCap": 0 }' | ConvertFrom-Json)) 0 'a cap of 0 in scriptorium.json is no cap'
+foreach ($bad in @('-1', '"5"', 'true', '[5]')) {
+    $threw = ''
+    try { Get-RunCap $models ("{ `"runCap`": $bad }" | ConvertFrom-Json) | Out-Null } catch { $threw = "$_" }
+    Assert-Equal ($threw -like 'scriptorium.json: runCap takes*') $true "no cap: $bad"
+}
 $other = @(Get-Complexities $models (Get-ProviderConfig $picks $false))
 $castle = $other | Where-Object { $_.name -eq 'castle' }
 Assert-Equal "$(($other | ForEach-Object { $_.name }) -join ',') $($castle.models -join ',') $($castle.advisor) $($castle.compactAt) $((Get-ComplexityModels $other 'high') -join ',')" 'low,medium,high,castle,design main-1@high False 250000 main-1@xhigh' 'another provider runs the project''s own complexity on its medium models, and every other on its models.json''s'

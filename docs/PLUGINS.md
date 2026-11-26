@@ -297,7 +297,7 @@ restarts the workers and the page between jobs, as a change to a `.ps1` does.
 | `effort` | no | the effort of a model that `models` does not list |
 | `advisor` | no | `model`: the advisor's model. Left out: no advisor |
 | `compactAt`, `compactRange` | no | the default compact size, and the least and the most the tool takes ([CONFIG.md](CONFIG.md), The compact size). Left out: runs get no compact size |
-| `runCap` | no | the cap of one run, in the tool's own count. Left out: no cap |
+| `runCap` | no | the default cap of one run, in the tool's own count. A project's `runCap` in `scriptorium.json` goes over it ([CONFIG.md](CONFIG.md)). Left out of both: no cap |
 | `windows` | no | the usage windows of its plans, by the names its readings use. Left out: no budget |
 
 A window:
