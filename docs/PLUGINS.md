@@ -177,6 +177,9 @@ A provider is the plugin that teaches the base one coding tool: how to start a r
 signed in, and which usage windows its plans have. The base itself runs no tool and reads no log. A plugin whose
 manifest says `"provider": true` is one.
 
+To start one, copy a test provider of the base: [tests/bare/plugin.ps1](../tests/bare/plugin.ps1) has the two hooks a
+provider must have, and [tests/provider/plugin.ps1](../tests/provider/plugin.ps1) has every hook.
+
 - **A worker runs on the provider of its account** ([QUEUE.md](QUEUE.md), Settings, `accounts.<name>.provider`), in
   any project. Its runs get that provider's hooks and playbook, and no other provider's.
 - **A project's scripts have** the providers that its `scriptorium.json` lists and each other one in the install's
@@ -251,11 +254,12 @@ A hook that throws on a log never loses a run's end: the run then counts as one 
 | `Ended` | the log has a result. Not: the process died |
 | `Error` | the result is an error |
 | `Kind` | why an error is not the ticket's failure: `model` (the plan lacks the model), `subscription`, `login`, `limit` (the plan's usage limit), `window` (the limit of a window of some models, named in `Window`), `start` (the run did no work, for a cause the provider cannot name), or `''` for the run's own failure |
+| `Window` | with `Kind` `window`: the name of the window that refused, as `models.json` names it. A name that `models.json` does not give to a window of some models counts as the plan's limit |
 | `Capped` | the run reached its cap |
 | `Worked` | the run did work. A run refused at its first request did none and starts fresh |
 | `Text` | the result's words, for the page and for a comment |
-| `Cost` | the session's cost so far, where the tool counts one |
-| `Numbers` | the run's numbers for the history ([QUEUE.md](QUEUE.md), History), any of: `requests`, `toolCalls`, `commands`, `first`, `ctxMean`, `ctxMax`, `read`, `write`, `compactions`, `advisorCalls`, `advisorCost` |
+| `Cost` | the session's cost so far, where the tool counts one: for a resumed session, the part from before the pause too. The base takes that part off for the run's own cost |
+| `Numbers` | the run's numbers for the history ([QUEUE.md](QUEUE.md), History), any of: `requests`, `toolCalls`, `commands`, `first`, `ctxMean`, `ctxMax`, `read`, `write`, `compactions`, `advisorCalls`, `advisorCost`. `advisorCost` is a total of the session so far, as `Cost` is, and the base takes off its part from before a pause in the same way |
 
 **A usage reading,** from `ReadUsage`, `ReadProbe` and `Probe`:
 `@{ Windows = @{ <name> = @{ Used; ResetsAt } }; Refused; RefusedResetsAt }`. `Used` is the share of the window, from 0
@@ -278,6 +282,9 @@ restarts the workers and the page between jobs, as a change to a `.ps1` does.
 The base checks the file each time it loads the provider (`Test-ProviderModels` in `plugins.ps1`): it parses, it has
 `models`, each of the base's four complexities has at least one model, and each window has `seconds` above 0. A file
 that fails stops setup and the scripts with `plugin <name>: models.json: <what is wrong>`.
+
+The base ignores a key that it does not know, at the top of the file or inside a model's or a window's entry, so a
+provider may keep values of its own there.
 
 ```json
 {
@@ -335,8 +342,8 @@ the ticket skill there. Left out: the project gets no ticket skill.
 
 `"card"`: the name of an SVG beside `plugin.json` (`card.svg`), drawn faint and greyed behind the page's cards of the
 tool's accounts. It covers the card, so its middle shows on a card of any shape. Keep it small (the page's state
-carries it) and draw no logo. The page's server reads it once: a new picture shows after the server restarts. Left
-out: a plain card.
+carries it) and draw no logo. The page's server reads it again when the file changes, so a new picture shows with no
+restart. Left out: a plain card.
 
 ## What changes the version
 
