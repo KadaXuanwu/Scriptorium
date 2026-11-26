@@ -163,6 +163,33 @@ function Get-Word { 'two' }
     $end = Invoke-Provider 'ReadRun' @{ Text = $log }
     Assert-Equal "$($end.Session) $($end.Ended) $($end.Error) $($end.Kind) $($end.Window) $($end.Worked) $($end.Numbers.requests)" 's9 True True window deep True 2' 'the end of a run'
     Assert-Equal (Invoke-Provider 'ReadRun' @{ Text = 'step one' }).Ended $false 'a log with no end'
+    # A probe: GetProbe's command runs in the base and ReadProbe reads it; a provider with only the older Probe gives
+    # the same reading.
+    $probed = Invoke-ProviderProbe '' $root
+    Assert-Equal "$($probed.Usage.Windows.short.Used) $($probed.Usage.Windows.short.ResetsAt) $($probed.Answered)" '0.5 100 True' 'a probe through GetProbe and ReadProbe'
+    $both = $provider.Hooks
+    $provider.Hooks = @{ Probe = $both.Probe; GetCommand = $both.GetCommand; ReadRun = $both.ReadRun }
+    Assert-Equal (Test-ProviderHook 'Probe') $true 'a provider with only Probe has a probe'
+    Assert-Equal ((Invoke-ProviderProbe '' $root) | ConvertTo-Json -Depth 5 -Compress) ($probed | ConvertTo-Json -Depth 5 -Compress) 'the older Probe gives the same reading'
+    $provider.Hooks = @{ GetProbe = $both.GetProbe; GetCommand = $both.GetCommand; ReadRun = $both.ReadRun }
+    Assert-Equal "$(Test-ProviderHook 'Probe') $($null -eq (Invoke-ProviderProbe '' $root))" 'False True' 'GetProbe alone is no probe'
+    $provider.Hooks = $both
+    # A command that never ends: it is ended at the time limit, with every process it started. The variables reach
+    # it, and the old values come back.
+    $env:SCRIPTORIUM_TEST_SET = 'before'
+    $env:SCRIPTORIUM_TEST_GONE = 'before'
+    $marker = "scriptorium-test-$PID"
+    $shell = (Get-Process -Id $PID).Path
+    $started = Get-Date
+    $ran = Invoke-ProviderCommand @{ FilePath = $shell; Env = @{ SCRIPTORIUM_TEST_SET = 'set'; SCRIPTORIUM_TEST_GONE = $null }
+        Arguments = @('-NoProfile', '-Command', "Write-Output `$env:SCRIPTORIUM_TEST_SET; Write-Output (`$null -eq `$env:SCRIPTORIUM_TEST_GONE); Start-Sleep 600 # $marker") } $root 3
+    $took = ((Get-Date) - $started).TotalSeconds
+    Assert-Equal "$($ran.Ended) $($took -ge 3 -and $took -lt 30) $(($ran.Text -split '\s+' | Where-Object { $_ }) -join ',')" 'False True set,True' 'a command past its time limit, with its environment'
+    Assert-Equal @(Get-CommandLines | Where-Object { "$($_.CommandLine)" -like "*$marker*" }).Count 0 'the process is gone'
+    Assert-Equal "$env:SCRIPTORIUM_TEST_SET $env:SCRIPTORIUM_TEST_GONE" 'before before' 'the variables are put back'
+    $ran = Invoke-ProviderCommand @{ FilePath = $shell; Arguments = @('-NoProfile', '-Command', 'Write-Output done') } $root 60
+    Assert-Equal "$($ran.Ended) $($ran.Text.Trim())" 'True done' 'a command that ends in time'
+    Remove-Item Env:SCRIPTORIUM_TEST_SET, Env:SCRIPTORIUM_TEST_GONE
     # A provider with only the hooks it must have: every other hook is a feature that is off.
     Set-Provider (Import-Plugin (Join-Path $PSScriptRoot 'bare') 'bare' $null)
     Assert-Equal "$(Test-ProviderHook 'GetCommand') $(Test-ProviderHook 'ReadRun') $(Test-ProviderHook 'Probe') $(Test-ProviderHook 'Compact')" 'True True False False' 'the hooks of a bare provider'

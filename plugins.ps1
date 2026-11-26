@@ -301,15 +301,23 @@ function Use-Provider($providerToUse, [scriptblock] $blockToRun) {
 # The provider's hooks that are features (docs/PLUGINS.md, A provider): every one but GetCommand and ReadRun.
 $ProviderFeatures = @('ReadUsage', 'Probe', 'Compact', 'GetLogin', 'SignIn', 'ReadSignIn', 'SignOut', 'ReadStep', 'ReadEnd')
 
-# Whether the provider has a hook: each one but GetCommand and ReadRun is a feature it may leave out.
+# Whether the provider has a hook: each one but GetCommand and ReadRun is a feature it may leave out. 'Probe' is yes for
+# either form of a probe: GetProbe with ReadProbe, or the older Probe (Invoke-ProviderProbe).
 function Test-ProviderHook([string] $hook) {
-    return [bool]($script:Provider -and $script:Provider.Hooks[$hook])
+    if (-not $script:Provider) {
+        return $false
+    }
+    $hooks = $script:Provider.Hooks
+    if ($hook -eq 'Probe' -and $hooks.GetProbe -and $hooks.ReadProbe) {
+        return $true
+    }
+    return [bool]$hooks[$hook]
 }
 
 # Calls one hook of the provider with the context of Set-Provider's scope and $fields over it (docs/PLUGINS.md, A
 # provider). $null for a hook the provider does not have. A hook that throws stops the call with the plugin's name.
 function Invoke-Provider([string] $hook, [hashtable] $fields = @{}) {
-    if (-not (Test-ProviderHook $hook)) {
+    if (-not ($script:Provider -and $script:Provider.Hooks[$hook])) {
         return $null
     }
     $scope = $script:ProviderScope
@@ -325,4 +333,66 @@ function Invoke-Provider([string] $hook, [hashtable] $fields = @{}) {
     } catch {
         throw "plugin $($script:Provider.Name), ${hook}: $($_.Exception.Message)"
     }
+}
+
+# Runs a command that a provider gave (@{ FilePath; Arguments; Env }, as GetCommand gives one) in $dir, with nothing to
+# read on its input. It sets Env for the process (a variable with no value is taken away) and puts the old values back.
+# After $seconds it ends the process and every process it started. @{ Text: what the process printed; Ended: it ended
+# in time }.
+function Invoke-ProviderCommand($command, [string] $dir, [int] $seconds) {
+    $variables = if ($command.Env) { $command.Env } else { @{} }
+    $previous = @{}
+    $inFile = [IO.Path]::GetTempFileName()
+    $outFile = [IO.Path]::GetTempFileName()
+    $errFile = [IO.Path]::GetTempFileName()
+    try {
+        foreach ($name in @($variables.Keys)) {
+            $previous[$name] = [Environment]::GetEnvironmentVariable($name)
+            [Environment]::SetEnvironmentVariable($name, $(if ($null -ne $variables[$name]) { [string]$variables[$name] }))
+        }
+        $start = @{ FilePath = $command.FilePath; WorkingDirectory = $dir; NoNewWindow = $true; PassThru = $true
+            RedirectStandardInput = $inFile; RedirectStandardOutput = $outFile; RedirectStandardError = $errFile }
+        # Start-Process refuses an empty list.
+        $arguments = @($command.Arguments | Where-Object { $null -ne $_ })
+        if ($arguments.Count) {
+            $start.ArgumentList = $arguments
+        }
+        $process = Start-Process @start
+        $ended = $process.WaitForExit($seconds * 1000)
+        if (-not $ended) {
+            Stop-ProcessTree $process.Id
+            # Windows keeps the output file locked until the process is gone.
+            [void]$process.WaitForExit(5000)
+        }
+        $text = ''
+        try {
+            $text = [IO.File]::ReadAllText($outFile)
+        } catch {
+        }
+        return @{ Text = $text; Ended = $ended }
+    } finally {
+        foreach ($name in $previous.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name])
+        }
+        Remove-Item $inFile, $outFile, $errFile -ErrorAction SilentlyContinue
+    }
+}
+
+# The time limit of a probe (docs/PLUGINS.md, GetProbe): a worker probes while it holds the lock that gives out
+# tickets, and the page's server on its only thread.
+$ProbeSeconds = 60
+
+# The provider's probe (docs/PLUGINS.md, GetProbe): @{ Usage; Answered; Kind; Text } as the hooks give it, $null for a
+# provider with none. GetProbe's command runs here with the time limit, and a probe that passes it throws. The older
+# Probe hook runs the tool itself, with no time limit.
+function Invoke-ProviderProbe([string] $login, [string] $dir) {
+    $fields = @{ Login = $login; Dir = $dir }
+    if (-not ($script:Provider -and $script:Provider.Hooks.GetProbe -and $script:Provider.Hooks.ReadProbe)) {
+        return Invoke-Provider 'Probe' $fields
+    }
+    $printed = Invoke-ProviderCommand (Invoke-Provider 'GetProbe' $fields) $dir $ProbeSeconds
+    if (-not $printed.Ended) {
+        throw "plugin $($script:Provider.Name), GetProbe: no end after $ProbeSeconds seconds, stopped"
+    }
+    return Invoke-Provider 'ReadProbe' @{ Text = $printed.Text }
 }

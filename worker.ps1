@@ -494,15 +494,16 @@ function Get-FreshUsage([string] $configDir) {
     return $reply.usage
 }
 
-# A probe (docs/PLUGINS.md, Probe): the cheapest request that shows an account's usage and whether the account takes
+# A probe (docs/PLUGINS.md, GetProbe): the cheapest request that shows an account's usage and whether the account takes
 # requests, in a folder that holds no project; a refused one costs nothing. @{ usage (the reading, $null without one);
 # answered (it got a reply, a refusal too); kind (of the refusal, limits.ps1, $OutKinds; '' when the account answered);
-# text }. $null: the probe itself failed, or the provider has none.
+# text }. $null: the probe itself failed or passed its time limit (plugins.ps1, $ProbeSeconds), or the provider has
+# none.
 function Invoke-Probe([string] $configDir) {
     $dir = Join-Path ([IO.Path]::GetTempPath()) "scriptorium-$($config.name)-probe"
     New-Item -ItemType Directory -Force $dir | Out-Null
     try {
-        $reply = Invoke-Provider 'Probe' @{ Login = [string]$configDir; Dir = $dir }
+        $reply = Invoke-ProviderProbe ([string]$configDir) $dir
     } catch {
         Write-Log "probe error: $_"
         return $null
