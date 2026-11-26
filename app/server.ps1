@@ -40,7 +40,7 @@ Start-CodeWatch (@((Join-Path $Main 'scriptorium.json')) + @(@($plugins) + @($pr
     @($providers | ForEach-Object { Join-Path $_.Dir 'models.json' }) + @($missing | ForEach-Object { $_.Watch }))
 # The default is set. A provider's calls get the settings as the snapshot last read them.
 Set-Providers $providers @{ Project = $Main; Copy = $Main; Machine = { $script:saved } }
-# The project's default provider: each snapshot and each action starts from it (plugins.ps1, Select-Provider).
+# The project's default provider: each snapshot and each request starts from it (plugins.ps1, Select-Provider).
 $defaultProvider = $script:Provider
 if (-not $Port) {
     $Port = [int]$config.port
@@ -582,10 +582,9 @@ function Select-Account($settings, [string] $name) {
 }
 
 # The owner's actions (docs/APP.md). One that writes to GitHub returns its calls. Each starts with the project's
-# default provider set. An account's action sets the account's own (Select-Account), and one on a worker's mapping
-# the worker's own (Get-MappingContext).
+# default provider set, as every request does (Invoke-Request). An account's action sets the account's own
+# (Select-Account), and one on a worker's mapping the worker's own (Get-MappingContext).
 function Invoke-Action($request) {
-    Select-Provider $defaultProvider
     $worker = [string]$request.worker
     switch ($request.action) {
         'status' {
@@ -1206,6 +1205,8 @@ function Send-Json($context, [int] $status, [string] $json) {
 }
 
 function Invoke-Request($context) {
+    # Every request starts from the project's default provider: the action before it may have left another one set.
+    Select-Provider $defaultProvider
     $request = $context.Request
     $path = $request.Url.AbsolutePath
     if ($request.HttpMethod -eq 'OPTIONS') {
