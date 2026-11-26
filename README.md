@@ -115,11 +115,8 @@ it.
 - Windows 10 or 11 (Windows PowerShell 5.1 is built in), or macOS or Linux with
   [PowerShell 7.4 or later](https://aka.ms/powershell) (`pwsh`). Linux needs systemd.
 - [git](https://git-scm.com) and the [GitHub CLI](https://cli.github.com), signed in with write access to the repo.
-- A provider's coding tool, signed in with a subscription. Two providers are listed:
-  [Scriptorium for Claude Code](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode) needs
-  [Claude Code](https://claude.com/claude-code) with a Claude Pro or Max plan, and
-  [Scriptorium for Antigravity](https://github.com/KadaXuanwu/Scriptorium-Antigravity) needs Google's Antigravity
-  CLI with a Google AI plan.
+- A provider's coding tool, signed in with a subscription. [plugins.json](plugins.json) lists the providers, and
+  each provider's README names what its tool needs.
 - Optional: [Tailscale](https://tailscale.com) for the page on your phone, and [ntfy](https://ntfy.sh) for
   notifications.
 
@@ -156,8 +153,8 @@ it.
    pwsh -NoProfile -File ~/Work/Scriptorium/setup.ps1 -Project ~/Work/MyApp -Plugins claude -Commit -Start
    ```
 
-   `-Plugins` names the project's provider, the plugin of your coding tool: `claude` here, or `antigravity`. Without
-   it, setup stops at a project that names no provider and lists them.
+   `-Plugins` names the project's provider, the plugin of your coding tool: `claude` here, or another of
+   [plugins.json](plugins.json). Without it, setup stops at a project that names no provider and lists them.
 
 Setup adds `scriptorium.json`, the ticket skill, the GitHub labels, one worker and the logon tasks, then prints the
 page address and the ntfy topic. Add `-WhatIf` to preview. It is safe to run again.
@@ -210,10 +207,10 @@ folder, the login folders of accounts added on the page, and the Scriptorium fol
   run a ticket there yet: setup, the page, a run and the sign-in from the page are untested. On macOS the login is
   read from the keychain, which may ask once for access. Tell us what breaks.
 - On macOS and Linux, the pictures of a question go up at full size: the small copy needs Windows.
-- GitHub only. Two providers are listed, for Claude Code and for Antigravity. A worker runs on the coding tool of
-  its account, so one project can have workers on two tools ([docs/QUEUE.md](docs/QUEUE.md), Settings,
-  `accounts.<name>.provider`), and each worker has its own models for each complexity, on any tool. The
-  Antigravity provider is new: one small ticket has run through it, on Windows. Its README says what is proven.
+- GitHub only.
+- A worker runs on the coding tool of its account, so one project can have workers on two tools
+  ([docs/QUEUE.md](docs/QUEUE.md), Settings, `accounts.<name>.provider`), and each worker has its own models for each
+  complexity, on any tool. What a provider has proven with its tool is in its README.
 - GitHub builds and tests nothing: a run's own checks are the gate.
 
 ## Docs
