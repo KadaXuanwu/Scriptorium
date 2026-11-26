@@ -33,13 +33,14 @@ settings ([QUEUE.md](QUEUE.md), Settings).
 | `allowedTools` | no | Tool rules in the syntax of one provider's own tool, for what `commands` cannot say. Every worker's provider gets them, and one leaves out a rule it cannot read |
 | `port` | no | The port of the page on this PC, 8770 when left out. Two projects on one PC need two ports; setup gives each its own Tailscale address ([APP.md](APP.md), Setup) |
 | `compactAt` | no | The compact size of every run, in tokens (The compact size, below). The provider's when left out |
+| `runCap` | no | The cap of one run, in the tool's own count: a number of 0 or more, 0 for no cap ([QUEUE.md](QUEUE.md), The cap of a run). The provider's when left out. It holds for the project's default provider only |
 | `complexities` | no | Changes to the complexities (below) |
 
 ## Complexities
 
 A ticket's `complexity:<name>` label picks the model and effort of its run. Scriptorium has four: `low`, `medium`,
 `high` and `design`. Their models are in the provider's `models.json` ([PLUGINS.md](PLUGINS.md), A provider).
-What this file says of models, the advisor and the compact size holds for the project's default provider. A worker on
+What this file says of models, the advisor, the compact size and the run cap holds for the project's default provider. A worker on
 another coding tool takes only the names and descriptions of the project's own complexities from here
 ([QUEUE.md](QUEUE.md), Complexities). The picks of a worker's own mapping go over this file's, on any tool
 ([QUEUE.md](QUEUE.md), Models, A worker's mapping).
