@@ -626,6 +626,19 @@ function Get-Steps([string] $log, [int] $count = 1) {
     return @($steps)
 }
 
+# The provider that reads a log: $own (the worker's coding tool now) when it reads a step from it, else the first of
+# $providers that does, else $own. A worker's account can change, so its last run may be another coding tool's.
+# shortcut: a log names no coding tool, so the providers are tried in turn; write the tool's name with the run when
+# one provider reads a step from another's log.
+function Get-LogProvider([string] $log, $own, $providers) {
+    foreach ($plugin in @($own) + @($providers | Where-Object { -not $own -or $_.Name -ne $own.Name }) | Where-Object { $_ }) {
+        if (@(Use-Provider $plugin { Get-Steps $log 1 }).Count) {
+            return $plugin
+        }
+    }
+    return $own
+}
+
 function Limit-Text([string] $text, [int] $length) {
     $text = ($text -replace '\s+', ' ').Trim()
     if ($text.Length -gt $length) {
@@ -1057,7 +1070,8 @@ function Get-Waiting($gh, [string] $slug, $settings = $null) {
         $body = ($last -replace '^\*\*Worker[^*]*\*\*\s*', '').Trim()
         if ($body -match '^stopped without') {
             $log = [regex]::Match($body, 'Log: `([^`]+)`').Groups[1].Value
-            $reason = Use-Provider (Get-WorkerProvider $settings ([string]$base.worker) (Get-KnownProviders)) { Get-StuckReason $log }
+            $known = Get-KnownProviders
+            $reason = Use-Provider (Get-LogProvider $log (Get-WorkerProvider $settings ([string]$base.worker) $known) $known) { Get-StuckReason $log }
             $stuck += $base + @{ reason = $(if ($reason) { $reason } else { 'The run ended with no PR and no question. Its log is not on this PC.' }) }
         } elseif ($body -and $body -notmatch '^paused by') {
             $questions += $base + @{ blocking = $true; question = $body; details = '' }

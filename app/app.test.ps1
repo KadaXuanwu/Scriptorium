@@ -609,7 +609,15 @@ Assert-Equal "$(Route 'followup' '' '1. Do this? Default: yes.') $(Route 'follow
 Assert-Equal (Get-StepText 'step Rungs  pass.') 'Rungs pass.' 'a step in one line'
 Assert-Equal (Get-StepText ('step ' + ('x' * 200))).Length 160 'a long step is cut'
 Assert-Equal (Get-StepText 'end ok done') '' 'not a step'
-Assert-Equal (@(Get-Steps 'C:\none.jsonl' 3)).Count 0 'no log, no steps' 
+Assert-Equal (@(Get-Steps 'C:\none.jsonl' 3)).Count 0 'no log, no steps'
+# A worker's last run may be another coding tool's: the log goes to the provider that reads a step from it.
+$log = Join-Path ([IO.Path]::GetTempPath()) "queue-app-test-$PID.jsonl"
+$both = @($testProvider, $bareProvider)
+[System.IO.File]::WriteAllLines($log, [string[]]@('step one', 'end ok done'))
+Assert-Equal "$((Get-LogProvider $log $bareProvider $both).Name) $((Get-LogProvider $log $testProvider $both).Name) $((Get-LogProvider $log $null $both).Name)" 'test test test' 'the provider that reads a step, also for a worker of another tool or of none'
+[System.IO.File]::WriteAllLines($log, [string[]]@('end ok done'))
+Assert-Equal "$((Get-LogProvider $log $bareProvider $both).Name) $($script:Provider.Name)" 'bare test' 'a log with no step stays the worker''s own, and the provider from before is set again'
+Remove-Item $log
 
 # A stale worker is down; not just after the PC wakes.
 $idleState = @{ id = '2'; state = [pscustomobject]@{ state = 'idle'; at = 0 } }
