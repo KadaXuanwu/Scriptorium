@@ -225,6 +225,176 @@ function Get-Hold([bool] $limitNoted, [bool] $stopNoted, [bool] $stopStands, [bo
 # probe too, else it stops only the worker (worker.ps1, Get-Out).
 $OutKinds = @('subscription', 'login', 'start')
 
+# What a run's end says (worker.ps1, Invoke-Worker), from what the provider read in its log ($read, docs/PLUGINS.md,
+# ReadRun; @{} when it read nothing), its last usage reading ($usage, budget.ps1, ConvertTo-Reading; $null for none)
+# and the held run it resumed ($paused, $null for a fresh one): @{ Session (to resume; a refused run that did no work
+# keeps the held one's, but not at the plan's limit, which resumes the session the refusal named); Limited (the plan's
+# limit); ModelRefused (the plan lacks the model); WindowOut (a window of some models whose limit the account reached,
+# else ''); Refusal (a kind of $OutKinds, else ''); RefusalText; Capped (the run's cap); Clean (it ended with no
+# error) }. A refusal under the plan's limit is the limit. The reading names a model window's limit too, for a run
+# that ended with an error the provider could not name or with no result; a window that models.json does not name is
+# the plan's limit.
+function Get-RunEnd($read, $usage, $paused) {
+    $end = @{
+        Session = [string]$read.Session; Limited = [bool]($usage -and $usage.refused); ModelRefused = $false
+        WindowOut = ''; Refusal = ''; RefusalText = [string]$read.Text; Capped = [bool]$read.Capped
+        Clean = [bool]$read.Ended -and -not $read.Error
+    }
+    if ($read.Ended) {
+        $kind = [string]$read.Kind
+        if ($kind -and $kind -ne 'limit' -and -not $read.Worked) {
+            $end.Session = if ($paused) { $paused.Session } else { '' }
+        }
+        if ($kind -eq 'model') {
+            $end.ModelRefused = $true
+        } elseif ($kind -eq 'limit') {
+            $end.Limited = $true
+        } elseif ($kind -eq 'window') {
+            $end.WindowOut = [string]$read.Window
+        } elseif ($kind -and -not $end.Limited) {
+            $end.Refusal = $kind
+        }
+    }
+    if ($usage -and $usage.modelRefused -and -not $end.Clean) {
+        $end.WindowOut = [string]$usage.modelRefused
+        $end.Refusal = ''
+    }
+    if ($end.WindowOut -and -not $ModelWindows.Contains($end.WindowOut)) {
+        $end.WindowOut = ''
+        $end.Limited = $true
+    }
+    return $end
+}
+
+# How the worker script keeps a run whose end ($end, Get-RunEnd) did not finish its job: 'freed' (it ended at the stop
+# note of the owner's Now for another ticket: never held, its ticket is freed), 'limit' or 'pause' (Get-Hold), or $null.
+# Read as if the job were not finished: the script drops the answer for a finished job (worker.ps1, Test-Finished),
+# so it asks GitHub only when there is an answer. A refused, capped or limited run is never held here.
+function Get-RunHold($end, [bool] $nowElsewhere, [bool] $limitNoted, [bool] $stopNoted, [bool] $stopStands, [bool] $enabled) {
+    if ($stopNoted -and $nowElsewhere) {
+        return 'freed'
+    }
+    if ($end.Limited -or $end.Refusal -or $end.ModelRefused -or $end.WindowOut -or $end.Capped) {
+        return $null
+    }
+    return Get-Hold $limitNoted $stopNoted $stopStands $end.Clean $enabled
+}
+
+# What follows from a run's end ($end, Get-RunEnd) and its hold (Get-RunHold, $null for a finished job), for a job of
+# $kind that resumed a held run or not ($resumed): @{ AtLimit (held at the workers' limit); Stopped (held for the
+# owner's pause: only with a session); Freed; Partial (its history line is a part of a job); Compact (compact the
+# session now: held at the limit, or for a pause whose stop note still stands, not one the owner withdrew, as that run
+# resumes at once with its cache warm); Holds (a refused run is held for its account: one that did work, or a PR's
+# job; a ticket that no run began goes back to the queue) }.
+function Get-RunMarks($end, $hold, [bool] $resumed, [string] $kind, [bool] $stopStands) {
+    $atLimit = $hold -eq 'limit'
+    $stopped = $hold -eq 'pause' -and [bool]$end.Session
+    $freed = $hold -eq 'freed'
+    return @{
+        AtLimit = $atLimit; Stopped = $stopped; Freed = $freed
+        Partial = $end.Limited -or [bool]$end.WindowOut -or [bool]$end.Refusal -or $atLimit -or $stopped -or $freed -or $resumed -or $kind -ne 'ticket'
+        Compact = [bool]$end.Session -and ($atLimit -or ($stopped -and $stopStands))
+        Holds = [bool]$end.Session -or $kind -ne 'ticket'
+    }
+}
+
+# What the worker script does with a job after its run (worker.ps1, the main loop), from the run's end ($end, what
+# Invoke-Worker returns), the job's $kind, whether it resumed a held run ($resumed), the model the job's next run would
+# start on ($next), whether the run handed the ticket on (`handoff.md`, $handedOff), the model after the window of
+# $end.ModelOut ($after, '' for none), the probe's reply for a run that did not start ($reply, $null for none), the
+# worker's count of such runs ($startFails), whether the owner stopped it (a stop note, a pause or a disable, $halted)
+# and whether a stop note was written for the run ($stopNoted). @{ Action; Whose; Refusal; RefusalText; StartFails;
+# LoggedOut; Judge }. Action, in this order:
+# - 'next-model': the plan refused the model and the job has another candidate: it comes back on it at once.
+# - 'handed-on': a ticket whose run found its decisions need the model it began on: back to the queue.
+# - 'requeue-window': a ticket at a model window's limit that no run began, or with no model after: back to the queue.
+# - 'go-on': at a model window's limit, a run that did work or a PR's job goes on with the model after.
+# - 'retry-start': a run that did not start on an account that answers, the first time: the job comes back.
+# - 'requeue-model': a ticket whose plan has none of its complexity's models: back to the queue.
+# - 'suspend': held (Suspend-Job): the plan's limit, its account out, the workers' limit or the owner's pause.
+# - 'not-started': a ticket no run began, on an account or worker that is out now.
+# - 'freed': the owner's Now ended the run.
+# - 'stopped': the owner stopped or disabled the worker, or the run ended by a hard stop: not a failure.
+# - 'done': the run ended; Judge says whether its outcome is judged (Get-Outcome): not after a stop note the owner
+#   withdrew, as that run may have ended for it.
+# Whose is the record that a refusal writes (Get-Out): 'account' (it stops every worker on it), 'worker' (a start
+# that failed twice on an account that answers: only this worker stops) or ''. Refusal and RefusalText are the
+# probe's when it found the account out. LoggedOut: the run is held for that record.
+function Get-RunAction($end, [string] $kind, [bool] $resumed, [string] $next, [bool] $handedOff, [string] $after, $reply,
+    [int] $startFails, [bool] $halted, [bool] $stopNoted) {
+    $act = @{ Action = ''; Whose = ''; Refusal = [string]$end.Refusal; RefusalText = [string]$end.RefusalText
+        StartFails = $startFails; LoggedOut = $false; Judge = $false }
+    if ($end.ModelRefused -and -not $resumed -and $next -ne $end.Model) {
+        $act.Action = 'next-model'
+        return $act
+    }
+    if ($kind -eq 'ticket' -and $handedOff) {
+        $act.Action = 'handed-on'
+        return $act
+    }
+    if ($end.ModelOut) {
+        if ($kind -eq 'ticket' -and (-not $end.Session -or -not $after)) {
+            $act.Action = 'requeue-window'
+            return $act
+        }
+        if ($after) {
+            $act.Action = 'go-on'
+            return $act
+        }
+        # A PR's job, and no model to go on with: parked for the owner below.
+    }
+    if ($act.Refusal -in @('login', 'subscription')) {
+        $act.Whose = 'account'
+    } elseif ($act.Refusal -eq 'start') {
+        if ($reply -and $reply.answered -and $OutKinds -contains $reply.kind) {
+            $act.Whose = 'account'
+            $act.Refusal = [string]$reply.kind
+            $act.RefusalText = [string]$reply.text
+        } elseif ($startFails -lt 1) {
+            $act.StartFails = $startFails + 1
+            $act.Action = 'retry-start'
+            return $act
+        } else {
+            $act.Whose = 'worker'
+        }
+    } elseif ($end.ModelRefused -and $kind -eq 'ticket' -and -not $resumed) {
+        $act.Action = 'requeue-model'
+        return $act
+    } elseif (-not $end.ModelRefused) {
+        $act.StartFails = 0
+    }
+    if ($act.Whose) {
+        $act.LoggedOut = [bool]$end.Holds
+    }
+    if ($end.Limited -or $act.LoggedOut -or $end.AtLimit -or $end.Stopped) {
+        $act.Action = 'suspend'
+    } elseif ($act.Whose) {
+        $act.Action = 'not-started'
+    } elseif ($end.Freed) {
+        $act.Action = 'freed'
+    } elseif ($halted) {
+        $act.Action = 'stopped'
+    } else {
+        $act.Action = 'done'
+        $act.Judge = -not $stopNoted
+    }
+    return $act
+}
+
+# A run must end its job: a job that did not ($finished false) is parked for the owner, so a failing ticket never
+# loops (worker.ps1, Test-Outcome). $null for a finished job, else @{ Pr (the label goes on the job's PR, else on its
+# ticket); Comment }. $cap: the cap that the run reached (project.ps1, Get-RunCap), else 0; the comment then names it.
+function Get-Outcome([bool] $finished, [string] $kind, [double] $cap, [string] $log) {
+    if ($finished) {
+        return $null
+    }
+    $why = if ($cap) { "reached the cap of $cap for one run (runCap in scriptorium.json, else in the provider's models.json) and " } else { '' }
+    if ($kind -ne 'ticket') {
+        return @{ Pr = $true; Comment = "${why}stopped without finishing ($kind). Log: ``$log``" }
+    }
+    return @{ Pr = $false; Comment = "${why}stopped without a PR or a question. Log: ``$log``" }
+}
+
 # Whether the workers take a new ticket of this size on an account: in every window its usage is under the ceiling,
 # and under the size's pick-up limit where the window has them. $budget: per window @{ used; ceiling; pickUp }, with
 # pickUp = @{ S; M; L } or $null.

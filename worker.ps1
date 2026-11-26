@@ -1340,17 +1340,11 @@ function Invoke-Worker($job, [string] $log, $paused) {
     if (-not $read) {
         $read = @{}
     }
-    $limited = [bool]($usage -and $usage.refused)
-    $modelRefused = $false
-    # The account reached the limit of a window of some models (docs/QUEUE.md, A model's limit), the window's name: the
-    # main loop requeues the ticket or holds the job for the model after it.
-    $windowOut = ''
-    # The account refused the run, or the run could not start on it (limits.ps1, $OutKinds): its kind and its text.
-    $refusal = ''
-    $refusalText = [string]$read.Text
-    # The run reached its cap: parked like a run without a PR (Test-Outcome), never held.
-    $capped = [bool]$read.Capped
-    $session = [string]$read.Session
+    # What the end says (limits.ps1, Get-RunEnd): the plan's limit, a model it lacks, a model window's limit (the main
+    # loop requeues the ticket or holds the job for the model after it, docs/QUEUE.md, A model's limit), a refusal of
+    # the account ($OutKinds), the run's cap (parked like a run without a PR, Test-Outcome, never held).
+    $runEnd = Get-RunEnd $read $usage $paused
+    $session = $runEnd.Session
     # A resumed session's result holds its whole cost, the part before the pause too.
     $costBefore = if ($paused -and $paused.Session -and $paused.Cost) { [double]$paused.Cost } else { 0.0 }
     $cost = [math]::Max($costBefore, [double]$read.Cost)
@@ -1365,79 +1359,42 @@ function Invoke-Worker($job, [string] $log, $paused) {
         # advisor's. Its lines are partial and the report leaves them out; keep the cost by model if it needs them.
         $numbers.advisorCost = [math]::Max(0.0, [double]$numbers.advisorCost - $advisorBefore)
     }
-    $ended = [bool]$read.Ended
-    if ($ended) {
-        $kind = [string]$read.Kind
-        # A run refused at its first turn did no work: it starts fresh later, not as a resume. Not for the plan's
-        # limit: that pause resumes the session the refusal named, as before.
-        if ($kind -and $kind -ne 'limit' -and -not $read.Worked) {
-            $session = if ($paused) { $paused.Session } else { '' }
-        }
-        if ($kind -eq 'model') {
-            # The plan doesn't include the model.
-            $modelRefused = $true
-            Save-ModelRefused $accessFile $account $model (Get-Now)
-        } elseif ($kind -eq 'limit') {
-            $limited = $true
-        } elseif ($kind -eq 'window') {
-            $windowOut = [string]$read.Window
-        } elseif ($kind -and -not $limited) {
-            $refusal = $kind
-        }
+    if ($runEnd.ModelRefused) {
+        Save-ModelRefused $accessFile $account $model (Get-Now)
     }
-    # The limit of a window of some models by the usage reading too: a run that ended with an error the provider could
-    # not name, or with no result.
-    if ($usage -and $usage.modelRefused -and -not ($ended -and -not $read.Error)) {
-        $windowOut = [string]$usage.modelRefused
-        $refusal = ''
+    if ($runEnd.WindowOut) {
+        Save-WindowOut $account $runEnd.WindowOut $usage
     }
-    # A window that the provider's models.json does not name is the plan's limit.
-    if ($windowOut -and -not $ModelWindows.Contains($windowOut)) {
-        $windowOut = ''
-        $limited = $true
+    # Ended at a checkpoint for the workers' limit or for the owner's pause, or at the stop note of the owner's Now,
+    # its job not done (limits.ps1, Get-RunHold): the main loop holds it with its session (Suspend-Job), or frees its
+    # ticket. GitHub is asked only when there is a hold to drop.
+    $stopStands = Test-Path $stopFile
+    $hold = Get-RunHold $runEnd (Test-NowElsewhere $job) ([bool]$script:limitNoted) ([bool]$script:stopNoted) $stopStands (Test-Enabled $Id)
+    if ($hold -and (Test-Finished $job)) {
+        $hold = $null
     }
-    if ($windowOut) {
-        Save-WindowOut $account $windowOut $usage
+    $marks = Get-RunMarks $runEnd $hold ([bool]$paused) ([string]$job.Kind) $stopStands
+    if (-not $runEnd.ModelRefused) {
+        Add-History $job $account $model $text $marks.Partial $runStartedAt $costBefore $numbers ([bool]$run.Session) $read
     }
-    # Ended at a checkpoint for the workers' limit or for the owner's pause, its job not done: the main loop holds
-    # it with its session (Get-Hold, Suspend-Job).
-    # Ended at the stop note of the owner's Now with its job not done: never held. The main loop frees its ticket.
-    $freed = [bool]$script:stopNoted -and (Test-NowElsewhere $job) -and -not (Test-Finished $job)
-    $hold = $null
-    if (-not ($freed -or $limited -or $refusal -or $modelRefused -or $windowOut -or $capped)) {
-        $clean = $ended -and -not $read.Error
-        $hold = Get-Hold ([bool]$script:limitNoted) ([bool]$script:stopNoted) (Test-Path $stopFile) $clean (Test-Enabled $Id)
-        if ($hold -and (Test-Finished $job)) {
-            $hold = $null
-        }
-    }
-    $atLimit = $hold -eq 'limit'
-    $stopped = $hold -eq 'pause' -and [bool]$session
-    if (-not $modelRefused) {
-        $partial = $limited -or [bool]$windowOut -or [bool]$refusal -or $atLimit -or $stopped -or $freed -or [bool]$paused -or $job.Kind -ne 'ticket'
-        Add-History $job $account $model $text $partial $runStartedAt $costBefore $numbers ([bool]$run.Session) $read
-    }
-    # Not after a stop note the owner withdrew: that run resumes at once, with its cache still warm.
-    if ($session -and ($atLimit -or ($stopped -and (Test-Path $stopFile)))) {
+    if ($marks.Compact) {
         Compress-Session $run $session "$log.compact"
     }
     return @{
-        AtLimit = $atLimit
-        Stopped = $stopped
-        Freed = $freed
-        ModelRefused = $modelRefused
+        AtLimit = $marks.AtLimit
+        Stopped = $marks.Stopped
+        Freed = $marks.Freed
+        ModelRefused = $runEnd.ModelRefused
         # The window of some models whose limit the account reached, else ''; and the model the run was on.
-        ModelOut = $windowOut
+        ModelOut = $runEnd.WindowOut
         From = $model
-        Limited = $limited
-        Refusal = $refusal
-        RefusalText = $refusalText
-        # Whether a refused run is held for its account: one that did work, or a PR's job. A ticket that no run
-        # began is not held: it goes back to the queue (Remove-Claims).
-        Holds = [bool]$session -or $job.Kind -ne 'ticket'
+        Limited = $runEnd.Limited
+        Refusal = $runEnd.Refusal
+        RefusalText = $runEnd.RefusalText
+        Holds = $marks.Holds
         LoggedOut = $false
         # The cap that the run reached, else 0.
-        Capped = $(if ($capped) { [double]$runCap } else { 0 })
+        Capped = $(if ($runEnd.Capped) { [double]$runCap } else { 0 })
         Session = $session
         Cost = $cost
         AdvisorCost = $advisorCost
@@ -1524,20 +1481,19 @@ function Test-Finished($job) {
     return -not ($issue.state -eq 'OPEN' -and (Get-Names $issue) -notcontains 'needs-owner' -and $prs.Count -eq 0)
 }
 
-# A run must end its job (Test-Finished); anything else is parked for the owner, so a failing ticket never loops.
-# $cap: the cap that the run reached (project.ps1, Get-RunCap), else 0; the comment then names it.
+# A run must end its job (Test-Finished); anything else is parked for the owner (limits.ps1, Get-Outcome). $cap: the
+# cap that the run reached, else 0.
 function Test-Outcome($job, [string] $log, [double] $cap) {
-    if (Test-Finished $job) {
+    $outcome = Get-Outcome (Test-Finished $job) ([string]$job.Kind) $cap $log
+    if (-not $outcome) {
         return
     }
-    $why = if ($cap) { "reached the cap of $cap for one run (runCap in scriptorium.json, else in the provider's models.json) and " } else { '' }
-    if ($job.Kind -ne 'ticket') {
+    if ($outcome.Pr) {
         & gh pr edit $job.Pr --add-label needs-owner -R (Get-JobRepo $job) | Out-Null
-        Send-Comment $job "${why}stopped without finishing ($($job.Kind)). Log: ``$log``"
-        return
+    } else {
+        & gh issue edit $job.Ticket --add-label needs-owner -R $repo | Out-Null
     }
-    & gh issue edit $job.Ticket --add-label needs-owner -R $repo | Out-Null
-    Send-Comment $job "${why}stopped without a PR or a question. Log: ``$log``"
+    Send-Comment $job $outcome.Comment
 }
 
 # Compacts a session that is held at the workers' limit or for the owner's pause, at once, where the provider can
@@ -1765,7 +1721,21 @@ while ($true) {
             Write-Log "$($job.Kind) #$($job.Ticket) -> $log"
             $end = Invoke-Worker $job $log $paused
             $next = (Get-RunModel $job.Complexity (Get-RunSettings $Id) (Get-Account $runConfigDir)).Model
-            if ($end.ModelRefused -and -not $paused -and $next -ne $end.Model) {
+            # What follows (limits.ps1, Get-RunAction). A run that did not start is never its ticket's failure. Whose
+            # it is decides who stops (Get-Out): the account's stops every worker on it; this worker's own (a model its
+            # plan lacks, a wrong setting) stops only this worker.
+            $account = Get-Account $end.ConfigDir
+            # The model after a model window's limit (docs/QUEUE.md, A model's limit), and for a start that failed for
+            # a cause the text does not name, a probe: whether the account takes requests at all.
+            $after = if ($end.ModelOut) { Get-RunModel $job.Complexity $null $account -After $end.ModelOut } else { @{ Model = '' } }
+            $reply = if ($end.Refusal -eq 'start') { Invoke-Probe $end.ConfigDir } else { $null }
+            $halted = (Test-Path $stopFile) -or (Get-Control) -eq 'stop' -or -not (Test-Enabled $Id)
+            $act = Get-RunAction $end ([string]$job.Kind) ([bool]$paused) $next (Test-Path $handoffFile) ([string]$after.Model) $reply `
+                ([int]$script:startFails) $halted ([bool]$script:stopNoted)
+            $script:startFails = $act.StartFails
+            $end.Refusal = $act.Refusal
+            $end.RefusalText = $act.RefusalText
+            if ($act.Action -eq 'next-model') {
                 # The job comes back as this worker's own on the next pass, on the next candidate.
                 Write-Log "$($end.Model) refused on $(Get-Account $runConfigDir); #$($job.Ticket) goes on $next"
                 continue
@@ -1774,14 +1744,9 @@ while ($true) {
             if (-not (Test-NowElsewhere $job)) {
                 Remove-Item $forceFile -ErrorAction SilentlyContinue
             }
-            # A run that did not start is never its ticket's failure. Whose it is decides who stops (Get-Out): the
-            # account's stops every worker on it; this worker's own (a model its plan lacks, a wrong setting) stops
-            # only this worker.
-            $account = Get-Account $end.ConfigDir
-            # A model's limit (docs/QUEUE.md). A run on the model after it found the ticket's decisions still open and
-            # handed it on: back to the queue, where no dispatcher gives it to this account until the window's reset
-            # (Test-ModelLeft).
-            if ($job.Kind -eq 'ticket' -and (Test-Path $handoffFile)) {
+            if ($act.Action -eq 'handed-on') {
+                # A run on the model after found the ticket's decisions still open: back to the queue, where no
+                # dispatcher gives it to this account until the window's reset (Test-ModelLeft).
                 Remove-Item $handoffFile, $pausedFile -ErrorAction SilentlyContinue
                 & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
                 Send-Comment $job ("handed on: its decisions need the model it began on, and this worker's account reached that model's limit. " +
@@ -1789,93 +1754,75 @@ while ($true) {
                 Write-Log "requeued #$($job.Ticket): handed on for its first model"
                 continue
             }
-            if ($end.ModelOut) {
-                $after = Get-RunModel $job.Complexity $null $account -After $end.ModelOut
-                if ($job.Kind -eq 'ticket' -and (-not $end.Session -or -not $after.Model)) {
-                    # No run began the ticket, or the window names no model to go on with: it goes back to the queue
-                    # the same way.
-                    Remove-Item $pausedFile -ErrorAction SilentlyContinue
-                    & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
-                    Write-Log "requeued #$($job.Ticket): $account reached the limit of $($end.ModelOut)"
-                    continue
-                }
-                if ($after.Model) {
-                    # A run that did work, or a PR's job: it goes on now with the model after, which decides whether
-                    # the ticket's decisions are made (Invoke-Worker's prompt).
-                    $end.Model = $after.Model
-                    $end.Effort = $after.Effort
-                    Suspend-Job $job $end
-                    continue
-                }
-                # A PR's job, and no model to go on with: parked for the owner below.
+            if ($act.Action -eq 'requeue-window') {
+                Remove-Item $pausedFile -ErrorAction SilentlyContinue
+                & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
+                Write-Log "requeued #$($job.Ticket): $account reached the limit of $($end.ModelOut)"
+                continue
             }
-            $whose = ''
-            if ($end.Refusal -in @('login', 'subscription')) {
-                $whose = $account
-            } elseif ($end.Refusal -eq 'start') {
-                # A cause the text does not name: a probe says whether the account takes requests at all.
-                $reply = Invoke-Probe $end.ConfigDir
-                if ($reply -and $reply.answered -and $OutKinds -contains $reply.kind) {
-                    $whose = $account
-                    $end.Refusal = $reply.kind
-                    $end.RefusalText = $reply.text
-                } elseif ($script:startFails -lt 1) {
-                    # The account answers. Once may be chance: the job comes back as this worker's own on the next pass.
-                    $script:startFails++
-                    Write-Log "#$($job.Ticket) did not start ($($end.RefusalText)): tries once more"
-                    continue
-                } else {
-                    $whose = $me
-                }
-            } elseif ($end.ModelRefused -and $job.Kind -eq 'ticket' -and -not $paused) {
-                # The plan has none of the complexity's models: a fact of the plan, not of the ticket or the worker.
-                # The ticket goes back to the queue, where no dispatcher gives it to this account (Test-ModelLeft).
-                # A PR's job and a resumed run are parked below, as before.
+            if ($act.Action -eq 'go-on') {
+                # The model after decides whether the ticket's decisions are made (Invoke-Worker's prompt).
+                $end.Model = $after.Model
+                $end.Effort = $after.Effort
+                Suspend-Job $job $end
+                continue
+            }
+            if ($act.Action -eq 'retry-start') {
+                Write-Log "#$($job.Ticket) did not start ($($end.RefusalText)): tries once more"
+                continue
+            }
+            if ($act.Action -eq 'requeue-model') {
+                # A fact of the plan, not of the ticket or the worker: no dispatcher gives it to this account
+                # (Test-ModelLeft).
                 & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
                 Write-Log "requeued #$($job.Ticket): the plan of $account has no model for complexity $($job.Complexity) ($($end.RefusalText))"
                 continue
-            } elseif (-not $end.ModelRefused) {
-                $script:startFails = 0
             }
-            if ($whose) {
-                $stamp = if ($whose -eq $me) { Get-SettingsStamp } else { Get-LoginStamp $account }
+            if ($act.Whose) {
+                $whose = if ($act.Whose -eq 'worker') { $me } else { $account }
+                $stamp = if ($act.Whose -eq 'worker') { Get-SettingsStamp } else { Get-LoginStamp $account }
                 Set-Out $whose (New-OutRecord $end.Refusal $end.RefusalText $stamp)
                 Write-Log "$whose is out ($($end.Refusal)): $($end.RefusalText)"
-                $end.LoggedOut = $end.Holds
+                $end.LoggedOut = $act.LoggedOut
             }
-            if ($end.Limited -or $end.LoggedOut -or $end.AtLimit -or $end.Stopped) {
-                Suspend-Job $job $end
-            } elseif ($whose) {
-                # No run began this ticket. For an account that is out it goes back to the queue at the next look
-                # (Remove-Claims); for this worker's own record it stays this worker's.
-                Write-Log "#$($job.Ticket) did not start"
-            } elseif ($end.Freed) {
-                # The owner's Now ended the run: its ticket goes back to the queue and starts fresh from its handoff
-                # comment, here or on another worker. It has no PR (Test-Finished). A PR's job stays this worker's.
-                Remove-Item $stopFile, $pausedFile -ErrorAction SilentlyContinue
-                if ($job.Kind -eq 'ticket') {
-                    & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
+            switch ($act.Action) {
+                'suspend' {
+                    Suspend-Job $job $end
                 }
-                Write-Log "freed #$($job.Ticket) for the owner's Now"
-            } elseif ((Test-Path $stopFile) -or (Get-Control) -eq 'stop' -or -not (Test-Enabled $Id)) {
-                # Disabled from the queue app, or its run ended by a hard stop: not a failure. The ticket or PR starts
-                # fresh when the owner resumes, or goes to another worker when this one is disabled.
-                Remove-Item $stopFile -ErrorAction SilentlyContinue
-                Write-Log "stopped #$($job.Ticket)"
-            } else {
-                Remove-Item $pausedFile -ErrorAction SilentlyContinue
-                # A stop note the owner withdrew may have ended the run already: its ticket resumes, it is not parked.
-                if (-not $script:stopNoted) {
-                    # Under the dispatch lock, which the merger holds from a merge to its ticket's close (merge.ps1):
-                    # between the two, a merged ticket reads as one without a PR.
-                    $lock = Enter-PcLock "$($config.name)-Queue"
-                    try {
-                        Test-Outcome $job $log $end.Capped
-                    } finally {
-                        Exit-PcLock $lock
+                'not-started' {
+                    # For an account that is out the ticket goes back to the queue at the next look (Remove-Claims);
+                    # for this worker's own record it stays this worker's.
+                    Write-Log "#$($job.Ticket) did not start"
+                }
+                'freed' {
+                    # Its ticket starts fresh from its handoff comment, here or on another worker. A PR's job stays
+                    # this worker's.
+                    Remove-Item $stopFile, $pausedFile -ErrorAction SilentlyContinue
+                    if ($job.Kind -eq 'ticket') {
+                        & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
                     }
+                    Write-Log "freed #$($job.Ticket) for the owner's Now"
                 }
-                Write-Log "done #$($job.Ticket)"
+                'stopped' {
+                    # The ticket or PR starts fresh when the owner resumes, or goes to another worker when this one
+                    # is disabled.
+                    Remove-Item $stopFile -ErrorAction SilentlyContinue
+                    Write-Log "stopped #$($job.Ticket)"
+                }
+                'done' {
+                    Remove-Item $pausedFile -ErrorAction SilentlyContinue
+                    if ($act.Judge) {
+                        # Under the dispatch lock, which the merger holds from a merge to its ticket's close (merge.ps1):
+                        # between the two, a merged ticket reads as one without a PR.
+                        $lock = Enter-PcLock "$($config.name)-Queue"
+                        try {
+                            Test-Outcome $job $log $end.Capped
+                        } finally {
+                            Exit-PcLock $lock
+                        }
+                    }
+                    Write-Log "done #$($job.Ticket)"
+                }
             }
             continue
         }
