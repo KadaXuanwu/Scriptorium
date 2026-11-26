@@ -294,9 +294,9 @@ the share where this account's workers stop (`stopAt`). The hatched part right o
 **The pick-up limits.** Above the meter of a window that has them stand three small handles, each under the letter of
 a ticket size: L, M and S. Drag one to set the share from which this account's workers take no new ticket of that size (`pickUp`).
 
-**The usage guards.** On the week's meter, each human use of the account (the front desk, the owner's own use) keeps room
-left of the handle, in its colour. Under the meter each guard has a slider: its share of a whole week, from 0 % to 50 %
-(`keep`). It keeps the part of that share for the time left.
+**The usage guards.** On the meter of the window that keeps a reserve (the provider marks it with `keep`), each human
+use of the account (the front desk, the owner's own use) keeps room left of the handle, in its colour. Under the meter
+each guard has a slider: its share of that whole window, from 0 % to 50 % (`keep`). It keeps the part of that share for the time left.
 
 On a touch screen a slider moves only after a hold of 0.3 s on its handle, so a scroll never moves one.
 
