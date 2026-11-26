@@ -86,6 +86,10 @@ function Import-Plugin([string] $dir, [string] $name, $entry) {
     if ([string]$manifest.api -ne [string]$PluginApi) {
         throw "plugin ${name}: written for contract version $($manifest.api), and Scriptorium has version $PluginApi"
     }
+    # An account names its provider by this name for the whole PC: a second name for one tool hides its accounts.
+    if ([string]$manifest.name -cne $name) {
+        throw "plugin ${name}: its plugin.json names it '$($manifest.name)', and its key in scriptorium.json and its folder must have that name"
+    }
     if ($manifest.provider) {
         Test-ProviderModels $name (Join-Path $dir 'models.json')
     }
