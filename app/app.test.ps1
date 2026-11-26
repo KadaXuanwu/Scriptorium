@@ -742,4 +742,12 @@ $none = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(@{ id = 
 Assert-Equal "'$($none.provider)' $($none.windows.Count) $($none.models.Count) $(($none.complexities | ForEach-Object { $_.name }) -join ',')" "'' 0 0 low,medium,high,design" 'no provider'
 Assert-Equal $none.hooks.Count 0 'no provider: no feature'
 
+# The sign-in's email goes into a shell command line: only what an address has, for the shell of every system.
+Assert-Equal "$(Test-EmailAddress 'me@example.com') $(Test-EmailAddress 'first.last+queue_1@mail-1.example.org')" 'True True' 'a plain address'
+foreach ($bad in @('$', '`', '(', ';', '&', '"', ' ', '|', '%', '<')) {
+    Assert-Equal (Test-EmailAddress "me${bad}x@example.com") 'False' "an address with $bad before the @"
+    Assert-Equal (Test-EmailAddress "me@exa${bad}mple.com") 'False' "an address with $bad after the @"
+}
+Assert-Equal "$(Test-EmailAddress "me@example.com`n") $(Test-EmailAddress 'me@x@example.com') $(Test-EmailAddress '@example.com')" 'False False False' 'a last newline, two @ and no name'
+
 Write-Output 'ok'

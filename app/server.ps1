@@ -918,7 +918,7 @@ function Invoke-Action($request) {
             if ($name -notmatch '^[a-z0-9][a-z0-9-]{0,30}$') {
                 throw 'the name takes lower-case letters, digits and dashes'
             }
-            if ($email -and $email -notmatch '^[^\s"&|<>^%]+@[^\s"&|<>^%]+$') {
+            if ($email -and -not (Test-EmailAddress $email)) {
                 throw 'not an email address'
             }
             $settings = Read-SettingsToEdit
