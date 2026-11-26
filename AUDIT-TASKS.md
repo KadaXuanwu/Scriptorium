@@ -75,7 +75,7 @@ Base:
 
 Claude Code provider (after 1a and 2a are merged):
 
-- [ ] 1b and 2b. Hand the probe and the compaction to the base
+- [x] 1b and 2b. Hand the probe and the compaction to the base ([#1](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode/pull/1))
 - [ ] 7b. Take permission rules as a setting of its own
 - [ ] 12. No model's and no plan's name in code
 
