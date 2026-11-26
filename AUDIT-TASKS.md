@@ -77,7 +77,7 @@ Claude Code provider (after 1a and 2a are merged):
 
 - [x] 1b and 2b. Hand the probe and the compaction to the base ([#1](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode/pull/1))
 - [x] 7b. Take permission rules as a setting of its own ([#2](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode/pull/2))
-- [ ] 12. No model's and no plan's name in code
+- [x] 12. No model's and no plan's name in code ([#3](https://github.com/KadaXuanwu/Scriptorium-ClaudeCode/pull/3))
 
 Antigravity provider (after 1a and 2a are merged):
 
