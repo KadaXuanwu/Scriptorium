@@ -4,6 +4,7 @@
 :root {
   --bg: #f3f2ee;
   --card: #ffffff;
+  --off-card: #e8e6e0;
   --raised: #f1efea;
   --ink: #16181b;
   --muted: #646a73;
@@ -27,6 +28,7 @@
   :root {
     --bg: #0f1114;
     --card: #171a1f;
+    --off-card: #08090b;
     --raised: #20242b;
     --ink: #ecebe7;
     --muted: #9aa0a8;
@@ -302,8 +304,8 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 ::view-transition-group(*) { animation-duration: 0.22s; }
 
 .worker.disabled .slot, .worker.disabled .who > * { opacity: 0.55; }
-/* A disabled card sits darker than the page in both themes. */
-.worker.disabled { background: color-mix(in srgb, var(--bg), black 4%); }
+/* A disabled card is darker than an enabled one and than the page, in both themes. */
+.worker.disabled { background: var(--off-card); }
 /* The name and the head's buttons on the first row; the status line under them, the card's full width. */
 .worker-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: start; }
 .who { display: contents; }
