@@ -32,19 +32,23 @@ function Get-Names($item) {
 }
 
 # The picture behind a provider's account cards (docs/PLUGINS.md, Its manifest, `card`) as a data URL, '' for none:
-# an SVG in the plugin's folder, read once.
+# an SVG in the plugin's folder, read again when the file changes. A pull of the plugin changes no .ps1 when only its
+# picture is new, so the server does not restart for it (restart.ps1).
 $CardArt = @{}
 function Get-CardArt($plugin) {
     if (-not $plugin.Card -or $plugin.Card -notmatch '^[\w.-]+\.svg$') {
         return ''
     }
     $file = Join-Path $plugin.Dir $plugin.Card
-    if (-not $script:CardArt.ContainsKey($file)) {
-        $script:CardArt[$file] = if (Test-Path -LiteralPath $file -PathType Leaf) {
+    $item = Get-Item -LiteralPath $file -ErrorAction SilentlyContinue
+    $stamp = if ($item -and -not $item.PSIsContainer) { "$($item.LastWriteTimeUtc.Ticks) $($item.Length)" } else { '' }
+    $known = $script:CardArt[$file]
+    if (-not $known -or $known.Stamp -ne $stamp) {
+        $known = $script:CardArt[$file] = @{ Stamp = $stamp; Url = if ($stamp) {
             'data:image/svg+xml;base64,' + [Convert]::ToBase64String([IO.File]::ReadAllBytes($file))
-        } else { '' }
+        } else { '' } }
     }
-    return $script:CardArt[$file]
+    return $known.Url
 }
 
 # Whether this page serves an account's entry: its coding tool's provider is one of the script's (docs/QUEUE.md,

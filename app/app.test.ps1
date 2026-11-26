@@ -731,6 +731,9 @@ $artDir = Join-Path ([IO.Path]::GetTempPath()) "queue-app-art-$PID"
 New-Item -ItemType Directory -Force $artDir | Out-Null
 [IO.File]::WriteAllText((Join-Path $artDir 'card.svg'), '<svg/>')
 Assert-Equal "$(Get-CardArt @{ Dir = $artDir; Card = 'card.svg' })|$(Get-CardArt @{ Dir = $artDir; Card = '../card.svg' })|$(Get-CardArt @{ Dir = $artDir; Card = '' })" 'data:image/svg+xml;base64,PHN2Zy8+||' 'a plugin''s card picture'
+# A new picture shows without a restart of the server: a pull of the plugin changes no .ps1 when only its picture is new.
+[IO.File]::WriteAllText((Join-Path $artDir 'card.svg'), '<svg />')
+Assert-Equal (Get-CardArt @{ Dir = $artDir; Card = 'card.svg' }) 'data:image/svg+xml;base64,PHN2ZyAvPg==' 'a plugin''s new card picture'
 Remove-Item -Recurse $artDir
 Assert-Equal (Get-NewAccountDir ('{"accounts":{}}' | ConvertFrom-Json) 'x' 'C:\Users\me') 'C:/Users/me/.bare-x' 'the folder of a new account'
 # With no provider the page still shows the queue: no model and no window.
