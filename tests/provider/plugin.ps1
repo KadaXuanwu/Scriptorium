@@ -1,4 +1,4 @@
-# The test provider (docs/PLUGINS.md, A provider): every hook, the older Probe too, for a tool whose log is plain lines:
+# The test provider (docs/PLUGINS.md, A provider): every hook, the older Probe and Compact too, for a tool whose log is plain lines:
 #   session <id>
 #   usage <window>=<share>@<reset> ... [refused=<window>@<reset>]
 #   step <words>
@@ -66,6 +66,14 @@ function Read-EndLine([string] $text) {
         }
         return @{ FilePath = 'test-tool'; Arguments = $arguments; Env = @{ TEST_LOGIN = $(if ($run.Login) { $run.Login }) } }
     }
+    # A compaction in both forms, with the same line. GetCompact's tool is the shell that runs the base: session 'fail'
+    # prints no compaction, session 'hang' never ends.
+    GetCompact = {
+        param($ctx)
+        $say = switch ($ctx.Run.Session) { 'fail' { "Write-Output 'no'" } 'hang' { 'Start-Sleep 600' } default { "Write-Output 'compacted $($ctx.Run.Session)'" } }
+        @{ FilePath = (Get-Process -Id $PID).Path; Arguments = @('-NoProfile', '-Command', $say) }
+    }
+    ReadCompact = { param($ctx) Read-Lines $ctx.Text 'compacted' | Select-Object -Last 1 | ForEach-Object { "compacted $_" } }
     Compact = { param($ctx) "compacted $($ctx.Run.Session)" }
     ReadUsage = {
         param($ctx)
