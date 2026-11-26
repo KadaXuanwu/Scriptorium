@@ -1234,8 +1234,12 @@ function Invoke-Request($context) {
         return
     }
     if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/log') {
-        # A worker's latest run, step by step.
+        # A worker's latest run, step by step. Only a worker's number: no other file comes out through here.
         $id = [string]$request.QueryString['worker']
+        if ($id -notmatch '^\d+$') {
+            Send-Json $context 404 '{"error":"not found"}'
+            return
+        }
         $state = Read-Json (Join-Path $mainQueue "worker-$id.json")
         $log = if ($state -and $state.log) { $state.log } elseif ($state) {
             (Get-ChildItem (Join-Path (Get-Clone $id $state) '.queue/logs/*.jsonl') -ErrorAction SilentlyContinue |
