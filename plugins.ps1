@@ -236,6 +236,13 @@ function Get-Provider($plugins) {
     return @($plugins | Where-Object { $_ -and $_.Provider }) | Select-Object -First 1
 }
 
+# The provider that the accounts naming none take (pc.ps1, Update-AccountProviders): the first that the project's own
+# $plugins list, '' when they list none. Never one of the install's plugins folder, which comes by its folder's name.
+function Get-ProjectProviderName($plugins) {
+    $provider = Get-Provider $plugins
+    return $(if ($provider) { [string]$provider.Name } else { '' })
+}
+
 # Every provider a project's scripts can run (docs/PLUGINS.md, A provider): the project's own in scriptorium.json's
 # order, the default first, then each in the install's plugins folder that the project does not name. A worker runs
 # on its account's coding tool in any project of the PC, so a provider that one project installed serves them all.

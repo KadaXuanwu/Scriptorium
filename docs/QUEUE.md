@@ -315,7 +315,8 @@ between runs.
   - A worker whose account is of a tool with no plugin on the PC does not run: its card says so. So does a page for
     that account: it lists only the accounts of the tools it has a plugin for.
   - An account from before this key names no provider. A project claims those accounts when one of its workers is on
-    one of them: its scripts then write its default provider into each. A project that is new on the PC claims none.
+    one of them: its scripts then write its default provider into each. A project that is new on the PC claims none,
+    and so does a project whose `scriptorium.json` lists no provider of its own.
     Until then such an account counts as the default provider's of the project that reads it.
 - `accounts.<name>.stopAt`: the account's stop lines, by the provider's names of its windows, for example
   `{ "<short window>": 0.9, "<long window>": 0.8 }`: the share of each window where its workers stop. Left out: the

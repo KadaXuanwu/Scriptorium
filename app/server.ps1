@@ -52,11 +52,13 @@ Get-CommandLines -Shells |
     ForEach-Object { Stop-ProcessTree $_.ProcessId }
 
 $mainQueue = Join-Path $Main '.queue'
-# A PC from before an account had a provider: the accounts this project's workers are on become its default provider's.
-# Not while a plugin is missing: it may be the default provider, and the one set here another tool's.
-if ($script:Provider -and -not $missing.Count) {
+# A PC from before an account had a provider: the accounts this project's workers are on become the provider that the
+# project itself lists first, and none with a project that lists none. Not while a plugin is missing: it may be the
+# default provider, and the one set here another tool's.
+$ownProvider = Get-ProjectProviderName $plugins
+if ($ownProvider -and -not $missing.Count) {
     Update-AccountProviders $Main @(Get-ChildItem (Join-Path $mainQueue 'worker-*.json') -ErrorAction SilentlyContinue |
-        ForEach-Object { $_.BaseName.Substring(7) }) $script:Provider.Name
+        ForEach-Object { $_.BaseName.Substring(7) }) $ownProvider
 }
 $web = Join-Path $PSScriptRoot 'web'
 $logFile = Join-Path $mainQueue 'app.log'

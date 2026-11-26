@@ -64,10 +64,12 @@ $wakeWorkers = Join-Path $mainQueueDir 'wake-workers'
 New-Item -ItemType Directory -Force (Join-Path $queueDir 'logs'), $mainQueueDir | Out-Null
 # The providers this worker can run on (plugins.ps1, Get-Providers): the project's default first.
 $providers = Get-Providers $PSScriptRoot $projectPlugins
-# A PC from before an account had a provider: the accounts this worker is on become the default provider's (pc.ps1).
-# Not while a plugin is missing: it may be the default provider, and the first here another tool's.
-if ($providers.Count -and -not $missing.Count) {
-    Update-AccountProviders $Project @("$Id") $providers[0].Name
+# A PC from before an account had a provider: the accounts this worker is on become the provider that the project
+# itself lists first (pc.ps1), and none with a project that lists none. Not while a plugin is missing: it may be the
+# default provider, and the first here another tool's.
+$ownProvider = Get-ProjectProviderName $projectPlugins
+if ($ownProvider -and -not $missing.Count) {
+    Update-AccountProviders $Project @("$Id") $ownProvider
 }
 # The provider (docs/PLUGINS.md, A provider): the plugin that runs the coding tool, reads its logs and knows its
 # accounts and windows. It is the one of the worker's account (plugins.ps1, Get-WorkerProvider), so a worker runs on
