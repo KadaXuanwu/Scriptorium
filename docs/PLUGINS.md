@@ -266,6 +266,10 @@ none. A name that `models.json` does not give to a window of some models counts 
 Beside `plugin.json`. The base reads it again at each use, and the windows when a script starts: a change to the file
 restarts the workers and the page between jobs, as a change to a `.ps1` does.
 
+The base checks the file each time it loads the provider (`Test-ProviderModels` in `plugins.ps1`): it parses, it has
+`models`, each of the base's four complexities has at least one model, and each window has `seconds` above 0. A file
+that fails stops setup and the scripts with `plugin <name>: models.json: <what is wrong>`.
+
 ```json
 {
   "models": { "big-2": { "title": "Big 2", "effort": "medium" }, "deep-1": { "title": "Deep 1", "effort": "high" } },

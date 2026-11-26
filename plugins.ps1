@@ -43,8 +43,39 @@ function Get-MissingText($missing) {
         '(docs/PLUGINS.md, Where a plugin comes from). This script loads it by itself once it is there.'
 }
 
+# Checks a provider's models.json (docs/PLUGINS.md, models.json) when the provider loads, so a bad file stops the
+# scripts with the file's name, not later with an unclear error. It parses, has `models`, gives each of the base's
+# complexities ($BaseComplexities, project.ps1) a model, and gives each window `seconds` above 0. A key the base does
+# not know is the provider's own.
+function Test-ProviderModels([string] $name, [string] $file) {
+    $where = "plugin ${name}: models.json"
+    if (-not (Test-Path $file)) {
+        throw "${where}: not found in $(Split-Path $file)"
+    }
+    try {
+        $models = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        throw "${where}: no JSON: $($_.Exception.Message)"
+    }
+    if (-not ($models -and $models.models)) {
+        throw "${where}: no models"
+    }
+    foreach ($complexity in $BaseComplexities.Keys) {
+        if (-not @($models.complexities.$complexity.models | Where-Object { $_ }).Count) {
+            throw "${where}: the complexity $complexity has no model"
+        }
+    }
+    foreach ($window in @(if ($models.windows) { $models.windows.PSObject.Properties })) {
+        $seconds = $window.Value.seconds
+        if ("$seconds" -notmatch '^\d+(\.\d+)?$' -or [double]$seconds -le 0) {
+            throw "${where}: the window $($window.Name) needs seconds above 0, not '$seconds'"
+        }
+    }
+}
+
 # One plugin from its folder: its manifest, its hooks in a module of its own (so the helpers of two plugins never
-# meet) and its settings from scriptorium.json. Throws for a missing folder or file and for another contract version.
+# meet) and its settings from scriptorium.json. Throws for a missing folder or file, for another contract version and
+# for a provider's models.json that does not hold (Test-ProviderModels).
 function Import-Plugin([string] $dir, [string] $name, $entry) {
     $manifestFile = Join-Path $dir 'plugin.json'
     $file = Join-Path $dir 'plugin.ps1'
@@ -54,6 +85,9 @@ function Import-Plugin([string] $dir, [string] $name, $entry) {
     $manifest = Get-Content $manifestFile -Raw -Encoding UTF8 | ConvertFrom-Json
     if ([string]$manifest.api -ne [string]$PluginApi) {
         throw "plugin ${name}: written for contract version $($manifest.api), and Scriptorium has version $PluginApi"
+    }
+    if ($manifest.provider) {
+        Test-ProviderModels $name (Join-Path $dir 'models.json')
     }
     $module = New-Module -ArgumentList $file -ScriptBlock {
         param($file)

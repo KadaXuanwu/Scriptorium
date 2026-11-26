@@ -82,6 +82,29 @@ function Get-Word { 'two' }
     $message = ''
     try { Import-Plugin (Join-Path $root 'none') 'none' $null | Out-Null } catch { $message = "$_" }
     Assert-Equal ($message -like 'plugin none: no plugin.json and plugin.ps1 in *') $true 'a plugin not installed'
+    # A provider's models.json is checked when it loads: each fault throws with the plugin's and the file's name.
+    $checked = New-Plugin $root 'checked' '@{}'
+    Set-Content (Join-Path $checked 'plugin.json') '{ "name": "checked", "title": "Checked", "version": "1.0.0", "api": 1, "provider": true }' -Encoding utf8
+    $good = '{ "models": { "m": {} }, "complexities": { "low": { "models": ["m"] }, "medium": { "models": ["m"] }, "high": { "models": ["m"] }, "design": { "models": ["m@high"] } }, "windows": { "day": { "seconds": 86400 } }, "ownKey": 1 }'
+    $faults = [ordered]@{
+        'no JSON: *' = '{ "models": '
+        'no models' = '{ "complexities": {} }'
+        'the complexity low has no model' = $good.Replace('"low": { "models": ["m"] }', '"low": { "models": [] }')
+        'the complexity medium has no model' = $good.Replace('"medium": { "models": ["m"] }, ', '')
+        "the window day needs seconds above 0, not '0'" = $good.Replace('86400', '0')
+        'not found in *' = $null
+    }
+    foreach ($fault in $faults.Keys) {
+        Remove-Item (Join-Path $checked 'models.json') -ErrorAction SilentlyContinue
+        if ($null -ne $faults[$fault]) {
+            Set-Content (Join-Path $checked 'models.json') $faults[$fault] -Encoding utf8
+        }
+        $message = ''
+        try { Import-Plugin $checked 'checked' $null | Out-Null } catch { $message = "$_" }
+        Assert-Equal ($message -like "plugin checked: models.json: $fault") $true "a models.json with: $fault (got '$message')"
+    }
+    Set-Content (Join-Path $checked 'models.json') $good -Encoding utf8
+    Assert-Equal (Import-Plugin $checked 'checked' $null).Provider $true 'a good models.json, with a key of the provider''s own'
     # A plugin the file names that is not installed yet (the owner added it, setup.ps1 has not cloned it): a script
     # that waits loads the others, and starts again when the plugin's files are in its folder.
     $late = Join-Path (Join-Path $root 'W') 'plugins/late'
