@@ -81,7 +81,7 @@ Claude Code provider (after 1a and 2a are merged):
 
 Antigravity provider (after 1a and 2a are merged):
 
-- [ ] 1c and 2c. Hand the probe and the compaction to the base
+- [x] 1c and 2c. Hand the probe and the compaction to the base ([Scriptorium-Antigravity#2](https://github.com/KadaXuanwu/Scriptorium-Antigravity/pull/2))
 - [ ] 7c. Take permission rules as a setting of its own
 - [ ] 8b. Take over "What the real Antigravity does"
 - [ ] 10b. Give no cost where the tool counts none
