@@ -458,6 +458,11 @@ Assert-Equal (Claim $old @('3') 'one') 'True main=one second=one' 'the old proje
 Assert-Equal (Claim $old @('6') 'two') 'False main= second=' 'a project that is new on the PC claims none'
 Assert-Equal (Claim $old @() 'two') 'False main= second=' 'a project with no worker claims none'
 Assert-Equal (Claim $old @('3') '') 'False main= second=' 'a project with no provider claims none'
+# The provider claimed is the first that the project's own plugins list (plugins.ps1, Get-ProjectProviderName), never
+# one of the install's plugins folder: a project with only an environment, or no plugin, changes no account.
+$envOnly = @(@{ Name = 'env'; Provider = $false })
+Assert-Equal "$(Claim $old @('3') (Get-ProjectProviderName $envOnly)) | $(Claim $old @('3') (Get-ProjectProviderName @()))" 'False main= second= | False main= second=' 'a project with no provider of its own changes no account'
+Assert-Equal (Claim $old @('3') (Get-ProjectProviderName @($envOnly[0], $bare))) 'True main=bare second=bare' 'a project''s own provider claims them'
 $claimed = $old | ConvertFrom-Json
 [void](Set-AccountProviders $claimed @('1') 'one')
 Assert-Equal ($claimed | ConvertTo-Json -Depth 8 -Compress) '{"accounts":{"main":{"stopAt":{"short":0.97},"pickUp":{"short":{"S":0.92}},"uses":["personal","frontdesk","worker:1","worker:3"],"provider":"one"},"second":{"configDir":"C:/u/.one-second","uses":[],"provider":"one"}}}' 'a claim changes nothing else of an account'
