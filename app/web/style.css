@@ -302,6 +302,8 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 ::view-transition-group(*) { animation-duration: 0.22s; }
 
 .worker.disabled .slot, .worker.disabled .who > * { opacity: 0.55; }
+/* A disabled card sits darker than the page in both themes. */
+.worker.disabled { background: color-mix(in srgb, var(--bg), black 4%); }
 /* The name and the head's buttons on the first row; the status line under them, the card's full width. */
 .worker-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: start; }
 .who { display: contents; }
