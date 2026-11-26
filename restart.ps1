@@ -3,18 +3,19 @@
 # ends the loop at its next safe point, and its own logon task starts it again. Dot-sourced by worker.ps1, merge.ps1
 # and app/server.ps1.
 
-# The folders and files watched: the install folder (without the plugins it holds, the tests and its .claude folder),
+# The folders and files watched: the install folder (without the plugins it holds, the tests and its dot folders),
 # then what Start-CodeWatch adds.
 $script:watched = @()
 
 # Every .ps1 under the watched folders but the tests, and each watched file: a change to any of them restarts the
-# script, with no list to keep. The install's .claude folder is left out: a Claude Code worktree there is a whole
-# checkout, and an edit in it is not new code of the install.
+# script, with no list to keep. Each folder directly under the install whose name starts with a dot is left out: a
+# coding tool keeps its own files there, whole checkouts too, and an edit in them is not new code of the install. The
+# path is read from the install's root, which may itself be inside a dot folder.
 function Get-CodeStamp {
     $files = @(Get-ChildItem $PSScriptRoot -Recurse -Filter *.ps1 | Where-Object {
         $_.Name -notlike '*.test.ps1' -and $_.FullName -notlike (Join-Path $PSScriptRoot 'plugins/*') -and
             $_.FullName -notlike (Join-Path $PSScriptRoot 'tests/*') -and $_.FullName -notlike (Join-Path $PSScriptRoot '_source/*') -and
-            $_.FullName -notlike (Join-Path $PSScriptRoot '.claude/*')
+            $_.FullName.Substring($PSScriptRoot.Length + 1) -notmatch '^\.[^\\/]*[\\/]'
     })
     foreach ($path in $script:watched) {
         if (Test-Path $path -PathType Container) {
