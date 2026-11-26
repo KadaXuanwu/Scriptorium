@@ -133,7 +133,8 @@ nothing and changes nothing.
   prompts in order, and hands them to the provider, which writes them in its tool's own form.
 
   `AllowedTools` is the older key: tool rules in the syntax of one provider's tool, which the base hands on unread.
-  Another provider leaves out a rule it cannot read, so a new plugin gives `Commands`.
+  Another provider leaves out a rule it cannot read, so a new plugin gives `Commands`. Rules in one tool's syntax go
+  in that provider's own entry (A provider, Its own settings).
 - **`EndRun`** leaves the environment clean for the next run: it leaves play mode, stops a server.
 - **`Close`** closes what `Start` opened in `$ctx.Copy`, to free the PC: an editor, a server. Never the main
   checkout's. An editor that the owner opens later in a disabled copy stays open.
@@ -237,7 +238,7 @@ A hook that throws on a log never loses a run's end: the run then counts as one 
 | `Cap` | the cap of one run, 0 for none |
 | `Login` | the folder of the account's login, `''` for the command-line login |
 | `Commands` | the commands the run may start without asking, each by how it starts: `git`, `gh`, `unity command` |
-| `Tools` | tool rules in the provider's own syntax, from `allowedTools` in `scriptorium.json` and from the plugins. A provider leaves out a rule it cannot read |
+| `Tools` | the older form: tool rules in the provider's own syntax, from `allowedTools` in `scriptorium.json` and from the plugins' `AllowedTools`. A provider leaves out a rule it cannot read, and takes its own rules from its settings as well (Its own settings, below) |
 | `McpServers` | the plugins' MCP servers by name. The provider gives the run these and no other, and allows each one's tools |
 | `Dir` | the folder the run works in |
 | `AddDirs` | more folders the run reads: the worker's copy, for a job in another repo |
@@ -260,6 +261,14 @@ A hook that throws on a log never loses a run's end: the run then counts as one 
 `@{ Windows = @{ <name> = @{ Used; ResetsAt } }; Refused; RefusedResetsAt }`. `Used` is the share of the window, from 0
 to 1 and over; `ResetsAt` a Unix time. `Refused` is the name of the window whose limit refused the request, `''` for
 none. A name that `models.json` does not give to a window of some models counts as the account's.
+
+### Its own settings
+
+A provider's entry in `scriptorium.json` (`plugins.<name>`) reaches each of its hooks as `$ctx.Settings`, as any
+plugin's does. Rules in its tool's own syntax, such as the tools a run may use without asking, go there, under a
+key that the provider's README names. Only that tool reads them, so a project with workers on two tools sends no
+tool the other's rules. `allowedTools` at the top of `scriptorium.json`, `AllowedTools` in `GetRun`'s answer and
+`Run.Tools` are the older form: every provider gets them.
 
 ### Its models.json
 
