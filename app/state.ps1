@@ -59,6 +59,12 @@ function Test-KnownAccount($entry) {
     return [bool]($entry -and (-not $known.Count -or (Get-AccountProvider $entry $known)))
 }
 
+# Whether $email is an email address the sign-in may put into a shell command line (docs/PLUGINS.md, `SignIn`): only
+# what an address has, so no shell of any system reads anything in it. \z, not $: $ also matches before a last newline.
+function Test-EmailAddress([string] $email) {
+    return $email -cmatch '\A[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\z'
+}
+
 # The entry of account $name. Throws for a name the register doesn't have, and for an account of a coding tool with no
 # plugin here: no provider of this page can read, sign in or sign out that login.
 function Get-KnownAccount($settings, [string] $name) {
