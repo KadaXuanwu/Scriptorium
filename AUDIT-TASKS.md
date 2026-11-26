@@ -70,7 +70,7 @@ Base:
 - [x] 11. The restart watch leaves out every dot folder ([#35](https://github.com/KadaXuanwu/Scriptorium/pull/35))
 - [x] 14. The sign-in email check holds for every shell ([#36](https://github.com/KadaXuanwu/Scriptorium/pull/36))
 - [x] 15. A plugin's name must match its key ([#37](https://github.com/KadaXuanwu/Scriptorium/pull/37))
-- [ ] 16. No default provider by folder name
+- [x] 16. No default provider by folder name ([#38](https://github.com/KadaXuanwu/Scriptorium/pull/38))
 - [ ] 17. The README states nothing that changes
 
 Claude Code provider (after 1a and 2a are merged):
