@@ -69,7 +69,7 @@ Base:
 - [x] 10a. No window's name and no unstated currency in base wording ([#34](https://github.com/KadaXuanwu/Scriptorium/pull/34))
 - [x] 11. The restart watch leaves out every dot folder ([#35](https://github.com/KadaXuanwu/Scriptorium/pull/35))
 - [x] 14. The sign-in email check holds for every shell ([#36](https://github.com/KadaXuanwu/Scriptorium/pull/36))
-- [ ] 15. A plugin's name must match its key
+- [x] 15. A plugin's name must match its key ([#37](https://github.com/KadaXuanwu/Scriptorium/pull/37))
 - [ ] 16. No default provider by folder name
 - [ ] 17. The README states nothing that changes
 
