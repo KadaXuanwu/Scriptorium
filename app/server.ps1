@@ -1246,8 +1246,9 @@ function Invoke-Request($context) {
             (Get-ChildItem (Join-Path (Get-Clone $id $state) '.queue/logs/*.jsonl') -ErrorAction SilentlyContinue |
                 Sort-Object LastWriteTime | Select-Object -Last 1).FullName
         }
-        # The provider of the worker's coding tool reads its log.
-        $steps = @(Use-Provider (Get-WorkerProvider $script:saved $id (Get-KnownProviders)) { Get-Steps $log 40 })
+        # The provider that reads the log: the worker's coding tool now, or the one of its last run (Get-LogProvider).
+        $known = Get-KnownProviders
+        $steps = @(Use-Provider (Get-LogProvider $log (Get-WorkerProvider $script:saved $id $known) $known) { Get-Steps $log 40 })
         Send-Json $context 200 (@{ log = $log; steps = $steps } | ConvertTo-Json -Depth 4 -Compress)
         return
     }
