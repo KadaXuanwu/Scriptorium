@@ -1,4 +1,4 @@
-# The test provider (docs/PLUGINS.md, A provider): every hook, for a tool whose log is plain lines:
+# The test provider (docs/PLUGINS.md, A provider): every hook, the older Probe too, for a tool whose log is plain lines:
 #   session <id>
 #   usage <window>=<share>@<reset> ... [refused=<window>@<reset>]
 #   step <words>
@@ -50,7 +50,13 @@ function Read-EndLine([string] $text) {
     SignIn = { param($ctx) @{ Command = "test-tool login $($ctx.Email)"; Env = @{ TEST_LOGIN = $ctx.Login } } }
     ReadSignIn = { param($ctx) @{ Url = [regex]::Match($ctx.Text, 'https://\S+').Value; Message = (@($ctx.Text -split "`n" | Where-Object { $_.Trim() }) | Select-Object -Last 1) } }
     SignOut = { param($ctx) Remove-Item (Join-Path $ctx.Login 'login.txt') -ErrorAction SilentlyContinue }
-    Probe = { param($ctx) @{ Usage = $null; Answered = $true; Kind = ''; Text = 'ok' } }
+    # A probe in both forms, with the same reading. GetProbe's tool is the shell that runs the base.
+    GetProbe = {
+        param($ctx)
+        @{ FilePath = (Get-Process -Id $PID).Path; Arguments = @('-NoProfile', '-Command', "Write-Output 'usage short=0.5@100'"); Env = @{ TEST_LOGIN = $(if ($ctx.Login) { $ctx.Login }) } }
+    }
+    ReadProbe = { param($ctx) @{ Usage = Read-UsageLine (Read-Lines $ctx.Text 'usage' | Select-Object -Last 1); Answered = $true; Kind = ''; Text = 'ok' } }
+    Probe = { param($ctx) @{ Usage = Read-UsageLine 'short=0.5@100'; Answered = $true; Kind = ''; Text = 'ok' } }
     GetCommand = {
         param($ctx)
         $run = $ctx.Run

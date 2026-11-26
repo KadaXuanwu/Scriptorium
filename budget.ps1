@@ -49,7 +49,7 @@ function Test-ProbeAfterRun([bool] $readsLog, [bool] $probes) {
     return $probes -and -not $readsLog
 }
 
-# A provider's usage reading (docs/PLUGINS.md, ReadUsage, Probe) as the queue keeps it, read at $now: each window's
+# A provider's usage reading (docs/PLUGINS.md, ReadUsage, ReadProbe) as the queue keeps it, read at $now: each window's
 # share used and reset, and whether the plan refused the request. The refusal of a window of some models is not
 # `refused` but `modelRefused`, that window's name: it stops only those models. Only the windows that the provider's
 # models.json names. $null for no reading.

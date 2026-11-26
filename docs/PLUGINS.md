@@ -200,8 +200,10 @@ Claude Code" is Claude Code on a worker's card.
 | ---- | ------------------ | ---------- | ---------- |
 | `GetCommand` | `Run` (below); `Copy` is the job's checkout | `@{ FilePath; Arguments; Env }`: the program, its arguments as `Start-Process` takes them (the provider quotes one that holds a space) and environment variables for the run's process (one with no value is taken away). It may write files of its own into `QueueDir` | needed |
 | `ReadRun` | `Text`: the run's whole log | the run's end (below) | needed |
-| `ReadUsage` | `Text`; `First`: the first reading of the log, else the last | a usage reading (below), `$null` for a log with none | with a `Probe`: the usage is read by a probe before a job and when a run ends, and no run ends at a stop line. With neither: no budget, the workers run until the plan refuses, then wait |
-| `Probe` | `Login`; `Dir`: a folder that holds no project | `@{ Usage; Answered; Kind; Text }` from the tool's cheapest request: a reading or `$null`, whether a reply came (a refusal too), the refusal's kind (`''` when the account answered) and its text | an idle account's usage is not read again, an account that is out is tested by its next run, and the page has no Ping |
+| `ReadUsage` | `Text`; `First`: the first reading of the log, else the last | a usage reading (below), `$null` for a log with none | with a probe (`GetProbe` and `ReadProbe`, or `Probe`): the usage is read by a probe before a job and when a run ends, and no run ends at a stop line. With neither: no budget, the workers run until the plan refuses, then wait |
+| `GetProbe` | `Login`; `Dir`: a folder that holds no project | `@{ FilePath; Arguments; Env }`, as `GetCommand`: the tool's cheapest request. The base runs it in `Dir`, with nothing on its input, and ends it with every process it started after a time limit (`$ProbeSeconds` in `plugins.ps1`). A probe past the limit counts as one that failed | with no probe in either form: an idle account's usage is not read again, an account that is out is tested by its next run, and the page has no Ping |
+| `ReadProbe` | `Text`: what the probe printed | `@{ Usage; Answered; Kind; Text }`: a reading or `$null`, whether a reply came (a refusal too), the refusal's kind (`''` when the account answered) and its text | as `GetProbe` |
+| `Probe` | `Login`; `Dir` | the older form of `GetProbe` with `ReadProbe`: the hook runs the tool itself and returns what `ReadProbe` returns. The base gives it no time limit, so a tool that hangs holds the worker, and the lock that gives out tickets, for ever. The base uses it only for a provider that lacks `GetProbe` or `ReadProbe` | as `GetProbe` |
 | `Compact` | `Run` with the `Session` to compact; `Log`: a file for the tool's output | one line for the worker's log. It runs the tool itself and returns when it is done | a held session resumes whole |
 | `GetLogin` | `Login` | `@{ SignedIn; Email; Plan; PlanSize; Stamp }`: the plan's name for the page, its size against the provider's smallest plan, and a text that changes when the login changes. It starts no process: the page asks every few seconds | every account counts as signed in, on a plan of size 1 |
 | `SignIn` | `Login`; `Email` (may be `''`) | `@{ Command; Env }`: one shell command line that signs the folder in. The base starts it, keeps its output and writes the owner's code to its input | the page cannot sign an account in |
@@ -252,7 +254,7 @@ A hook that throws on a log never loses a run's end: the run then counts as one 
 | `Cost` | the session's cost so far, where the tool counts one |
 | `Numbers` | the run's numbers for the history ([QUEUE.md](QUEUE.md), History), any of: `requests`, `toolCalls`, `commands`, `first`, `ctxMean`, `ctxMax`, `read`, `write`, `compactions`, `advisorCalls`, `advisorCost` |
 
-**A usage reading,** from `ReadUsage` and `Probe`:
+**A usage reading,** from `ReadUsage`, `ReadProbe` and `Probe`:
 `@{ Windows = @{ <name> = @{ Used; ResetsAt } }; Refused; RefusedResetsAt }`. `Used` is the share of the window, from 0
 to 1 and over; `ResetsAt` a Unix time. `Refused` is the name of the window whose limit refused the request, `''` for
 none. A name that `models.json` does not give to a window of some models counts as the account's.

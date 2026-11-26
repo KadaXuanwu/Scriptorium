@@ -975,14 +975,14 @@ function Invoke-Action($request) {
             return 'sign-in cancelled'
         }
         'ping' {
-            # The provider's cheapest request (docs/PLUGINS.md, Probe): it starts the account's windows and reads its usage.
+            # The provider's cheapest request (docs/PLUGINS.md, GetProbe): it starts the account's windows and reads its usage.
             $name = [string]$request.account
             $entry = Select-Account (Read-SettingsToEdit) $name
             if (-not (Test-ProviderHook 'Probe')) {
                 throw 'the provider has no ping'
             }
             # The temp folder holds no project for the tool to read.
-            $reply = Invoke-Provider 'Probe' @{ Login = [string]$entry.configDir; Dir = [IO.Path]::GetTempPath() }
+            $reply = Invoke-ProviderProbe ([string]$entry.configDir) ([IO.Path]::GetTempPath())
             # The probe's reading is the account's newest, a refused ping's too: saved as a worker saves it
             # (worker.ps1, Save-Usage), with the same key and the login's email, so the meters show it at once. A
             # failure here is not the ping's.
