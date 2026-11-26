@@ -294,8 +294,9 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
    24px taller for the time of the action, and every row below it moved. */
 .config-row.busy > .config-name:first-child { position: relative; }
 .config-row.busy > .config-name:first-child::after { position: absolute; right: 0; top: 0; }
-/* The account's status chip already sits at the right end: the ring goes beside it. */
-.account.busy > :first-child::after { margin-left: 0; }
+/* The account's status chip already sits at the right end: the ring goes beside it. As specific as the ring's rule
+   above: with less, its auto margin won, chip and ring split the free space and the chip stood mid-line. */
+.card.account.busy > :first-child:not(.banner)::after { margin-left: 0; }
 .busy :is(button, select, textarea, input) { opacity: 0.45; }
 @keyframes spin { to { transform: rotate(360deg); } }
 /* The change between two states of the page (app.js, draw). */
