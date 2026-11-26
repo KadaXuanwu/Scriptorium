@@ -85,7 +85,7 @@ Antigravity provider (after 1a and 2a are merged):
 - [x] 7c. Take permission rules as a setting of its own ([Scriptorium-Antigravity#3](https://github.com/KadaXuanwu/Scriptorium-Antigravity/pull/3))
 - [x] 8b. Take over "What the real Antigravity does" ([Scriptorium-Antigravity#4](https://github.com/KadaXuanwu/Scriptorium-Antigravity/pull/4))
 - [x] 10b. Give no cost where the tool counts none ([Scriptorium-Antigravity#5](https://github.com/KadaXuanwu/Scriptorium-Antigravity/pull/5))
-- [ ] 13. Delete the window filter
+- [x] 13. Delete the window filter ([Scriptorium-Antigravity#6](https://github.com/KadaXuanwu/Scriptorium-Antigravity/pull/6))
 
 Tasks 1a and 2a come first: 2a uses the helper that 1a adds, and the plugin tasks 1b, 1c, 2b and 2c need both. Every
 other task is free of the others.
