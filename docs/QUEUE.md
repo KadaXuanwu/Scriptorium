@@ -517,6 +517,11 @@ in a run ([APP.md](APP.md), Workers). The server writes the ticket to that worke
   - A ticket's run loses its claim. The ticket goes back to the queue and starts fresh from the comment, on any worker.
   - A PR's job stays the worker's. It starts again after the Now ticket.
   - The run is in the history as a part.
+- **A held run** (at a usage limit, or about to resume) is freed the same way, within a minute: the script drops its
+  session, and its ticket starts fresh from the handoff comment that the run posted when it was held. The script does
+  not look at the Now's ticket first.
+  - At the workers' stop line the Now run then uses the room kept under it.
+  - At the plan's own limit the Now run cannot start either: it is held in its turn until the reset.
 - **The Now run** is a forced run: it does not stop at the workers' ceiling.
 - **The model:** the server reads neither the window of the ticket's model on the account (A model's limit) nor the
   models that its plan refused (`access.json`).
@@ -524,7 +529,6 @@ in a run ([APP.md](APP.md), Workers). The server writes the ticket to that worke
 - **The Now ends** without a run in these cases, and the worker deletes the file:
   - The ticket left the queue: closed, claimed by another worker, or its complexity is off for the worker.
     The worker takes only the ticket that the file names, never another one (`Select-Now` in [areas.ps1](../areas.ps1)).
-  - The worker holds a paused run. That run goes first, so the page offers no Replace now for it.
   - The owner cancels the Now on the worker's card or on the ticket's row, or pauses or disables the worker. A cancel
     before the checkpoint withdraws the stop note, and the run goes on.
 
@@ -562,7 +566,8 @@ Queue). It forces nothing. The server writes the ticket to that worker's next fi
     in its place at that look.
   - The owner cancels it on the worker's card or on the ticket's row, or pauses, disables, removes or moves the
     worker. A cancel of a forced one takes the whole Queue next back, not only the force.
-- A worker that holds a paused run keeps it: that run goes first, also before a forced ticket.
+- A worker that holds a paused run keeps it: that run goes first, also before a forced ticket. Only Replace now
+  frees it (Now).
 
 ## Plugins
 

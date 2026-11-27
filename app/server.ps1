@@ -642,7 +642,7 @@ function Invoke-Action($request) {
             # the owner saw) starts past the blocker, area, room and ceiling checks. A ticket goes into the worker's
             # next file with `force` (docs/QUEUE.md, Queue next): the worker takes that very one after its run. With
             # `how: replace` it goes into the force file with `now` instead (docs/QUEUE.md, Now): the run in progress
-            # ends for it at its next checkpoint. A PR's job goes into the force file (worker.ps1, $forceFile).
+            # ends for it at its next checkpoint, and a held run is freed. A PR's job goes into the force file (worker.ps1, $forceFile).
             # `unforce` takes a Force or a Now back, `unnext` the ticket queued as its next, forced or not.
             if (-not (Test-Path (Join-Path $mainQueue "worker-$worker.json"))) {
                 throw "no worker $worker"
@@ -664,10 +664,6 @@ function Invoke-Action($request) {
                 if ($request.how -eq 'replace') {
                     if (-not $ticket) {
                         throw 'only a ticket takes the place of a run'
-                    }
-                    # A held run goes first, and a Now behind it ends (worker.ps1).
-                    if ($view.run -and $view.activity -ne 'running') {
-                        throw "worker $worker holds a run: that one goes first"
                     }
                     if (Read-Now $force) {
                         throw "worker $worker has a Now already"

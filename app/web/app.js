@@ -323,7 +323,7 @@ function workerCard(worker) {
       : `<button class="round" data-force="${id}" title="${can ? 'Take it now' : 'Its slot is not free'}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`}`;
   }
   const kind = next && { answered: 'your answers', 'needs-rebase': 'a rebase', now: 'now', queued: 'queued next' }[next.kind];
-  const takes = waits ? `at its next ${worker.run ? 'checkpoint' : 'poll'}` : after ? (worker.run ? 'after its run' : 'at its next poll') : '';
+  const takes = waits ? `at its next ${worker.activity === 'running' ? 'checkpoint' : 'poll'}` : after ? (worker.run ? 'after its run' : 'at its next poll') : '';
   const nextBody = next
     ? `<a class="title${next.available ? '' : ' off'}" href="${esc(next.url)}" target="_blank">${esc(next.title)}</a>
        <div class="meta">${badges([kind, ...(next.areas || []), next.size, next.complexity])}${takes ? `<span class="why">takes it ${takes}</span>`
@@ -715,7 +715,7 @@ function info(s) {
       <li>A free worker first answers and rebases its own PRs, then takes the first queued ticket its account has room
         for. <b>Next</b> on a queued ticket makes it the next ticket of a worker you pick, where it waits as any ticket
         does; the arrow on a worker's card takes its next ticket past areas, blockers and the stop line, after its run
-        or in its place.</li>
+        or in its place, also in place of a run held at a limit.</li>
       <li>Two tickets of the same area never run at the same time, and one "Blocked by" others waits until they close.</li>
       <li>A run ends in a PR, a question for you, or held at a limit. The merged PR closes its ticket; its follow-ups
         join the queue or wait under Questions.</li>
@@ -1442,10 +1442,10 @@ document.addEventListener('click', async (e) => {
     // One fact a line: the worker's run, and what holds the ticket back. What the buttons do is on Details.
     const text = [worker.run && `${worker.activity === 'running' ? 'In a run' : 'Run held'}: ${worker.title}`,
       !next.available && next.why].filter(Boolean).join('\n');
-    // In a run: after it, or in its place (only a run that works: a held one goes first). A free worker takes it at once.
+    // In a run, working or held: after it, or in its place. A free worker takes it at once.
     let how = '';
     if (worker.run) {
-      const values = await ask(next.title, text, 'After this run', { also: worker.activity === 'running' ? 'Replace now' : '' });
+      const values = await ask(next.title, text, 'After this run', { also: 'Replace now' });
       if (!values) return;
       how = values.also ? 'replace' : 'after';
     } else if (!next.available && !(await ask(next.title, text, 'Take it now'))) return;
