@@ -1483,12 +1483,18 @@ function Suspend-Job($job, $end) {
         # The plan's limit ended a run whose log holds no usage (budget.ps1, Test-ProbeAfterRun), so no reading names
         # the reset: it is that of the account's full windows, from the probe when the run ended. Without it the run
         # resumed blind every 30 minutes, each time with a comment. With no full window (the service's own shortage,
-        # a probe that failed): the 30 minutes.
-        $account = Get-Account $end.ConfigDir
-        Save-Budget (Get-Budget $account (Read-AllUsage)[$account])
-        $roomAt = Get-RoomAt $script:budget
-        if ($roomAt -gt (Get-Now)) {
-            $resetsAt = $roomAt
+        # a probe that failed): the 30 minutes. An error here must not lose the session: the 30 minutes too.
+        # shortcut: a window whose stop line is 100 % counts as full only at a reading of exactly 100 %; one refused
+        # just under it waits the 30 minutes again and again. Take the reset from the refusal's text if that is seen.
+        try {
+            $account = Get-Account $end.ConfigDir
+            Save-Budget (Get-Budget $account (Read-AllUsage)[$account])
+            $roomAt = Get-RoomAt $script:budget
+            if ($roomAt -gt (Get-Now)) {
+                $resetsAt = $roomAt
+            }
+        } catch {
+            Write-Log "reset error: $_"
         }
     }
     if ($end.Stopped -or $end.ModelOut) {
