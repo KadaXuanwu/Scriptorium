@@ -154,7 +154,7 @@ Each card has two slots:
   On a passive worker a new ticket says "waits for the arrow": the worker takes it only then.
 - **Force** (the arrow in the Next slot) gives the worker that ticket past what holds it back: its blockers, the
   areas, the pick-up limits and the stop line ([QUEUE.md](QUEUE.md), Queue next).
-  - A free worker takes it at its next poll. The page asks first only for a locked ticket, with the reason.
+  - A free worker takes it at its next poll, with no question, also a locked ticket: the card names the lock.
   - For a worker in a run the page asks: **After this run** (the run goes on, and the ticket is the worker's next
     job) or **Replace now** (the run ends for it at its next checkpoint: [QUEUE.md](QUEUE.md), Now). For a held
     run the first waits until that run resumes and ends. The second frees a run held at the workers' stop line within

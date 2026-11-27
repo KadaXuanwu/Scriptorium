@@ -1483,13 +1483,14 @@ document.addEventListener('click', async (e) => {
     const text = [worker.run && `${worker.activity === 'running' ? 'In a run' : 'Run held'}: ${worker.title}`,
       !next.available && next.why].filter(Boolean).join('\n');
     // In a run: after it, or in its place. In its place only for a run that works or is held at a checkpoint (at the
-    // stop line, or for a pause): one that a limit cut off would lose its work. A free worker takes it at once.
+    // stop line, or for a pause): one that a limit cut off would lose its work. A free worker takes it at once, with
+    // no question, also a locked ticket: the card names the lock, and its cross takes the ticket back.
     let how = '';
     if (worker.run) {
       const values = await ask(next.title, text, 'After this run', { also: ['running', 'room', 'held'].includes(worker.activity) ? 'Replace now' : '' });
       if (!values) return;
       how = values.also ? 'replace' : 'after';
-    } else if (!next.available && !(await ask(next.title, text, 'Take it now'))) return;
+    }
     await act(project, { action: 'force', worker: data.force, number: next.number, how }, {
       keys: [`worker:${data.force}`],
       apply: (s) => {
