@@ -108,8 +108,7 @@ the worker takes.
 **Active or Passive,** the first row, is the worker's kind (`workers.<id>.passive`) and saves at once. On a passive
 worker the complexity switches do not count, so they are names only.
 
-**Dialogs** close at their cross, at Escape and at a press beside them. A dialog with fields to fill closes only at
-its buttons and Escape.
+**Dialogs** close at their cross, at Escape and at a press beside them.
 
 **The mapping** is the rest of the config: how this worker runs each complexity ([QUEUE.md](QUEUE.md), Models, A
 worker's mapping). Each change saves at once in the PC's settings (`workers.<id>.mapping`) and counts from the

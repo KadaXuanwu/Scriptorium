@@ -1407,10 +1407,9 @@ document.addEventListener('click', (e) => {
   show('viewer');
 });
 // A press beside a dialog closes it, as its Close does. The backdrop is the dialog's own element outside its box. Both
-// the press and the release are beside it: a selection dragged out of a field closes nothing. Not a dialog with
-// fields to fill: a stray press would lose what the owner typed.
+// the press and the release are beside it: a selection dragged out of a field closes nothing.
 const beside = (e) => {
-  if (e.target.tagName !== 'DIALOG' || e.target.querySelector('#ask-fields:not([hidden])')) return false;
+  if (e.target.tagName !== 'DIALOG') return false;
   const box = e.target.getBoundingClientRect();
   return e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom;
 };
