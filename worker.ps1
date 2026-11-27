@@ -257,7 +257,9 @@ function Invoke-WorkerHooks([string] $hook, [string] $copy, [switch] $Report) {
     $say = if ($Report) {
         { param($text) if (-not (Test-Path $pausedFile)) { Write-State 'opening' @{ report = [string]$text } } }
     } else {
-        $log
+        # In a run (Invoke-Worker): the plugin's words keep the run's state fresh, so the wait for a passive worker's
+        # environment does not read as a silent script either.
+        { param($text) if ($script:running) { Write-State 'running' $script:running } }
     }
     return Invoke-Hooks $plugins $hook $Project $copy $Id $queueDir (Read-Settings) $say $log
 }
@@ -292,9 +294,10 @@ function Get-Accounts {
 
 # A worker's settings, its own entry over the shared one; its login is the account the register gives it, else the
 # Windows user's command-line login. `model` is the shared one only: the project's override of every worker's
-# mapping. It names a model of the default provider, so a worker on another coding tool leaves it.
+# mapping. It names a model of the default provider, so a worker on another coding tool leaves it. `passive` is the
+# worker's own only (docs/QUEUE.md, A passive worker): the page's Config sets it there.
 function Get-RunSettings([int] $worker) {
-    $settings = @{ model = $null; configDir = $null; sizes = $null; ghConfigDir = $null; assignedOnly = $null }
+    $settings = @{ model = $null; configDir = $null; sizes = $null; ghConfigDir = $null; passive = $false }
     $json = Read-Settings
     if (-not $json) {
         return $settings
@@ -306,13 +309,14 @@ function Get-RunSettings([int] $worker) {
     if ($isDefault -and $json.model) {
         $settings.model = $json.model
     }
-    foreach ($key in @('sizes', 'ghConfigDir', 'assignedOnly')) {
+    foreach ($key in @('sizes', 'ghConfigDir')) {
         if ($own -and $own.$key) {
             $settings[$key] = $own.$key
         } elseif ($json.$key) {
             $settings[$key] = $json.$key
         }
     }
+    $settings.passive = [bool]($own -and $own.passive -eq $true)
     $entry = Get-Accounts | Where-Object { $_.Uses -contains "worker:$worker" } | Select-Object -First 1
     if ($entry) {
         $settings.configDir = $entry.ConfigDir
@@ -366,9 +370,28 @@ function Test-NowElsewhere($job) {
     return [bool]($now -and $now -ne [int]$job.Ticket)
 }
 
+# The plugins close what Start opened in the worker's copy and in the checkouts of other repos it ran in
+# (docs/PLUGINS.md, Close).
+function Close-Environment {
+    $list = Join-Path $queueDir 'checkouts.txt'
+    $checkouts = @($Clone) + @(if (Test-Path $list) { Get-Content $list })
+    Close-Checkouts $plugins $checkouts $Project $Id $queueDir (Read-Settings) { param($text) Write-Log "$text" }
+    $script:environmentOpen = $false
+}
+
+# A passive worker that waits with no run and none held closes its environment (docs/QUEUE.md, A passive worker). Once
+# for each time it was opened, and once after the script starts: the run before a restart may have left it open, so an
+# editor the owner opened by hand in a passive worker's copy closes then too. A held run keeps it: Close saves nothing.
+$script:environmentOpen = $true
+function Close-WhenPassive {
+    if ($script:environmentOpen -and (Get-RunSettings $Id).passive -and -not (Test-Path $pausedFile)) {
+        Close-Environment
+    }
+}
+
 # Disabled: its paused run is dropped (its ticket goes back to the queue, Get-NextJob). As it becomes disabled, the
-# plugins close what Start opened in its copy and in the checkouts of other repos it ran in (docs/PLUGINS.md, Close).
-# Only then: an editor the owner opens later in a disabled copy stays open.
+# plugins close its environment (Close-Environment). Only then: an editor the owner opens later in a disabled copy
+# stays open.
 function Disable-Worker {
     if (Test-Path $pausedFile) {
         Remove-Item $pausedFile
@@ -377,9 +400,7 @@ function Disable-Worker {
     $was = try { (Get-Content (Join-Path $mainQueueDir "worker-$Id.json") -Raw | ConvertFrom-Json).state } catch { '' }
     Write-State 'disabled'
     if ($was -ne 'disabled') {
-        $list = Join-Path $queueDir 'checkouts.txt'
-        $checkouts = @($Clone) + @(if (Test-Path $list) { Get-Content $list })
-        Close-Checkouts $plugins $checkouts $Project $Id $queueDir (Read-Settings) { param($text) Write-Log "$text" }
+        Close-Environment
     }
 }
 
@@ -756,8 +777,8 @@ function Get-Candidates {
             continue
         }
         $settings = Get-RunSettings $worker.Worker
-        # assignedOnly (Settings): a worker the owner keeps to the tickets labelled for it gets no new one.
-        if ($settings.assignedOnly) {
+        # A passive worker gets no new ticket from the queue (docs/QUEUE.md, A passive worker).
+        if ($settings.passive) {
             continue
         }
         $account = Get-Account $settings.configDir
@@ -921,14 +942,16 @@ function Get-NextJob {
     # in place of the queue's. It waits as a queue's ticket does: for its blockers and its areas (Get-NextWait), for a
     # model the account has left and for the pick-up limit of its size. While it waits, the file stays and this worker
     # takes no other new ticket (the dispatcher below gives it none). Its claim carries it from here, so the file goes;
-    # so does one whose ticket left the queue. The worker's complexity switches do not count for it.
+    # so does one whose ticket left the queue. The worker's complexity switches do not count for it. On a passive
+    # worker it waits for the arrow, which forces it (above).
+    $passive = (Get-RunSettings $Id).passive
     $queuedNext = Read-Next $nextFile
     if ($queuedNext) {
         $ticket = Select-Now $issues $queuedNext $me $prBranches
         if (-not $ticket) {
             Remove-Item $nextFile -ErrorAction SilentlyContinue
             Write-Log "next: #$queuedNext left the queue"
-        } elseif (-not (Get-NextWait $ticket $open $busy)) {
+        } elseif (-not $passive -and -not (Get-NextWait $ticket $open $busy)) {
             $own = Get-RunSettings $Id
             $account = Get-Account $own.configDir
             if ((Test-ModelLeft (Get-Complexity $ticket) $own $account) -and
@@ -941,7 +964,8 @@ function Get-NextJob {
             }
         }
     }
-    if ((Get-RunSettings $Id).assignedOnly) {
+    # A passive worker takes no new ticket from the queue: only what the owner gave it, and its own PRs and tickets.
+    if ($passive) {
         return $null
     }
 
@@ -1157,14 +1181,18 @@ function Add-History($job, [string] $account, [string] $model, [string] $text, [
 function Invoke-Worker($job, [string] $log, $paused) {
     $slug = Get-JobRepo $job
     $dir = Get-JobDir $slug
-    # The environment of the job's checkout (the main loop's Start covered the clone), then what the run gets from the
-    # plugins (docs/PLUGINS.md, GetRun). A hook that throws starts no run: the ticket stays this worker's.
+    # The environment of the job's checkout (the main loop's Start covered the clone, except a passive worker's, which
+    # opens here), then what the run gets from the plugins (docs/PLUGINS.md, GetRun). A hook that throws starts no
+    # run: the ticket stays this worker's.
     if ($dir -ne $Clone) {
-        # Kept for Disable-Worker, which closes what Start opens here.
+        # Kept for Close-Environment, which closes what Start opens here.
         $list = Join-Path $queueDir 'checkouts.txt'
         if (-not ((Test-Path $list) -and @(Get-Content $list) -contains $dir)) {
             Add-Content $list $dir -Encoding utf8
         }
+    }
+    if ($dir -ne $Clone -or (Get-RunSettings $Id).passive) {
+        $script:environmentOpen = $true
         Invoke-WorkerHooks 'Start' $dir | Out-Null
     }
     $given = Merge-RunAnswers (Invoke-WorkerHooks 'GetRun' $dir)
@@ -1673,7 +1701,11 @@ while ($true) {
             Start-Sleep 30
             continue
         }
-        Invoke-WorkerHooks 'Start' $Clone -Report | Out-Null
+        # Not a passive worker's: its environment opens for a run only (Invoke-Worker).
+        if (-not (Get-RunSettings $Id).passive) {
+            $script:environmentOpen = $true
+            Invoke-WorkerHooks 'Start' $Clone -Report | Out-Null
+        }
         Set-GitHubIdentity (Get-RunSettings $Id).ghConfigDir
         $mode = Get-Control
         # Paused from the queue app: no new job until the owner sets the worker active. A stop also holds a run
@@ -1695,6 +1727,7 @@ while ($true) {
                 Get-HeldView (Get-Content $pausedFile -Raw | ConvertFrom-Json)
             }
             Write-State $(if ($mode -eq 'stop') { 'stopped' } else { 'drained' }) $held
+            Close-WhenPassive
             Start-Sleep 30
             continue
         }
@@ -1751,6 +1784,7 @@ while ($true) {
             } else {
                 Write-State 'signedout' @{ account = Get-Account $runConfigDir }
             }
+            Close-WhenPassive
             Start-Sleep 30
             continue
         }
@@ -1927,6 +1961,8 @@ while ($true) {
             Write-State 'error' @{ error = "$_" }
         }
     }
+    # No job this pass.
+    Close-WhenPassive
     # A force from the queue app since this poll began, a wake (the merger changed a PR, the owner acted on the
     # page), changed code, or a disable (looked at once a minute; its editors then close) wakes the next one early.
     $wake = (Get-Now) + $PollSeconds

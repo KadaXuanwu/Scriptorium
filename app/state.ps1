@@ -162,6 +162,16 @@ function Set-WorkerName($settings, [string] $id, [string] $name) {
     return $settings
 }
 
+# The register with worker $id passive or not (`workers.<id>.passive`; docs/QUEUE.md, A passive worker).
+function Set-WorkerPassive($settings, [string] $id, [bool] $on) {
+    $entry = Get-WorkerSettings $settings $id
+    $entry.PSObject.Properties.Remove('passive')
+    if ($on) {
+        Set-JsonProperty $entry 'passive' $true
+    }
+    return $settings
+}
+
 # The register with account $old named $new, in the same place in the list. Only the name changes: the queue's
 # files and a held run know an account by its login folder (`configDir`), which stays.
 function Rename-Account($settings, [string] $old, [string] $new) {
@@ -772,7 +782,8 @@ function Test-PrOff($pr, $issues, $settings, [string] $worker) {
 # change of status to come, with a script that runs and an account that takes runs. A paused worker keeps the ticket
 # for its start, so the owner can give it one before the queue does. Room on its account is no condition: the ticket waits with the worker, or the owner
 # forces it on the worker's card. Nor are the worker's complexity switches: the owner gives the ticket by hand.
-# Of those: first the active workers, then the ones that have the ticket's complexity on, then
+# Of those: first the workers that are not passive (a passive one takes the ticket only at its arrow; docs/QUEUE.md, A
+# passive worker), then the active ones, then the ones that have the ticket's complexity on, then
 # a worker whose ticket in work holds an area of this one (the two would change the same files), then a
 # free one, then the most room in the shortest window, then in the longest, then the run that started last.
 # Returns @{ worker; stops; title; busy; able }: `stops` and `title` are the ticket of its run in progress
@@ -815,11 +826,12 @@ function Select-NextWorker($ticket, $issues, $workerViews, $settings = $null, $a
         @{
             view = $view; works = $works; clash = [int](@(Get-Clashes $areas $held).Count -gt 0); free = [int]($view.activity -eq 'free')
             off = [int](Test-ComplexityOff $complexity $settings ([string]$view.id)); paused = [int]($view.status -eq 'paused')
+            passive = [int][bool]$view.passive
             short = $room.short; long = $room.long; started = [long]$view.startedAt
         }
     })
     Select-Provider $default
-    $order = @($ranked | Sort-Object @{ Expression = { $_.paused } }, @{ Expression = { $_.off } }, @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
+    $order = @($ranked | Sort-Object @{ Expression = { $_.passive } }, @{ Expression = { $_.paused } }, @{ Expression = { $_.off } }, @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
         @{ Expression = { $_.short }; Descending = $true }, @{ Expression = { $_.long }; Descending = $true },
         @{ Expression = { $_.started }; Descending = $true }, @{ Expression = { [int]$_.view.id } })
     $able = @(foreach ($one in $order) {
@@ -851,7 +863,8 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
         $nexts[[int]$view.queued] = [string]$view.id
     }
     $busy = Get-BusyAreas $issues
-    $enabled = @($workerViews | Where-Object { $_.status -ne 'disabled' })
+    # Not a passive worker: it takes no ticket from the queue (docs/QUEUE.md, A passive worker).
+    $enabled = @($workerViews | Where-Object { $_.status -ne 'disabled' -and -not $_.passive })
     $queued = @()
     $parked = @()
     $sorted = @($issues | Where-Object {
@@ -955,6 +968,8 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
         $shown = $false
         $kind = 'ticket'
         $forced = $false
+        # A passive worker takes this one only at the arrow (docs/QUEUE.md, A passive worker).
+        $manual = $false
         $account = $accounts | Where-Object { $_.name -eq $view.account } | Select-Object -First 1
         if ($view.now) {
             # As the worker reads it: also a blocked ticket. Not the ticket of its Now run: the file stays while that works.
@@ -995,6 +1010,7 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
         if (-not $pick -and $pinned) {
             $pick = $pinned
             $kind = 'queued'
+            $manual = [bool]$view.passive
             if (-not $why) {
                 $why = Get-NextWait $pick $open (Get-BusyAreas $issues $current)
             }
@@ -1033,7 +1049,10 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
                     $why = "$(($clash | ForEach-Object { $_ -replace '^area:', '' }) -join ', ') busy"
                 }
             }
-            if ($pick -and -not $shown) {
+            # A passive worker's is shown, not given: the queue's ticket still goes to a worker that takes it.
+            if ($view.passive) {
+                $manual = $true
+            } elseif ($pick -and -not $shown) {
                 $given += $pick.number
             }
         }
@@ -1042,6 +1061,7 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             $next[[string]$view.id] = @{
                 number = $pick.number; title = $pick.title; url = $pick.url; areas = Get-Areas $pick; size = Get-Label $pick 'size:'
                 complexity = $(if ($complexity) { $complexity } else { 'medium' }); kind = $kind; forced = $forced; available = -not $why; why = $why
+                manual = $manual
             }
         }
     }
@@ -1218,6 +1238,7 @@ function New-Snapshot($data) {
             queuedForced = [bool]$worker.queuedForced }
         # The owner's name for it (Set-WorkerName), '' for none.
         $view.name = if ($data.settings -and $data.settings.workers -and $data.settings.workers.$id) { [string]$data.settings.workers.$id.name } else { '' }
+        $view.passive = [bool]($data.settings -and $data.settings.workers -and $data.settings.workers.$id -and $data.settings.workers.$id.passive -eq $true)
         # The worker's coding tool: its account's (plugins.ps1, Get-WorkerProvider), by its provider plugin's name.
         $plugin = Get-WorkerProvider $data.settings $id $known
         $view.provider = $(if ($plugin) { [string]$plugin.Name } else { '' })

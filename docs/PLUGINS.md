@@ -101,10 +101,10 @@ nothing and changes nothing.
 | ---- | ----------------- | -------------- | ---------- |
 | `Setup` | in `setup.ps1`, each time it runs | the main checkout | the files it added to the project, as paths from the repo root |
 | `PrepareCopy` | in `setup.ps1` and Add a worker, for each worker copy | that worker copy | nothing |
-| `Start` | in the worker script, before each look for a job, and before a run in a checkout of another repo | the worker copy, or that checkout | nothing |
+| `Start` | in the worker script, before each look for a job (for a passive worker, before a run instead), and before a run in a checkout of another repo | the worker copy, or that checkout | nothing |
 | `GetRun` | before a run starts or resumes | the job's checkout | what the run gets (below) |
 | `EndRun` | after a run, however it ended | the job's checkout | nothing |
-| `Close` | in the worker script, once when the worker becomes disabled, after its run has ended | the worker copy, then each checkout of another repo it ran in | nothing |
+| `Close` | in the worker script, once when the worker becomes disabled, after its run has ended; for a passive worker, each time it waits with no run and none held ([QUEUE.md](QUEUE.md), A passive worker) | the worker copy, then each checkout of another repo it ran in | nothing |
 
 - **`Setup`** checks the PC and adds what the project itself must hold (an editor script, a config file). The files
   reach the worker copies only through git, so setup commits the returned files or tells the owner to. It must be safe

@@ -223,6 +223,7 @@ const runModel = (t) => t.model && `${modelName(t.model)}${t.effort ? ` · ${t.e
 
 // ---- Workers
 
+// A passive worker's Active reads Passive (workerCard; docs/QUEUE.md, A passive worker).
 const statusNames = { active: 'Active', paused: 'Paused', disabled: 'Disabled' };
 const statusIcons = { active: 'play', paused: 'pause', disabled: 'power' };
 const pendingVerbs = { paused: 'Pauses', disabled: 'Disables' };
@@ -328,11 +329,11 @@ function workerCard(worker) {
   const nextBody = next
     ? `<a class="title${next.available ? '' : ' off'}" href="${esc(next.url)}" target="_blank">${esc(next.title)}</a>
        <div class="meta">${badges([kind, ...(next.areas || []), next.size, next.complexity])}${takes ? `<span class="why">takes it ${takes}</span>`
-    : next.available ? '' : `<span class="why">${icon('lock')}${esc(next.why)}</span>`}</div>`
+    : next.available ? (next.manual ? '<span class="why">waits for the arrow</span>' : '') : `<span class="why">${icon('lock')}${esc(next.why)}</span>`}</div>`
     : `<span class="free">${worker.status === 'disabled' ? 'None' : 'Nothing queued'}</span>`;
 
   const seg = Object.keys(statusNames).map((s) => `<button data-status="${s}" data-worker="${id}" aria-pressed="${worker.status === s}"
-    class="${worker.status === s ? 'on' : ''}${worker.pending?.to === s ? ' pending' : ''}"${worker.status === s ? ` style="view-transition-name:seg-${esc(scope)}-${id}"` : ''}>${icon(statusIcons[s])}<span>${statusNames[s]}</span></button>`).join('');
+    class="${worker.status === s ? 'on' : ''}${worker.pending?.to === s ? ' pending' : ''}"${worker.status === s ? ` style="view-transition-name:seg-${esc(scope)}-${id}"` : ''}>${icon(statusIcons[s])}<span>${s === 'active' && worker.passive ? 'Passive' : statusNames[s]}</span></button>`).join('');
   const pending = worker.pending ? `<div class="pending-note">${pendingVerbs[worker.pending.to]} ${howNames[worker.pending.how]}</div>` : '';
 
   // Config opens the worker's config (drawConfig). Its button counts the complexities the worker takes while one is off.
@@ -368,7 +369,8 @@ function workerCard(worker) {
 
 // A worker's config, the dialog its Config button opens (docs/APP.md, Workers, Config): its mapping (docs/QUEUE.md, A
 // worker's mapping) and a switch for each complexity (`workers.<id>.complexity`). Off, the worker takes no new ticket
-// of the complexity and leaves the answers and rebases of its PRs of it (`jobs`) until it is on again.
+// of the complexity and leaves the answers and rebases of its PRs of it (`jobs`) until it is on again. Beside the
+// mapping, the Passive switch (`workers.<id>.passive`).
 // The mapping is the worker's own, for the coding tool it is on, or another worker's that it follows: a row for each
 // complexity with its model and effort, its compact size, its advisor switch and its effort without the advisor. The
 // lists are the tool's models.json's (toolView), with the value in use always among them: a list without it would
@@ -461,7 +463,9 @@ function drawConfigOf(worker) {
   const followKey = `mapping:${worker.id}`;
   put($('config-body'), `<div class="mapping-of${busyClass(followKey)}"${busyAttr(followKey)}>
       <label>Mapping<select data-follow="${id}" aria-label="Whose mapping worker ${id} uses">${followOptions(worker, all)}</select></label>
-      ${toolBadge(toolName(state, worker.provider))}</div>
+      ${toolBadge(toolName(state, worker.provider))}
+      <button class="take${worker.passive ? ' on' : ''}" data-passive="${id}" aria-pressed="${Boolean(worker.passive)}" title="${worker.passive ? 'It takes only the tickets you give it' : 'It takes tickets from the queue'}">
+        ${icon(worker.passive ? 'check' : 'x')}<span><b>Passive</b></span></button></div>
     ${own.length ? '<h3 class="config-group">In every project</h3>' : ''}
     <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide${has.efforts ? '' : ' none'}">Effort</span><span${has.compact ? '' : ' class="none"'}>Compacts near</span></div>
     ${rows(shared)}${advisorRow}
@@ -724,7 +728,8 @@ function info(s) {
     section('Who builds what', `<p>A worker's ${setting('status', 'workers')}: Active takes tickets. Paused takes none and keeps its ticket; a run that waits at a usage limit or a stop line
         then stays stopped until you set the worker active. Disabled takes none, other workers take its
         ticket, and its plugins close what they opened for it. Force (the arrow on Next) gives a free worker its next
-        ticket now, past the limits.</p>
+        ticket now, past the limits. A passive worker (its ${setting('Config', 'workers')}) takes a new ticket only at
+        the arrow or a Now, and its plugins open its environment only for a run.</p>
       <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes and how it runs each.${per.length > 1
         ? ` The project on a worker's ${setting('card', 'workers')} moves the worker to another project.` : ''}</p>`),
     section('Complexities', `<p>A ticket's complexity picks the model (no label: medium); its size (S, M, L) only says
@@ -1415,6 +1420,12 @@ document.addEventListener('click', async (e) => {
     await act(project, { action: 'complexity', worker: data.worker, complexity: data.take, on }, {
       keys: [`worker:${data.worker}`, `mapping:${data.worker}:${data.take}`],
       apply: (s) => { takeOf(s, data.worker, data.take).on = on; },
+    });
+  } else if (data.passive) {
+    const on = target.getAttribute('aria-pressed') !== 'true';
+    await act(project, { action: 'passive', worker: data.passive, on }, {
+      keys: [`worker:${data.passive}`, `mapping:${data.passive}`],
+      apply: (s) => { workerOf(s, data.passive).passive = on; },
     });
   } else if (data.away !== undefined) {
     // What waits now goes on at once and cannot be taken back, so the owner confirms it.
