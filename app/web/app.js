@@ -318,10 +318,13 @@ function workerCard(worker) {
   let force = '';
   if (waits) force = `<button data-unforce="${id}">Cancel</button>`;
   else if (next) {
-    const can = worker.status === 'active' && !worker.pending && (!worker.run || ['ticket', 'queued'].includes(next.kind))
-      && !['down', 'signedout', 'setup', 'setup-failed', 'error'].includes(worker.activity);
+    const out = ['down', 'signedout', 'setup', 'setup-failed', 'error'].includes(worker.activity);
+    const can = worker.status === 'active' && !worker.pending && (!worker.run || ['ticket', 'queued'].includes(next.kind)) && !out;
+    // Why the arrow is off (a disabled worker has no next ticket).
+    const off = worker.status !== 'active' ? 'The worker is paused' : worker.pending ? 'Its status is changing'
+      : out ? 'The worker cannot run now' : 'Its slot is not free';
     force = `${after && !worker.run ? ''
-      : `<button class="round" data-force="${id}" title="${can ? 'Take it now' : 'Its slot is not free'}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`}${
+      : `<button class="round" data-force="${id}" title="${can ? 'Take it now' : off}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`}${
       queued ? `<button class="x" data-unnext="${id}" title="Cancel the Queue next" aria-label="Cancel the Queue next">${icon('x')}</button>` : ''}`;
   }
   const kind = next && { answered: 'your answers', 'needs-rebase': 'a rebase', now: 'now', queued: 'queued next' }[next.kind];
@@ -370,7 +373,8 @@ function workerCard(worker) {
 // A worker's config, the dialog its Config button opens (docs/APP.md, Workers, Config): its mapping (docs/QUEUE.md, A
 // worker's mapping) and a switch for each complexity (`workers.<id>.complexity`). Off, the worker takes no new ticket
 // of the complexity and leaves the answers and rebases of its PRs of it (`jobs`) until it is on again. Beside the
-// mapping, the Passive switch (`workers.<id>.passive`).
+// mapping. Above it, Active or Passive (`workers.<id>.passive`); a passive worker's complexity switches do not count
+// (limits.ps1, Test-ComplexityOff), so they are no buttons then.
 // The mapping is the worker's own, for the coding tool it is on, or another worker's that it follows: a row for each
 // complexity with its model and effort, its compact size, its advisor switch and its effort without the advisor. The
 // lists are the tool's models.json's (toolView), with the value in use always among them: a list without it would
@@ -414,7 +418,8 @@ function mappingRow(worker, t, tool, has) {
   // The description is behind an (i) button: a popover that a tap outside closes, so a phone keeps the row short.
   const about = esc(`about-${scope}-${worker.id}-${t.name}`);
   return `<div class="config-row${t.linked ? ' linked' : ''}${busyClass(key)}"${busyAttr(key)}>
-    <span class="config-name switch"><button class="take${t.on ? ' on' : ''}" data-take="${name}" data-worker="${id}" aria-pressed="${t.on}" title="${t.on ? 'It takes' : 'It takes no'} ${name} tickets">
+    <span class="config-name switch"><button class="take${t.on ? ' on' : ''}" data-take="${name}" data-worker="${id}" aria-pressed="${t.on}"${
+  worker.passive ? ' disabled title="A passive worker takes what you give it"' : ` title="${t.on ? 'It takes' : 'It takes no'} ${name} tickets"`}>
       ${icon(t.on ? 'check' : 'lock')}<span><b>${name}</b>${jobs}</span></button>${t.description ? `<button class="about" popovertarget="${about}" aria-label="What ${name} is">${icon('info')}</button>
       <span class="pop about-text" id="${about}" popover>${esc(t.description)}</span>` : ''}</span>
     <select data-run-model="${name}" data-worker="${id}" aria-label="Model of a ${name} run"${locked}>${pickList([...(tool?.models || []), t.base?.model], t.model, modelName)}</select>
@@ -461,11 +466,14 @@ function drawConfigOf(worker) {
   const override = model ? `<p class="takes-note">settings.json sets ${esc(modelName(model))}${effort ? ` · ${esc(effort)}` : ''}
     for every run of ${esc(scope)}: the models and efforts above are not in use.</p>` : '';
   const followKey = `mapping:${worker.id}`;
+  const passive = Boolean(worker.passive);
+  const mode = (on, name) => `<button data-passive="${id}" data-on="${on}" aria-pressed="${passive === on}"${passive === on ? ' class="on"' : ''}>${name}</button>`;
   put($('config-body'), `<div class="mapping-of${busyClass(followKey)}"${busyAttr(followKey)}>
+      <div class="seg" role="group" aria-label="How worker ${id} takes tickets">${mode(false, 'Active')}${mode(true, 'Passive')}</div>
+      <small>${passive ? 'Takes only the tickets you give it' : 'Takes tickets from the queue'}</small></div>
+    <div class="mapping-of${busyClass(followKey)}"${busyAttr(followKey)}>
       <label>Mapping<select data-follow="${id}" aria-label="Whose mapping worker ${id} uses">${followOptions(worker, all)}</select></label>
-      ${toolBadge(toolName(state, worker.provider))}
-      <button class="take${worker.passive ? ' on' : ''}" data-passive="${id}" aria-pressed="${Boolean(worker.passive)}" title="${worker.passive ? 'It takes only the tickets you give it' : 'It takes tickets from the queue'}">
-        ${icon(worker.passive ? 'check' : 'x')}<span><b>Passive</b></span></button></div>
+      ${toolBadge(toolName(state, worker.provider))}</div>
     ${own.length ? '<h3 class="config-group">In every project</h3>' : ''}
     <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide${has.efforts ? '' : ' none'}">Effort</span><span${has.compact ? '' : ' class="none"'}>Compacts near</span></div>
     ${rows(shared)}${advisorRow}
@@ -729,7 +737,7 @@ function info(s) {
         then stays stopped until you set the worker active. Disabled takes none, other workers take its
         ticket, and its plugins close what they opened for it. Force (the arrow on Next) gives a free worker its next
         ticket now, past the limits. A passive worker (its ${setting('Config', 'workers')}) takes a new ticket only at
-        the arrow or a Now, and its plugins open its environment only for a run.</p>
+        the arrow or a Now, of any complexity, and its plugins open its environment only for a run.</p>
       <p>A worker's ${setting('Config', 'workers')} sets which complexities it takes and how it runs each.${per.length > 1
         ? ` The project on a worker's ${setting('card', 'workers')} moves the worker to another project.` : ''}</p>`),
     section('Complexities', `<p>A ticket's complexity picks the model (no label: medium); its size (S, M, L) only says
@@ -1102,6 +1110,12 @@ async function act(project, body, { keys = [], apply, after, done } = {}) {
   return ok;
 }
 
+// Opens a dialog, at its top: its body keeps the place where it was last scrolled to.
+function show(id) {
+  $(id).showModal();
+  $(id).querySelector('.dialog-body').scrollTop = 0;
+}
+
 // Asks before an action, in the page's own dialog, the same for every action: a title, a text, the fields to fill
 // (`fields`, HTML; adding something) and the action's button (red for `danger`). Resolves to the fields' values for yes
 // (an object, empty without fields), false for Cancel and Escape. Without `yes` it only tells: one Close button.
@@ -1119,7 +1133,7 @@ function ask(title, text, yes, { fields = '', danger = false, also = '' } = {}) 
   $('ask-also').hidden = !also;
   $('ask-no').textContent = yes ? 'Cancel' : 'Close';
   dialog.returnValue = '';
-  dialog.showModal();
+  show('ask');
   // A removal never goes on a stray Enter.
   if (danger) $('ask-no').focus();
   return new Promise((resolve) => dialog.addEventListener('close', () => resolve(['yes', 'also'].includes(dialog.returnValue)
@@ -1277,7 +1291,7 @@ function setStatus(project, worker, to) {
   $('how-title').textContent = `${to === 'paused' ? 'Pause' : 'Disable'} ${who}`;
   $('how-options').innerHTML = Object.entries(howOptions).map(([how, [glyph, name, effect]]) => `<button data-how="${how}" data-to="${to}" data-worker="${esc(worker)}">
     ${icon(glyph)}<span><b>${name}</b><small>${effect}${how === 'finish' ? '' : ` ${keeps[to]}`}</small></span></button>`).join('');
-  $('how').showModal();
+  show('how');
 }
 
 // An answer in text, or no text to take the default; the server decides what the queue does with it. Once the server
@@ -1390,8 +1404,22 @@ document.addEventListener('click', (e) => {
   const all = shot.matches('.banner') ? [shot] : [...(shot.closest('.question') || shot.closest('.text')).querySelectorAll('a.shot:not(.banner)')];
   viewed = { at: all.indexOf(shot), shots: all.map((a) => ({ src: a.href, text: a.parentElement.classList.contains('choice') ? a.nextElementSibling.innerHTML : '' })) };
   view(0);
-  $('viewer').showModal();
+  show('viewer');
 });
+// A press beside a dialog closes it, as its Close does. The backdrop is the dialog's own element outside its box. Both
+// the press and the release are beside it: a selection dragged out of a field closes nothing. Not a dialog with
+// fields to fill: a stray press would lose what the owner typed.
+const beside = (e) => {
+  if (e.target.tagName !== 'DIALOG' || e.target.querySelector('#ask-fields:not([hidden])')) return false;
+  const box = e.target.getBoundingClientRect();
+  return e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom;
+};
+let pressedBeside = false;
+// Not while a list or an (i) text is open in it: that press only closes the list. A browser without `select:open`
+// throws on it, and then the press closes both.
+const listOpen = () => { try { return Boolean(document.querySelector('select:open, :popover-open')); } catch { return false; } };
+document.addEventListener('pointerdown', (e) => { pressedBeside = beside(e) && !listOpen(); });
+document.addEventListener('click', (e) => { if (pressedBeside && beside(e)) e.target.close(); });
 $('viewer').addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') view(e.key === 'ArrowLeft' ? -1 : 1);
 });
@@ -1422,8 +1450,9 @@ document.addEventListener('click', async (e) => {
       apply: (s) => { takeOf(s, data.worker, data.take).on = on; },
     });
   } else if (data.passive) {
-    const on = target.getAttribute('aria-pressed') !== 'true';
-    await act(project, { action: 'passive', worker: data.passive, on }, {
+    // Active or Passive: a press on the one that is on changes nothing.
+    const on = data.on === 'true';
+    if (target.getAttribute('aria-pressed') !== 'true') await act(project, { action: 'passive', worker: data.passive, on }, {
       keys: [`worker:${data.passive}`, `mapping:${data.passive}`],
       apply: (s) => { workerOf(s, data.passive).passive = on; },
     });
@@ -1552,11 +1581,11 @@ document.addEventListener('click', async (e) => {
     configOf = { project, id: data.config };
     $('config').dataset.project = project;
     drawConfig();
-    $('config').showModal();
+    show('config');
   } else if (data.steps) {
     $('steps-title').textContent = `Worker ${data.steps}${names.length > 1 ? ` on ${project}` : ''}: latest run`;
     $('steps-list').innerHTML = '<li>Loading...</li>';
-    $('steps').showModal();
+    show('steps');
     try {
       const log = await (await fetch(api(project, `api/log?worker=${encodeURIComponent(data.steps)}`), { cache: 'no-store' })).json();
       $('steps-list').innerHTML = (log.steps || []).map((s) => `<li>${esc(s)}</li>`).join('') || '<li>No run yet.</li>';

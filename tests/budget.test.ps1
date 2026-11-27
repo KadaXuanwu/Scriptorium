@@ -82,6 +82,8 @@ Assert-Same (Test-ComplexityOff 'high' $switches '2') $false 'a complexity switc
 Assert-Same (Test-ComplexityOff 'low' $switches '2') $false 'a complexity the settings do not name'
 Assert-Same (Test-ComplexityOff '' $switches '2') $true 'no label counts as medium'
 Assert-Same (Test-ComplexityOff 'design' $null '2') $false 'no settings: every complexity is on'
+$switches.workers.'2' | Add-Member passive $true
+Assert-Same (Test-ComplexityOff 'design' $switches '2') $false 'a passive worker has no complexity off'
 
 # How a run that ended unfinished is held: the owner's pause keeps the session after a clean end on an enabled
 # worker; a hard stop, an error and a disable keep nothing; the workers' limit holds a run without a stop note.

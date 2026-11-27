@@ -105,8 +105,11 @@ worker takes no new ticket of that complexity and leaves the answers and rebases
 counts those PR jobs. A ticket already started goes on. While a complexity is off, the Config button counts the ones
 the worker takes.
 
-**Passive,** beside the Mapping list, is a switch (`workers.<id>.passive`) that saves at once: on, the worker is a
-passive one.
+**Active or Passive,** the first row, is the worker's kind (`workers.<id>.passive`) and saves at once. On a passive
+worker the complexity switches do not count, so they are names only.
+
+**Dialogs** close at their cross, at Escape and at a press beside them. A dialog with fields to fill closes only at
+its buttons and Escape.
 
 **The mapping** is the rest of the config: how this worker runs each complexity ([QUEUE.md](QUEUE.md), Models, A
 worker's mapping). Each change saves at once in the PC's settings (`workers.<id>.mapping`) and counts from the
@@ -158,6 +161,8 @@ Each card has two slots:
     run the first waits until that run resumes and ends. The second frees a run held at the workers' stop line within
     a minute; a run that a limit cut off gets only the first.
   - A PR's job is forced only into a free slot.
+  - While the arrow is off, its tooltip says why: the worker is paused, its status is changing, it cannot run now, or
+    its slot is not free.
   - The server writes a ticket to `.queue/next-<N>.json` with `force`, for Replace now to `.queue/force-<N>.json`
     with `now`, and a PR's job to the force file.
   - The slot then says when the worker takes the ticket. **Cancel** takes a Force or a Now back. On a ticket of Queue

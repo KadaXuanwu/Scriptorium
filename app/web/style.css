@@ -416,8 +416,9 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 .text .choice .shot img { width: 100%; max-height: none; aspect-ratio: 16 / 9; object-fit: contain; background: var(--bg); border-radius: 8px; }
 @container (max-width: 520px) { .choice { grid-template-columns: minmax(0, 1fr); } }
 /* The viewer: the picture's box has one size for every picture, so a step changes only what the pictures differ in. */
-#viewer { width: min(1500px, calc(100vw - 16px)); max-height: 96dvh; padding: 14px; }
-#viewer-img { display: block; width: 100%; height: calc(96dvh - 160px); object-fit: contain; background: var(--bg); border-radius: 8px; cursor: pointer; }
+#viewer { width: min(1500px, calc(100vw - 16px)); max-height: 96dvh; }
+#viewer .dialog-body { margin: 0; padding: 12px 14px 14px; overflow: hidden; }
+#viewer-img { display: block; width: 100%; height: calc(96dvh - 170px); object-fit: contain; background: var(--bg); border-radius: 8px; cursor: pointer; }
 .viewer-foot { display: flex; align-items: center; gap: 12px; min-height: 48px; margin-top: 10px; }
 #viewer-text { flex: 1; text-align: center; font-size: 14px; }
 /* The link to the picture itself (a phone zooms there) stands at the right, before Close. */
@@ -437,9 +438,11 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 @media (max-width: 760px) {
   .worker-tools > button > .i { display: none; }
 }
-#config { width: min(780px, calc(100vw - 32px)); }
-/* Whose mapping the worker uses, above its rows. */
-.mapping-of { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; }
+#config { width: min(780px, calc(100vw - 32px)); max-height: 94dvh; }
+/* Above the mapping's rows: Active or Passive, then whose mapping the worker uses. */
+.mapping-of { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.mapping-of .seg button { min-width: 84px; }
+.mapping-of small { color: var(--muted); }
 .mapping-of label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 /* The rows of a mapping in two groups: the ones the worker has in every project, then, apart, the project's own. */
 .config-group { margin: 16px 0 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
@@ -496,6 +499,8 @@ details .text { margin-bottom: 12px; font-size: 14px; color: var(--muted); }
 .take small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); white-space: nowrap; }
 .take.on .i { color: var(--accent); }
 .take:not(.on) { border-style: dashed; background: transparent; color: var(--muted); }
+/* A passive worker's complexity is no switch: its name alone. */
+.config-name.switch .take:disabled { opacity: 1; border-color: transparent; background: transparent; }
 /* The effort without the advisor counts only with the advisor on, so it looks as off as the switch. */
 .take:not(.on) + select:disabled { border-style: dashed; background: transparent; color: var(--muted); }
 /* A row of a mapping that another worker sets: its values are plain text, with no frame and nothing to press. Only
@@ -720,21 +725,33 @@ button.x .i { width: 16px; height: 16px; }
 /* A long file path in the text breaks where the dialog ends. */
 #ask label.check span { min-width: 0; overflow-wrap: anywhere; }
 
+/* A dialog: its head stays, its body scrolls. The body ends before the dialog's edge, so its text never touches the
+   border while it scrolls, and the bar stands in the gap at the right. */
 dialog {
   width: min(720px, calc(100vw - 32px));
-  max-height: 80dvh;
+  max-height: 88dvh;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 20px;
   background: var(--card);
   color: var(--ink);
-  padding: 20px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3);
 }
-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+dialog[open] { display: flex; flex-direction: column; animation: dialog-in 0.16s ease-out; }
+dialog::backdrop { background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(3px); animation: backdrop-in 0.16s ease-out; }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@keyframes backdrop-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { dialog[open], dialog::backdrop { animation: none; } }
+.dialog-body { min-height: 0; overflow: auto; margin: 0 4px 16px 0; padding: 16px 16px 4px 20px; }
 #how, #ask { width: min(440px, calc(100vw - 32px)); }
+#ask .dialog-body { margin-top: 16px; padding-top: 4px; }
 #ask h2 { margin: 0 0 8px; font-size: 16px; letter-spacing: 0; text-transform: none; color: var(--ink); }
 #ask p { margin: 0 0 18px; color: var(--muted); white-space: pre-line; }
 #ask .buttons { justify-content: flex-end; }
-.dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.dialog-head { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 12px 12px 20px; border-bottom: 1px solid var(--line); }
+.dialog-head [data-close] { border: 0; background: transparent; color: var(--muted); }
+.dialog-head [data-close]:hover { background: var(--raised); color: var(--ink); }
 .dialog-head h2 { margin: 0; font-size: 16px; letter-spacing: 0; text-transform: none; color: var(--ink); }
 .options { display: grid; gap: 8px; }
 .options button { justify-content: flex-start; gap: 14px; padding: 12px 14px; text-align: left; }
