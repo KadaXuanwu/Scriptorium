@@ -496,17 +496,6 @@ function Update-Snapshot {
         }
     }
     $saved = $script:saved
-    # Queue next (docs/QUEUE.md, Queue next) ends when the worker's config no longer takes the ticket: its complexity
-    # is off for the worker. Here, not only in the worker script: that one looks only when its run has ended.
-    foreach ($worker in $workers | Where-Object { $_.queued -and $script:gh }) {
-        $issue = $script:gh.issues | Where-Object { $_.number -eq $worker.queued } | Select-Object -First 1
-        if ($issue -and (Test-ComplexityOff (Get-Label $issue 'complexity:') $saved $worker.id)) {
-            Remove-Item (Join-Path $mainQueue "next-$($worker.id).json") -ErrorAction SilentlyContinue
-            $worker.queued = 0
-            $worker.queuedForced = $false
-            Write-AppLog "next: #$($issue.number) left worker $($worker.id), its complexity is off"
-        }
-    }
     $data = @{
         now = Get-Now; slug = $slug; workers = $workers; control = $control
         usage = Read-Json (Join-Path $PcDir 'usage.json'); out = Read-Json (Join-Path $PcDir 'out.json'); settings = $saved
