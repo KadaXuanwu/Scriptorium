@@ -308,8 +308,8 @@ function workerCard(worker) {
 
   // Force (the arrow) gives the worker its next ticket past what holds it back: at once on a free worker; in a run, a
   // ticket after that run or in its place, as the owner answers (the click). A PR's job only goes into a free slot.
-  // Queue next (the Queue tab) gives the worker its next ticket and forces nothing: the slot is marked, and Cancel
-  // takes it back, forced or not.
+  // Queue next (the Queue tab) gives the worker its next ticket and forces nothing: the slot is marked, and the cross
+  // in its corner takes it back, forced or not.
   const next = worker.next;
   const waits = worker.forced && (!worker.run || (worker.now && worker.now !== worker.ticket));
   const queued = !waits && next?.kind === 'queued';
@@ -319,8 +319,9 @@ function workerCard(worker) {
   else if (next) {
     const can = worker.status === 'active' && !worker.pending && (!worker.run || ['ticket', 'queued'].includes(next.kind))
       && !['down', 'signedout', 'setup', 'setup-failed', 'error'].includes(worker.activity);
-    force = `${queued ? `<button data-unnext="${id}">Cancel</button>` : ''}${after && !worker.run ? ''
-      : `<button class="round" data-force="${id}" title="${can ? 'Take it now' : 'Its slot is not free'}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`}`;
+    force = `${after && !worker.run ? ''
+      : `<button class="round" data-force="${id}" title="${can ? 'Take it now' : 'Its slot is not free'}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`}${
+      queued ? `<button class="x" data-unnext="${id}" title="Cancel the Queue next" aria-label="Cancel the Queue next">${icon('x')}</button>` : ''}`;
   }
   const kind = next && { answered: 'your answers', 'needs-rebase': 'a rebase', now: 'now', queued: 'queued next' }[next.kind];
   const takes = waits ? `at its next ${worker.activity === 'running' ? 'checkpoint' : 'poll'}` : after ? (worker.run ? 'after its run' : 'at its next poll') : '';
@@ -728,7 +729,7 @@ function info(s) {
         ? ` The project on a worker's ${setting('card', 'workers')} moves the worker to another project.` : ''}</p>`),
     section('Complexities', `<p>A ticket's complexity picks the model (no label: medium); its size (S, M, L) only says
       how much usage it takes. A worker's ${setting('Config', 'workers')} maps each complexity to a model and switches
-      off the ones it does not take. A pick counts from the worker's next run.</p>
+      off the ones it does not take; a ticket you give it by hand (Next, the arrow) it takes all the same. A pick counts from the worker's next run.</p>
       <p>A worker can use another worker's mapping: the picks are then shared, the switches stay its own.${per.length > 1
         ? ' A complexity of one project\'s own has its row only there, and its pick waits there while the worker is elsewhere.' : ''}${toolHas(s).compact
         ? ' Compacts near is the context size at which the coding tool sums up the older part of a run.' : ''}</p>

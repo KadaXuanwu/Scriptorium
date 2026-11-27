@@ -122,8 +122,9 @@ More rules:
   a longer window too. A window with none, as the only window of an account, holds a new ticket back only at its
   ceiling.
 - **Complexity switches:** the owner switches a complexity off and on for each worker (Settings,
-  `workers.<id>.complexity`; the worker's Config). Off: that worker takes no new ticket of it, forced or not, and the
-  answers and rebases of its PRs of it wait. A ticket already started goes on, also a held run that resumes. The test is
+  `workers.<id>.complexity`; the worker's Config). Off: that worker takes no new ticket of it from the queue, and the
+  answers and rebases of its PRs of it wait. A ticket that the owner gives the worker by hand (Queue next, forced or
+  not, and Now) it takes all the same. A ticket already started goes on, also a held run that resumes. The test is
   `Test-ComplexityOff` ([limits.ps1](../limits.ps1)), the same for the workers and the page.
 - **Fits:** an account takes a new ticket while its usage is under the pick-up limit of the ticket's size, in each
   window that has them, and every window is under its ceiling (`Get-Fit`). A worker's own PR or ticket and a forced
@@ -528,7 +529,7 @@ in a run ([APP.md](APP.md), Workers). The server writes the ticket to that worke
   models that its plan refused (`access.json`).
   The plan can therefore refuse the start of a Now run. The ticket then goes back to the queue (Models).
 - **The Now ends** without a run in these cases, and the worker deletes the file:
-  - The ticket left the queue: closed, claimed by another worker, or its complexity is off for the worker.
+  - The ticket left the queue: closed or claimed by another worker.
     The worker takes only the ticket that the file names, never another one (`Select-Now` in [areas.ps1](../areas.ps1)).
   - The owner cancels the Now on the worker's card or on the ticket's row, or pauses or disables the worker. A cancel
     before the checkpoint withdraws the stop note, and the run goes on.
@@ -540,8 +541,9 @@ Queue). It forces nothing. The server writes the ticket to that worker's next fi
 
 - **The worker** is the server's pick ([APP.md](APP.md), Queue), or another worker that can take the ticket, which
   the owner chooses in the dialog: each worker runs the ticket on the models of its own mapping (Models, A worker's
-  mapping). Not among them: a worker that is not active, one whose script or account is out, and one with the
-  ticket's complexity off. A worker at its usage limit is among them.
+  mapping). Not among them: a worker that is not active and one whose script or account is out. A worker at its
+  usage limit is among them, and so is one with the ticket's complexity off, after the others: the switches hold
+  back only the queue's own tickets (Complexity switches).
 - **The ticket** waits for that worker. No other worker takes it. The worker's card shows it as its next, marked
   and tagged `queued next`, and its row on the Queue tab names the worker. One more Queue next for the same worker
   replaces the first, which goes back to the queue.
@@ -561,8 +563,6 @@ Queue). It forces nothing. The server writes the ticket to that worker's next fi
     the owner answers Replace now (Now).
   - Its run is a forced run: the worker writes its force file as it takes the ticket.
 - **It ends** without a run in these cases:
-  - The worker's config no longer takes it: the ticket's complexity is off for the worker. The server deletes the
-    file at its next look, so the ticket is free while the worker's run still works.
   - The ticket left the queue: closed or claimed by another worker. For a forced one, the worker takes no other job
     in its place at that look.
   - The owner cancels it on the worker's card or on the ticket's row, or pauses, disables, removes or moves the

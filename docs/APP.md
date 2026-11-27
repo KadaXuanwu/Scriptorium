@@ -154,7 +154,8 @@ Each card has two slots:
   - The server writes a ticket to `.queue/next-<N>.json` with `force`, for Replace now to `.queue/force-<N>.json`
     with `now`, and a PR's job to the force file.
   - The slot then says when the worker takes the ticket. **Cancel** takes a Force or a Now back. On a ticket of Queue
-    next it stands beside the arrow and takes the Queue next back, forced or not.
+    next the arrow stands in the slot's bottom right corner, and a small cross in its top right corner takes the
+    Queue next back, forced or not.
 
 **A ticket's tags** stand in one order on every tab: kind (your answers, a rebase, part), repo (only another repo than
 the project's), areas, size, then the model and effort of its run (Now) or, for a ticket not started, its complexity
@@ -266,9 +267,10 @@ The repo may be private, so the server fetches each one once with the owner's `g
   ([QUEUE.md](QUEUE.md), Queue next). It forces nothing: the ticket waits there as it would in the queue, and the
   arrow on the worker's card forces it (Workers).
   - The server picks the worker (`Select-NextWorker`). It must be active with no change of status to come, with a
-    script that runs and an account that takes runs, and with the ticket's complexity on. Room on its account is no
-    condition.
-  - Of those, the first is a worker whose ticket in work holds an area of this one. Then a free worker, then the
+    script that runs and an account that takes runs. Room on its account is no condition, nor are its complexity
+    switches.
+  - Of those, the workers with the ticket's complexity on go first. Among them the first is a worker whose ticket in
+    work holds an area of this one. Then a free worker, then the
     account with the most room in its shortest window, then in its longest, then the run that started last.
   - The page asks first. Its text is the worker's status (free, the run it is in, a held run, or at its usage limit)
     and the areas that another ticket still holds.
@@ -432,8 +434,7 @@ random one); `ntfy.server` overrides `https://ntfy.sh`.
   it for a PR's job and for a Now; the worker script, as it takes a forced Queue next. The worker script deletes it
   when the forced run ends, or when a Now ends without a run.
 - **Next** (`.queue/next-<N>.json`, written by the server only): `{ticket}`, the ticket of a Queue next, with
-  `force: true` once the owner forced it. The worker script deletes it when it takes the ticket; the server, when
-  the ticket's complexity is off for the worker.
+  `force: true` once the owner forced it. The worker script deletes it when it takes the ticket or when the ticket left the queue.
 - **History** (`.queue/history.jsonl`): each run's `duration` in seconds of wall time (`wall: true` marks it).
 - **Progress** (`<copy>/.queue/progress.json`): the run's last checkpoint, `{ticket, done, next}`.
 

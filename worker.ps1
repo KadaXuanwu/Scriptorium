@@ -852,11 +852,12 @@ function Get-NextJob {
     }
 
     # Now (docs/QUEUE.md, Now): the ticket this worker's force file names with `now` goes before all its other jobs. A
-    # ticket that left the queue meanwhile ends the Now: the worker takes no other ticket in its place.
+    # ticket that left the queue meanwhile ends the Now: the worker takes no other ticket in its place. The owner gave
+    # it by hand, so the worker's complexity switches do not count (docs/QUEUE.md, Complexity switches).
     $now = Read-Now $forceFile
     if ($now) {
         $ticket = Select-Now $issues $now $me $prBranches
-        if ($ticket -and -not (Test-ComplexityOff (Get-Complexity $ticket) $settings "$Id")) {
+        if ($ticket) {
             & gh issue edit $ticket.number --add-label $me -R $repo | Out-Null
             Write-Log "now: #$($ticket.number) onto worker $Id"
             return @{ Kind = 'ticket'; Ticket = $ticket.number; Title = $ticket.title; Repo = Get-TicketRepo $ticket; Size = Get-Size $ticket
@@ -874,7 +875,7 @@ function Get-NextJob {
     if ($forcedNext) {
         Remove-Item $nextFile -ErrorAction SilentlyContinue
         $ticket = Select-Now $issues $forcedNext $me $prBranches
-        if ($ticket -and -not (Test-ComplexityOff (Get-Complexity $ticket) $settings "$Id")) {
+        if ($ticket) {
             Set-Content $forceFile (@{ ticket = $ticket.number } | ConvertTo-Json -Compress) -Encoding utf8
             & gh issue edit $ticket.number --add-label $me -R $repo | Out-Null
             Write-Log "next: forced #$($ticket.number) onto worker $Id"
@@ -920,11 +921,11 @@ function Get-NextJob {
     # in place of the queue's. It waits as a queue's ticket does: for its blockers and its areas (Get-NextWait), for a
     # model the account has left and for the pick-up limit of its size. While it waits, the file stays and this worker
     # takes no other new ticket (the dispatcher below gives it none). Its claim carries it from here, so the file goes;
-    # so does one whose ticket left the queue.
+    # so does one whose ticket left the queue. The worker's complexity switches do not count for it.
     $queuedNext = Read-Next $nextFile
     if ($queuedNext) {
         $ticket = Select-Now $issues $queuedNext $me $prBranches
-        if (-not $ticket -or (Test-ComplexityOff (Get-Complexity $ticket) $settings "$Id")) {
+        if (-not $ticket) {
             Remove-Item $nextFile -ErrorAction SilentlyContinue
             Write-Log "next: #$queuedNext left the queue"
         } elseif (-not (Get-NextWait $ticket $open $busy)) {
