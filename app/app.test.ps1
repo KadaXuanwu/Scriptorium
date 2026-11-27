@@ -511,6 +511,8 @@ Assert-Equal (Now (Select-NextWorker $urgent $flight $not)) 'no worker can take 
 # A paused worker can take it, after the active ones: it keeps the ticket for its start.
 $choice = (Select-NextWorker $urgent $flight @(@{ id = '1'; status = 'paused'; activity = 'free'; account = 'b' }, (Working '3' 23 'a' 200)) $null $accounts).able
 Assert-Equal (($choice | ForEach-Object { $_.worker }) -join ' ') '3 1' 'a paused worker is among them, after the active ones'
+$choice = (Select-NextWorker $urgent $flight @(@{ id = '1'; status = 'active'; activity = 'free'; account = 'b'; passive = $true }, (Working '3' 23 'a' 200)) $null $accounts).able
+Assert-Equal (($choice | ForEach-Object { $_.worker }) -join ' ') '3 1' 'a passive worker is among them, after the others'
 # The owner gives the ticket by hand: a worker with its complexity off can take it, after the ones that have it on.
 $off = '{"workers":{"4":{"complexity":{"medium":false}}}}' | ConvertFrom-Json
 $choice = (Select-NextWorker $urgent $flight @($idle, @{ id = '6'; status = 'active'; activity = 'free'; account = 'b' }) $off $accounts).able

@@ -543,7 +543,8 @@ Queue). It forces nothing. The server writes the ticket to that worker's next fi
 
 - **The worker** is the server's pick ([APP.md](APP.md), Queue), or another worker that can take the ticket, which
   the owner chooses in the dialog: each worker runs the ticket on the models of its own mapping (Models, A worker's
-  mapping). Not among them: a disabled worker and one whose script or account is out. A paused worker is among them,
+  mapping). Not among them: a disabled worker and one whose script or account is out. A passive worker is among
+  them, last: it takes the ticket only at its arrow (A passive worker). A paused worker is among them,
   after the active ones: it keeps the ticket through its pause and takes it once the owner sets it active, so the
   owner can give a worker its first ticket before it starts. A worker at its
   usage limit is among them, and so is one with the ticket's complexity off, after the others: the switches hold
