@@ -768,10 +768,11 @@ function Test-PrOff($pr, $issues, $settings, [string] $worker) {
 }
 
 # Queue next (docs/QUEUE.md, Queue next): the worker that gets a queued ticket as its next, for the page's Next
-# button. Only a worker that looks for its next job: active with no change of status to come, with a script that runs
-# and an account that takes runs. Room on its account is no condition: the ticket waits with the worker, or the owner
+# button. Only a worker that looks for its next job, now or once the owner sets it active: active or paused with no
+# change of status to come, with a script that runs and an account that takes runs. A paused worker keeps the ticket
+# for its start, so the owner can give it one before the queue does. Room on its account is no condition: the ticket waits with the worker, or the owner
 # forces it on the worker's card. Nor are the worker's complexity switches: the owner gives the ticket by hand.
-# Of those: first the workers that have the ticket's complexity on, then
+# Of those: first the active workers, then the ones that have the ticket's complexity on, then
 # a worker whose ticket in work holds an area of this one (the two would change the same files), then a
 # free one, then the most room in the shortest window, then in the longest, then the run that started last.
 # Returns @{ worker; stops; title; busy; able }: `stops` and `title` are the ticket of its run in progress
@@ -785,11 +786,11 @@ function Select-NextWorker($ticket, $issues, $workerViews, $settings = $null, $a
     }
     $areas = @(Get-Names $ticket | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
     $able = @($workerViews | Where-Object {
-        $_.status -eq 'active' -and -not $_.pending -and
+        $_.status -in @('active', 'paused') -and -not $_.pending -and
             $_.activity -notin @('down', 'signedout', 'setup', 'setup-failed', 'opening', 'error')
     })
     if ($able.Count -eq 0) {
-        return @{ why = 'no worker can take it: each is paused or out' }
+        return @{ why = 'no worker can take it: each is disabled or out' }
     }
     # Each worker's account is read with the windows of the worker's own coding tool.
     $default = $script:Provider
@@ -813,12 +814,12 @@ function Select-NextWorker($ticket, $issues, $workerViews, $settings = $null, $a
         }
         @{
             view = $view; works = $works; clash = [int](@(Get-Clashes $areas $held).Count -gt 0); free = [int]($view.activity -eq 'free')
-            off = [int](Test-ComplexityOff $complexity $settings ([string]$view.id))
+            off = [int](Test-ComplexityOff $complexity $settings ([string]$view.id)); paused = [int]($view.status -eq 'paused')
             short = $room.short; long = $room.long; started = [long]$view.startedAt
         }
     })
     Select-Provider $default
-    $order = @($ranked | Sort-Object @{ Expression = { $_.off } }, @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
+    $order = @($ranked | Sort-Object @{ Expression = { $_.paused } }, @{ Expression = { $_.off } }, @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
         @{ Expression = { $_.short }; Descending = $true }, @{ Expression = { $_.long }; Descending = $true },
         @{ Expression = { $_.started }; Descending = $true }, @{ Expression = { [int]$_.view.id } })
     $able = @(foreach ($one in $order) {

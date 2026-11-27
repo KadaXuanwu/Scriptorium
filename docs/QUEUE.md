@@ -543,7 +543,9 @@ Queue). It forces nothing. The server writes the ticket to that worker's next fi
 
 - **The worker** is the server's pick ([APP.md](APP.md), Queue), or another worker that can take the ticket, which
   the owner chooses in the dialog: each worker runs the ticket on the models of its own mapping (Models, A worker's
-  mapping). Not among them: a worker that is not active and one whose script or account is out. A worker at its
+  mapping). Not among them: a disabled worker and one whose script or account is out. A paused worker is among them,
+  after the active ones: it keeps the ticket through its pause and takes it once the owner sets it active, so the
+  owner can give a worker its first ticket before it starts. A worker at its
   usage limit is among them, and so is one with the ticket's complexity off, after the others: the switches hold
   back only the queue's own tickets (Complexity switches).
 - **The ticket** waits for that worker. No other worker takes it. The worker's card shows it as its next, marked
@@ -567,7 +569,7 @@ Queue). It forces nothing. The server writes the ticket to that worker's next fi
 - **It ends** without a run in these cases:
   - The ticket left the queue: closed or claimed by another worker. For a forced one, the worker takes no other job
     in its place at that look.
-  - The owner cancels it on the worker's card or on the ticket's row, or pauses, disables, removes or moves the
+  - The owner cancels it on the worker's card or on the ticket's row, or disables, removes or moves the
     worker. A cancel of a forced one takes the whole Queue next back, not only the force.
 - A worker that holds a paused run keeps it: that run goes first, also before a forced ticket. Only Replace now
   frees it, and only one held at a checkpoint (Now).

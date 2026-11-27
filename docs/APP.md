@@ -266,10 +266,11 @@ The repo may be private, so the server fetches each one once with the owner's `g
 - **Next** (on a ticket of Up next, also a blocked one): one worker gets the ticket as its next new one
   ([QUEUE.md](QUEUE.md), Queue next). It forces nothing: the ticket waits there as it would in the queue, and the
   arrow on the worker's card forces it (Workers).
-  - The server picks the worker (`Select-NextWorker`). It must be active with no change of status to come, with a
+  - The server picks the worker (`Select-NextWorker`). It must be active or paused with no change of status to come, with a
     script that runs and an account that takes runs. Room on its account is no condition, nor are its complexity
     switches.
-  - Of those, the workers with the ticket's complexity on go first. Among them the first is a worker whose ticket in
+  - Of those, the active workers go first (a paused one keeps the ticket until the owner sets it active), then the
+    workers with the ticket's complexity on. Among them the first is a worker whose ticket in
     work holds an area of this one. Then a free worker, then the
     account with the most room in its shortest window, then in its longest, then the run that started last.
   - The page asks first. Its text is the worker's status (free, the run it is in, a held run, or at its usage limit)

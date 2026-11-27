@@ -495,9 +495,12 @@ Assert-Equal (Now (Select-NextWorker $urgent $flight @($answers, (Working '3' 23
 Assert-Equal (Now (Select-NextWorker $urgent $flight @((Working '1' 21 'b' 100)) $null @((Account 'b' 0.8)))) "1 stops 21 busy 'api'" 'room is no condition: the ticket waits with its worker'
 $limit = @{ id = '2'; status = 'active'; activity = 'room'; account = 'b' }
 Assert-Equal (Now (Select-NextWorker $urgent $flight @($limit) $null $accounts)) "2 stops 0 busy 'api'" 'nor is a worker at its limit left out: the arrow on its card forces the ticket'
-$not = @(@{ id = '1'; status = 'paused'; activity = 'free' }, @{ id = '2'; status = 'active'; activity = 'signedout' }, @{ id = '3'; status = 'active'; activity = 'down' },
+$not = @(@{ id = '1'; status = 'disabled'; activity = 'free' }, @{ id = '2'; status = 'active'; activity = 'signedout' }, @{ id = '3'; status = 'active'; activity = 'down' },
     @{ id = '5'; status = 'active'; activity = 'running'; pending = @{ to = 'paused' } })
-Assert-Equal (Now (Select-NextWorker $urgent $flight $not)) 'no worker can take it: each is paused or out' 'no worker that looks for a job'
+Assert-Equal (Now (Select-NextWorker $urgent $flight $not)) 'no worker can take it: each is disabled or out' 'no worker that looks for a job'
+# A paused worker can take it, after the active ones: it keeps the ticket for its start.
+$choice = (Select-NextWorker $urgent $flight @(@{ id = '1'; status = 'paused'; activity = 'free'; account = 'b' }, (Working '3' 23 'a' 200)) $null $accounts).able
+Assert-Equal (($choice | ForEach-Object { $_.worker }) -join ' ') '3 1' 'a paused worker is among them, after the active ones'
 # The owner gives the ticket by hand: a worker with its complexity off can take it, after the ones that have it on.
 $off = '{"workers":{"4":{"complexity":{"medium":false}}}}' | ConvertFrom-Json
 $choice = (Select-NextWorker $urgent $flight @($idle, @{ id = '6'; status = 'active'; activity = 'free'; account = 'b' }) $off $accounts).able

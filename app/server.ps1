@@ -616,8 +616,9 @@ function Invoke-Action($request) {
                 if ([string]$request.to -ne 'active' -and $now -and $now -ne [int]$state.ticket) {
                     Remove-Item $force -ErrorAction SilentlyContinue
                 }
-                # The same for a ticket queued as its next.
-                if ([string]$request.to -ne 'active') {
+                # A ticket queued as its next ends with its disable. Through a pause it stays: the owner queues a
+                # ticket on a paused worker, and the worker takes it once it is active (docs/QUEUE.md, Queue next).
+                if ([string]$request.to -eq 'disabled') {
                     Remove-Item (Join-Path $mainQueue "next-$id.json") -ErrorAction SilentlyContinue
                 }
                 if ($result.kill) {
