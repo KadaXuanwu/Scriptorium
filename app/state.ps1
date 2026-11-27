@@ -955,8 +955,8 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
         $forced = $false
         $account = $accounts | Where-Object { $_.name -eq $view.account } | Select-Object -First 1
         if ($view.now) {
-            # As the worker reads it: also a blocked ticket.
-            $pick = Select-Now $issues ([int]$view.now) $me $branches
+            # As the worker reads it: also a blocked ticket. Not the ticket of its Now run: the file stays while that works.
+            $pick = if ([int]$view.now -ne $current) { Select-Now $issues ([int]$view.now) $me $branches }
             if ($pick) {
                 $kind = 'now'
             }
@@ -1028,7 +1028,7 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
                 $pick = $rest[0]
                 $clash = Get-Clashes @(Get-Names $pick | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' }) $busy
                 if (-not $why) {
-                    $why = "$(($clash | ForEach-Object { $_ -replace '^area:', '' }) -join ', ') is busy"
+                    $why = "$(($clash | ForEach-Object { $_ -replace '^area:', '' }) -join ', ') busy"
                 }
             }
             if ($pick -and -not $shown) {

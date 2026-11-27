@@ -1441,7 +1441,7 @@ document.addEventListener('click', async (e) => {
     if (!next) return;
     // One fact a line: the worker's run, and what holds the ticket back. What the buttons do is on Details.
     const text = [worker.run && `${worker.activity === 'running' ? 'In a run' : 'Run held'}: ${worker.title}`,
-      !next.available && next.why.replace(/^./, (c) => c.toUpperCase())].filter(Boolean).join('\n');
+      !next.available && next.why].filter(Boolean).join('\n');
     // In a run: after it, or in its place (only a run that works: a held one goes first). A free worker takes it at once.
     let how = '';
     if (worker.run) {

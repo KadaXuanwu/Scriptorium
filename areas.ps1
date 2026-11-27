@@ -82,7 +82,7 @@ function Get-NextWait($ticket, $open, $busy) {
     }
     $clash = Get-Clashes @($ticket.labels | ForEach-Object { $_.name } | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' }) $busy
     if ($clash.Count -gt 0) {
-        return "$(($clash | ForEach-Object { $_ -replace '^area:', '' }) -join ', ') is busy"
+        return "$(($clash | ForEach-Object { $_ -replace '^area:', '' }) -join ', ') busy"
     }
     return ''
 }

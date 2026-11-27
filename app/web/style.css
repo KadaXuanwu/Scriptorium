@@ -268,6 +268,9 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
   .worker .more { display: inline-flex; }
   .grid > .worker:not(.open) { grid-row: span 4; }
   .worker:not(.open) :is(.checkpoint, .slot.next) { display: none; }
+  /* A queued next has Cancel and the arrow: they stand under the ticket, so its title keeps the slot's width. */
+  .slot.next.queued { flex-wrap: wrap; justify-content: flex-end; }
+  .slot.next.queued .slot-body { flex-basis: calc(100% - 50px); }
 }
 /* A card whose action the server has not confirmed yet: a turning ring at the right end of its head line (of a row:
    in the place of its control), inside the card, and its controls greyed. A question's banner is no head line: on it

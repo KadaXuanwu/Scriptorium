@@ -418,7 +418,7 @@ $working = @{ id = '4'; status = 'active'; activity = 'running'; ticket = 99 }
 $idle = @{ id = '5'; status = 'active'; activity = 'free' }
 $next = Get-NextTickets $issues @() @($working, $idle)
 Assert-Equal (Next $next '5') '4 True' 'the free worker gets the first ticket whose area is free'
-Assert-Equal (Next $next '4') '2 False api is busy' 'the working one gets the next in the queue: its area is held by another worker'
+Assert-Equal (Next $next '4') '2 False api busy' 'the working one gets the next in the queue: its area is held by another worker'
 $next = Get-NextTickets $issues @() @(@{ id = '4'; status = 'active'; activity = 'running'; ticket = 99 }, @{ id = '5'; status = 'paused'; activity = 'free' }, @{ id = '6'; status = 'disabled'; activity = 'free' })
 Assert-Equal (Next $next '5') '4 False the worker is paused' 'a paused worker takes none'
 Assert-Equal "$($next.ContainsKey('6'))" 'False' 'a disabled worker has no next ticket'
@@ -509,6 +509,8 @@ $blocked = (Get-QueueRows @((Issue 30 @('P1') 'Blocked by #31'), (Issue 31 @('P1
 Assert-Equal "$($blocked.reason) $($blocked.next.worker)" 'blocked by #31 4' 'a blocked ticket waits, and its Queue next names a worker'
 $next = Get-NextTickets $flight @() @($taking, $idle)
 Assert-Equal "$($next['3'].number) $($next['3'].kind) $($next['4'].number)" '20 now ' 'the Now is its worker''s next, and no other worker''s'
+$doing = @{ id = '3'; status = 'active'; activity = 'running'; ticket = 20; forced = $true; now = 20 }
+Assert-Equal "$((Get-NextTickets @((Issue 20 @('P1', 'worker:3'))) @() @($doing))['3'].number)" '' 'the ticket of the Now run in work is not its next'
 # Queue next: the ticket of its worker's next file is that worker's next new ticket, and no other worker's.
 Set-Content $file '{"ticket":6}' -Encoding utf8
 Assert-Equal "$(Read-Next $file) $(Read-Next $file -Forced)" '6 0' 'the ticket queued as a worker''s next, not forced'
@@ -524,7 +526,7 @@ $next = Get-NextTickets $flight @() @($later, $idle)
 Assert-Equal "$($next['3'].number) $($next['3'].kind) $($next['4'].number)" '20 queued ' 'it is its worker''s next, and no other worker''s'
 # It forces nothing: it waits for a blocker and for a busy area (the area of its worker's own run counts as free), and
 # for the pick-up limit of its size.
-Assert-Equal "$($next['3'].available) $($next['3'].why) $($next['3'].forced)" 'False api is busy False' 'a queued next waits while its area is busy'
+Assert-Equal "$($next['3'].available) $($next['3'].why) $($next['3'].forced)" 'False api busy False' 'a queued next waits while its area is busy'
 $open = @(20, 21, 22, 23)
 Assert-Equal (Get-NextWait $urgent $open @('area:db')) '' 'a queued next with no blocker and a free area does not wait'
 Assert-Equal (Get-NextWait (Issue 26 @('P1', 'area:api') 'Blocked by #21') $open @('area:api')) 'blocked by #21' 'a blocker holds it before an area does'
