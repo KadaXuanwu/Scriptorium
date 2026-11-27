@@ -465,6 +465,8 @@ foreach ($gone in 3, 6, 7, 9) {
     Assert-Equal "$(Select-Now $open $gone 'worker:1' @())" '' "Now takes no ticket $gone`: another worker's, parked, waiting on the owner or closed"
 }
 Assert-Equal "$(Select-Now $open 2 'worker:1' @('t2'))" '' 'nor a ticket with a PR'
+# A Now frees only a run held at a checkpoint: one that a limit cut off would lose its work.
+Assert-Equal "$(Test-HeldAtCheckpoint @{ AtLimit = $true }) $(Test-HeldAtCheckpoint @{ Stopped = $true }) $(Test-HeldAtCheckpoint @{ ModelOut = 'deep'; ResetsAt = 5 }) $(Test-HeldAtCheckpoint @{ LoggedOut = $true })" 'True True False False' 'the held runs that a Now may free'
 # The worker for a Queue next: a free one before one in a run; of those in a run the account with the most room, then
 # the run that started last; before all, the worker whose ticket in work holds an area of this one.
 function Working([string] $id, [int] $ticket, [string] $account, [long] $started) {

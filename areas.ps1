@@ -87,6 +87,13 @@ function Get-NextWait($ticket, $open, $busy) {
     return ''
 }
 
+# Whether a held run ($held: the worker's paused.json) ended at a checkpoint: at the workers' limit or for the owner's
+# pause. Its work is pushed and its handoff comment posted, so the owner's Now may free it (docs/QUEUE.md, Now). Any
+# other held run was cut off mid-work (the plan's own limit, a model's window, its account): freeing it would lose work.
+function Test-HeldAtCheckpoint($held) {
+    return [bool]($held.AtLimit -or $held.Stopped)
+}
+
 # The ticket a worker takes for Now, from the open tickets: $wanted while it is queued (a priority, not waiting on the
 # owner), no other worker than $me holds it, and it has no PR. An open blocker does not hold it: the owner accepts a
 # merge conflict with the blocker. $null when it left the queue: the worker then drops its force file. It never takes

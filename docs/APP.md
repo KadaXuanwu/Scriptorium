@@ -147,8 +147,9 @@ Each card has two slots:
   areas, the pick-up limits and the stop line ([QUEUE.md](QUEUE.md), Queue next).
   - A free worker takes it at its next poll. The page asks first only for a locked ticket, with the reason.
   - For a worker in a run the page asks: **After this run** (the run goes on, and the ticket is the worker's next
-    job) or **Replace now** (the run ends for it at its next checkpoint: [QUEUE.md](QUEUE.md), Now). For a run held
-    at a limit the first waits until that run resumes and ends, and the second frees it within a minute.
+    job) or **Replace now** (the run ends for it at its next checkpoint: [QUEUE.md](QUEUE.md), Now). For a held
+    run the first waits until that run resumes and ends. The second frees a run held at the workers' stop line within
+    a minute; a run that a limit cut off gets only the first.
   - A PR's job is forced only into a free slot.
   - The server writes a ticket to `.queue/next-<N>.json` with `force`, for Replace now to `.queue/force-<N>.json`
     with `now`, and a PR's job to the force file.
