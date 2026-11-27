@@ -42,12 +42,16 @@ function Merge-Usage($stored, $new) {
     return $new
 }
 
-# Whether a worker reads an account's usage with a probe when a run ends (worker.ps1, Invoke-Worker): the provider
-# reads none from a run's log and has a probe. The stored reading is then from before the run, and it counts as fresh
-# for 30 minutes (Get-FreshUsage): without the probe the next tickets are taken on it, and the page shows it.
+# Whether a worker reads an account's usage with a probe while a run works and when it ends (worker.ps1, Update-Usage,
+# Invoke-Worker): the provider reads none from a run's log and has a probe. The stored reading is then from before the
+# run, and it counts as fresh for 30 minutes (Get-FreshUsage): without the probe the page shows it, the stop line never
+# ends the run, and the next tickets are taken on it.
 function Test-ProbeAfterRun([bool] $readsLog, [bool] $probes) {
     return $probes -and -not $readsLog
 }
+
+# The seconds between two probes while such a run works: a probe starts a process, and the watch looks more often.
+$RunProbeSeconds = 120
 
 # A provider's usage reading (docs/PLUGINS.md, ReadUsage, ReadProbe) as the queue keeps it, read at $now: each window's
 # share used and reset, and whether the plan refused the request. The refusal of a window of some models is not

@@ -467,17 +467,17 @@ function Save-WindowOut([string] $account, [string] $window, $usage) {
     }
 }
 
-# An account's usage, read again with a probe when the last reading is older than 30 minutes: idle accounts get no run
-# events, and the owner's own sessions spend them too. A window of some models it may not read: the queue app shows
-# that window's read time.
-function Get-FreshUsage([string] $configDir) {
+# An account's usage, read again with a probe when the last reading is older than $maxAge seconds (30 minutes: idle
+# accounts get no run events, and the owner's own sessions spend them too). A window of some models it may not read:
+# the queue app shows that window's read time.
+function Get-FreshUsage([string] $configDir, [int] $maxAge = 1800) {
     $account = Get-Account $configDir
     $stored = (Read-AllUsage)[$account]
     # A reading of another account is no reading: the folder's login changed since.
     if ($stored -and [string]$stored.email -ne (Get-LoginEmail $account)) {
         $stored = $null
     }
-    if ($stored -and (Get-Now) - [long]$stored.at -lt 1800) {
+    if ($stored -and (Get-Now) - [long]$stored.at -lt $maxAge) {
         return $stored
     }
     $reply = Invoke-Probe $configDir
@@ -1019,12 +1019,25 @@ function Save-RunUsage([string] $log, [string] $account, $usage) {
 # While the run works: record usage. At the workers' limit, leave the run the note that ends it at its next
 # checkpoint; withdraw the note if the account has room again before then (a window reset, a
 # moved stop line). The note carries the whole instruction, so a run that read an older playbook follows it too.
+# With a provider whose runs' logs hold no usage (budget.ps1, Test-ProbeAfterRun) the reading is a probe's, one look
+# every $RunProbeSeconds, a failed one too. A newer reading of the page's Ping or of another worker on the account
+# counts as it, with no probe.
 function Update-Usage([string] $log, [string] $account) {
-    $usage = Get-Usage (Read-Log $log)
+    if (Test-ProbeAfterRun (Test-ProviderHook 'ReadUsage') (Test-ProviderHook 'Probe')) {
+        if ((Get-Now) - [long]$script:runProbedAt -lt $RunProbeSeconds) {
+            return
+        }
+        $script:runProbedAt = Get-Now
+        $usage = Get-FreshUsage (Get-ConfigDir $account) $RunProbeSeconds
+    } else {
+        $usage = Get-Usage (Read-Log $log)
+        if ($usage) {
+            $usage = Save-RunUsage $log $account $usage
+        }
+    }
     if (-not $usage) {
         return
     }
-    $usage = Save-RunUsage $log $account $usage
     $budget = Get-Budget $account $usage
     Save-Budget $budget
     # A forced run ignores the workers' limit; only the plan's own limit pauses it.
@@ -1321,8 +1334,6 @@ function Invoke-Worker($job, [string] $log, $paused) {
     }
     # A provider whose runs' logs hold no usage (budget.ps1, Test-ProbeAfterRun): the account is read with a probe now,
     # before the next ticket is taken. Not as $usage: a probe's refusal is not this run's.
-    # shortcut: no probe while the run works, so such a run passes the stop line unseen; probe in the watch loop when
-    # a run of such a provider must end at the line.
     if (Test-ProbeAfterRun (Test-ProviderHook 'ReadUsage') (Test-ProviderHook 'Probe')) {
         try {
             $reply = Invoke-Probe $configDir

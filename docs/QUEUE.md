@@ -148,8 +148,10 @@ More rules:
 - **Usage:** per account in the PC's `usage.json` (Settings, The PC's files), from the runs' logs. When it is older
   than 30 minutes, the script reads it again with a probe: the provider's cheapest request, the same as the page's
   Ping, which saves its reading too. That reading is the account's, so the front desk's and the owner's own use count
-  too. With a provider whose logs hold no usage, the script sends the probe when a run ends too, so the next ticket
-  is taken on what that run used; while such a run works, its usage is not read and the stop line does not end it.
+  too. With a provider whose logs hold no usage, the script sends the probe while a run works too (every
+  `$RunProbeSeconds` in [budget.ps1](../budget.ps1), unless a Ping or another worker read the account since), so the
+  page shows the run's usage and the stop line ends it, and once more when the run ends, so the next ticket is taken
+  on what that run used.
   Each reading keeps the
   login's email; when a login folder is signed in to another account, its reading counts as none. A save keeps a window
   from the stored reading where that one has a later reset. A share can fall before its reset (a limit that was reset
