@@ -124,8 +124,9 @@ More rules:
 - **Complexity switches:** the owner switches a complexity off and on for each worker (Settings,
   `workers.<id>.complexity`; the worker's Config). Off: that worker takes no new ticket of it from the queue, and the
   answers and rebases of its PRs of it wait. A ticket that the owner gives the worker by hand (Queue next, forced or
-  not, and Now) it takes all the same. A ticket already started goes on, also a held run that resumes. The test is
-  `Test-ComplexityOff` ([limits.ps1](../limits.ps1)), the same for the workers and the page.
+  not, and Now) it takes all the same. A ticket already started goes on, also a held run that resumes. A passive
+  worker's switches do not count (A passive worker). The test is `Test-ComplexityOff`
+  ([limits.ps1](../limits.ps1)), the same for the workers and the page.
 - **Fits:** an account takes a new ticket while its usage is under the pick-up limit of the ticket's size, in each
   window that has them, and every window is under its ceiling (`Get-Fit`). A worker's own PR or ticket and a forced
   ticket do not use the pick-up limits.
@@ -584,8 +585,10 @@ the worker's Config (`workers.<id>.passive`; [APP.md](APP.md), Workers), and the
   `needs-rebase`) and its own ticket without an open PR. A ticket that carries its `worker:<id>` label is its own.
 - **It takes no** new ticket from the queue, and no worker gives it one. A ticket of Queue next waits on its card
   until the arrow forces it.
-- **Its card** still shows the queue's best ticket as its next. That ticket is shown, not given: another worker
-  takes it as before, unless the arrow gives it to the passive one first.
+- **Its card** still shows the queue's best ticket as its next, also when that is another worker's next. That ticket
+  is shown, not given: another worker takes it as before, unless the arrow gives it to the passive one first.
+- **Its complexity switches** do not count: the owner gave it every ticket it has, so it takes each one, and the
+  answers and rebases of its PRs, whatever the complexity. The switches keep their values for when it is active again.
 - **Its environment** opens only for a run. The plugins' `Start` runs before the run, not before each look for a
   job, so the run starts later by the time `Start` takes. When the worker waits with no run and none held, the
   plugins close what they opened (`Close`; [PLUGINS.md](PLUGINS.md)). A held run keeps it open: `Close` saves nothing.

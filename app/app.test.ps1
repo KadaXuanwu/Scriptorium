@@ -431,6 +431,10 @@ $quiet = @{ id = '4'; status = 'active'; activity = 'free'; passive = $true }
 $next = Get-NextTickets $issues @() @($quiet, $idle)
 Assert-Equal "$(Next $next '4') $($next['4'].manual) | $(Next $next '5') $($next['5'].manual)" '4 True True | 4 True False' 'a passive worker''s next ticket is shown, and still given to another worker'
 Assert-Equal (Get-QueueRows $issues @($quiet)).queued[2].reason 'no free worker' 'a passive worker takes none from the queue'
+# Also behind the other workers, with one ticket in the queue and every complexity off: its switches do not count.
+$last = @{ id = '9'; status = 'active'; activity = 'free'; passive = $true }
+$next = Get-NextTickets @($hard[1]) @() @($idle, $last) $null ('{"workers":{"9":{"passive":true,"complexity":{"low":false}}}}' | ConvertFrom-Json)
+Assert-Equal "$(Next $next '5') | $(Next $next '9') $($next['9'].manual)" '8 True | 8 True True' 'a passive worker''s next ticket is the queue''s best, also when another worker has it'
 $passive = Set-WorkerPassive ('{"workers":{"2":{"enabled":true}}}' | ConvertFrom-Json) '2' $true
 Assert-Equal ($passive.workers.'2' | ConvertTo-Json -Compress) '{"enabled":true,"passive":true}' 'a worker set passive'
 Assert-Equal ((Set-WorkerPassive $passive '2' $false).workers.'2' | ConvertTo-Json -Compress) '{"enabled":true}' 'passive taken away'

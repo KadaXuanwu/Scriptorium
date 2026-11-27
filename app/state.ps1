@@ -945,6 +945,8 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             @(Get-Blockers $_ $open).Count -eq 0
     } | Sort-Object @{ Expression = { Get-Priority $_ } }, @{ Expression = { Get-SizeRank (Get-Size $_) } }, createdAt)
     $given = @($workerViews | ForEach-Object { [int]$_.now; [int]$_.queued } | Where-Object { $_ })
+    # What the owner gave by hand: a passive worker's next leaves out only these (it is shown, not given).
+    $handed = $given
     # A free worker takes a ticket before a working one. Each worker's account is read with the windows of the
     # worker's own coding tool.
     $default = $script:Provider
@@ -1019,11 +1021,13 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             }
         }
         if (-not $pick) {
-            # Not a ticket of a complexity the owner switched off for this worker (limits.ps1).
+            # Not a ticket of a complexity the owner switched off for this worker (limits.ps1). A passive worker's is
+            # the queue's best, also when it is another worker's next: the arrow gives it to the passive one first.
+            $taken = if ($view.passive) { $handed } else { $given }
             $rest = @($queue | Where-Object {
-                $given -notcontains $_.number -and -not (Test-ComplexityOff (Get-Label $_ 'complexity:') $settings ([string]$view.id))
+                $taken -notcontains $_.number -and -not (Test-ComplexityOff (Get-Label $_ 'complexity:') $settings ([string]$view.id))
             })
-            $busy = @(Get-BusyAreas $issues $current) + @($issues | Where-Object { $given -contains $_.number } |
+            $busy = @(Get-BusyAreas $issues $current) + @($issues | Where-Object { $taken -contains $_.number } |
                 ForEach-Object { Get-Names $_ } | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
             $free = @($rest | Where-Object {
                 (Get-Clashes @(Get-Names $_ | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' }) $busy).Count -eq 0

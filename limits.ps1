@@ -188,12 +188,13 @@ function Get-FallbackEffort($advisor, [string] $complexity, [string] $model, [st
 # Whether the owner switched a ticket complexity off for a worker (`workers.<id>.complexity`, queue app, the
 # worker's card): the worker then takes no new ticket of it and leaves the answers and rebases
 # of its PRs of it. A ticket already started goes on. A ticket without the label ('') counts as medium.
+# Never off for a passive worker (docs/QUEUE.md, A passive worker): the owner gave it every ticket it has.
 function Test-ComplexityOff([string] $complexity, $settings, [string] $worker) {
     if (-not $complexity) {
         $complexity = 'medium'
     }
     $own = if ($settings -and $settings.workers) { $settings.workers.$worker } else { $null }
-    return [bool]($own -and $own.complexity -and $own.complexity.$complexity -eq $false)
+    return [bool]($own -and $own.passive -ne $true -and $own.complexity -and $own.complexity.$complexity -eq $false)
 }
 
 # How the worker script holds a run that ended with its job not done (worker.ps1, Suspend-Job): 'pause' (it ended at a

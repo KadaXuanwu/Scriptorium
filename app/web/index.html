@@ -98,29 +98,29 @@
   </main>
 </div>
 <dialog id="steps">
-  <div class="dialog-head"><h2 id="steps-title">Steps</h2><button data-close>Close</button></div>
-  <ol id="steps-list" class="steps"></ol>
+  <div class="dialog-head"><h2 id="steps-title">Steps</h2><button class="round" data-close aria-label="Close" title="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="dialog-body"><ol id="steps-list" class="steps"></ol></div>
 </dialog>
 <!-- A worker's config (app.js, drawConfig): the complexities it takes. -->
 <dialog id="config">
-  <div class="dialog-head"><h2 id="config-title"></h2><button data-close>Close</button></div>
-  <div id="config-body"></div>
+  <div class="dialog-head"><h2 id="config-title"></h2><button class="round" data-close aria-label="Close" title="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div id="config-body" class="dialog-body"></div>
 </dialog>
 <!-- How a worker's run ends when the owner pauses or disables it. -->
 <dialog id="how">
-  <div class="dialog-head"><h2 id="how-title"></h2><button data-close>Cancel</button></div>
-  <div id="how-options" class="options"></div>
+  <div class="dialog-head"><h2 id="how-title"></h2><button class="round" data-close aria-label="Cancel" title="Cancel"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div id="how-options" class="options dialog-body"></div>
 </dialog>
 <!-- A question's pictures at full size, one at a time (app.js, Viewer). -->
 <dialog id="viewer">
-  <div class="dialog-head"><h2 id="viewer-count"></h2><a id="viewer-open" target="_blank">Open in a tab</a><button data-close>Close</button></div>
-  <img id="viewer-img" alt="">
-  <div class="viewer-foot"><button class="round" data-view="-1" aria-label="Previous picture">&lsaquo;</button><div id="viewer-text" class="text"></div><button class="round" data-view="1" aria-label="Next picture">&rsaquo;</button></div>
+  <div class="dialog-head"><h2 id="viewer-count"></h2><a id="viewer-open" target="_blank">Open in a tab</a><button class="round" data-close aria-label="Close" title="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="dialog-body"><img id="viewer-img" alt="">
+  <div class="viewer-foot"><button class="round" data-view="-1" aria-label="Previous picture">&lsaquo;</button><div id="viewer-text" class="text"></div><button class="round" data-view="1" aria-label="Next picture">&rsaquo;</button></div></div>
 </dialog>
 <!-- A question before an action: the page's own dialog, never the browser's, the same for every action (app.js, ask).
      Adding something puts its fields in it. -->
 <dialog id="ask">
-  <form method="dialog">
+  <form method="dialog" class="dialog-body">
     <h2 id="ask-title"></h2>
     <p id="ask-text"></p>
     <div id="ask-fields" class="form"></div>
