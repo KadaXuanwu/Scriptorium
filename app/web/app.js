@@ -1110,6 +1110,12 @@ async function act(project, body, { keys = [], apply, after, done } = {}) {
   return ok;
 }
 
+// Opens a dialog, at its top: its body keeps the place where it was last scrolled to.
+function show(id) {
+  $(id).showModal();
+  $(id).querySelector('.dialog-body').scrollTop = 0;
+}
+
 // Asks before an action, in the page's own dialog, the same for every action: a title, a text, the fields to fill
 // (`fields`, HTML; adding something) and the action's button (red for `danger`). Resolves to the fields' values for yes
 // (an object, empty without fields), false for Cancel and Escape. Without `yes` it only tells: one Close button.
@@ -1127,7 +1133,7 @@ function ask(title, text, yes, { fields = '', danger = false, also = '' } = {}) 
   $('ask-also').hidden = !also;
   $('ask-no').textContent = yes ? 'Cancel' : 'Close';
   dialog.returnValue = '';
-  dialog.showModal();
+  show('ask');
   // A removal never goes on a stray Enter.
   if (danger) $('ask-no').focus();
   return new Promise((resolve) => dialog.addEventListener('close', () => resolve(['yes', 'also'].includes(dialog.returnValue)
@@ -1285,7 +1291,7 @@ function setStatus(project, worker, to) {
   $('how-title').textContent = `${to === 'paused' ? 'Pause' : 'Disable'} ${who}`;
   $('how-options').innerHTML = Object.entries(howOptions).map(([how, [glyph, name, effect]]) => `<button data-how="${how}" data-to="${to}" data-worker="${esc(worker)}">
     ${icon(glyph)}<span><b>${name}</b><small>${effect}${how === 'finish' ? '' : ` ${keeps[to]}`}</small></span></button>`).join('');
-  $('how').showModal();
+  show('how');
 }
 
 // An answer in text, or no text to take the default; the server decides what the queue does with it. Once the server
@@ -1398,7 +1404,7 @@ document.addEventListener('click', (e) => {
   const all = shot.matches('.banner') ? [shot] : [...(shot.closest('.question') || shot.closest('.text')).querySelectorAll('a.shot:not(.banner)')];
   viewed = { at: all.indexOf(shot), shots: all.map((a) => ({ src: a.href, text: a.parentElement.classList.contains('choice') ? a.nextElementSibling.innerHTML : '' })) };
   view(0);
-  $('viewer').showModal();
+  show('viewer');
 });
 // A press beside a dialog closes it, as its Close does. The backdrop is the dialog's own element outside its box. Both
 // the press and the release are beside it: a selection dragged out of a field closes nothing. Not a dialog with
@@ -1409,10 +1415,11 @@ const beside = (e) => {
   return e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom;
 };
 let pressedBeside = false;
-document.addEventListener('pointerdown', (e) => { pressedBeside = beside(e); });
+// Not while a list or an (i) text is open in it: that press only closes the list. A browser without `select:open`
+// throws on it, and then the press closes both.
+const listOpen = () => { try { return Boolean(document.querySelector('select:open, :popover-open')); } catch { return false; } };
+document.addEventListener('pointerdown', (e) => { pressedBeside = beside(e) && !listOpen(); });
 document.addEventListener('click', (e) => { if (pressedBeside && beside(e)) e.target.close(); });
-// A dialog opens at its top again (a close does not bubble: caught on its way down).
-document.addEventListener('close', (e) => e.target.querySelector?.('.dialog-body')?.scrollTo(0, 0), true);
 $('viewer').addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') view(e.key === 'ArrowLeft' ? -1 : 1);
 });
@@ -1574,11 +1581,11 @@ document.addEventListener('click', async (e) => {
     configOf = { project, id: data.config };
     $('config').dataset.project = project;
     drawConfig();
-    $('config').showModal();
+    show('config');
   } else if (data.steps) {
     $('steps-title').textContent = `Worker ${data.steps}${names.length > 1 ? ` on ${project}` : ''}: latest run`;
     $('steps-list').innerHTML = '<li>Loading...</li>';
-    $('steps').showModal();
+    show('steps');
     try {
       const log = await (await fetch(api(project, `api/log?worker=${encodeURIComponent(data.steps)}`), { cache: 'no-store' })).json();
       $('steps-list').innerHTML = (log.steps || []).map((s) => `<li>${esc(s)}</li>`).join('') || '<li>No run yet.</li>';
