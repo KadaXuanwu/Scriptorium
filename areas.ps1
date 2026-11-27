@@ -58,6 +58,17 @@ function Read-Now([string] $file) {
     return 0
 }
 
+# Queue next (docs/QUEUE.md, Queue next): the ticket that the owner queued as a worker's next (`.queue/next-<N>.json`),
+# 0 without one. The worker takes it when it looks for its next job, so its run in progress goes on; no other worker
+# takes the ticket meanwhile.
+function Read-Next([string] $file) {
+    try {
+        return [int](Get-Content $file -Raw -ErrorAction Stop | ConvertFrom-Json).ticket
+    } catch {
+    }
+    return 0
+}
+
 # The ticket a worker takes for Now, from the open tickets: $wanted while it is queued (a priority, not waiting on the
 # owner), no other worker than $me holds it, and it has no PR. An open blocker does not hold it: the owner accepts a
 # merge conflict with the blocker. $null when it left the queue: the worker then drops its force file. It never takes

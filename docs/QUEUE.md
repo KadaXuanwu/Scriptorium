@@ -81,8 +81,8 @@ with the log's path, so a failing ticket never loops.
 
 ## Dispatching
 
-An idle worker script, under the shared lock, takes the first of: the ticket of the owner's Now (Now), its own PRs
-(`answered`, then `needs-rebase`), its own
+An idle worker script, under the shared lock, takes the first of: the ticket of the owner's Now (Now), the ticket
+queued as its next (Queue next), its own PRs (`answered`, then `needs-rebase`), its own
 ticket without an open PR (answered, rejected, given to it, or a run cut short), then new tickets. New tickets go in
 queue order: the priority, then the bigger ticket, then the older one (`Get-SizeRank` in [limits.ps1](../limits.ps1)).
 A fresh window then goes to the big tickets, and the small ones fill what the pick-up limits leave. Each ticket goes to
@@ -528,6 +528,26 @@ writes the ticket to that worker's force file with `now` (`.queue/force-<N>.json
   - The worker holds a paused run. That run goes first.
   - The owner cancels the Now on the worker's card, or pauses or disables the worker. A cancel before the checkpoint
     withdraws the stop note, and the run goes on.
+
+## Queue next
+
+**Queue next** in the same dialog gives the ticket to the worker as its next one and leaves its run alone. The server
+writes the ticket to that worker's next file (`.queue/next-<N>.json`).
+
+- **The worker** is one of the dialog's list, as for Now.
+- **The ticket** waits for that worker. No other worker takes it, and the worker's card shows it as its next, marked
+  and tagged `queued next`. One more Queue next for the same worker replaces the first, which goes back to the queue.
+- **The worker takes it** when it looks for its next job, before its own PRs and tickets and by the rules of a Now's
+  ticket (`Select-Now`): also a blocked one, and whatever areas are busy. It deletes the file then: the ticket is its
+  own from there.
+- **Its run** is not a forced run: the worker starts none while its account is at the stop line, and the ticket waits
+  with it.
+- **It ends** without a run in these cases:
+  - The worker's config no longer takes it: the ticket's complexity is off for the worker. The server deletes the
+    file at its next look, so the ticket is free while the worker's run still works.
+  - The ticket left the queue: closed or claimed by another worker. The worker takes no other ticket in its place.
+  - The owner cancels it on the worker's card, or pauses, disables, removes or moves the worker.
+- A worker that holds a paused run keeps it: that run goes first.
 
 ## Plugins
 
