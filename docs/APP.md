@@ -89,6 +89,9 @@ keeps it from resuming. It keeps its session and its ticket. To let a held run f
 marks the target, and a line says "Pauses after the ticket". Active discards a pause or a disable that has not happened
 yet.
 
+A passive worker's Active reads **Passive** ([QUEUE.md](QUEUE.md), A passive worker): it takes a new ticket only at the
+arrow or a Now, and its plugins open its environment only for a run. The switch is in its Config.
+
 What a worker does now is a line under its name: Working (or applying answers, rebasing), Usage limit with the reset
 time, Resumes within a minute, Account at its stop line, Free, the words of a plugin while it makes the environment
 ready (the worker's state `opening`, for example a first import), Its environment failed (a plugin's hook threw, or a
@@ -101,6 +104,9 @@ worker's (`workers.<id>.complexity`) and saves at once. Press it to switch the c
 worker takes no new ticket of that complexity and leaves the answers and rebases of its PRs of it, and the switch
 counts those PR jobs. A ticket already started goes on. While a complexity is off, the Config button counts the ones
 the worker takes.
+
+**Passive,** beside the Mapping list, is a switch (`workers.<id>.passive`) that saves at once: on, the worker is a
+passive one.
 
 **The mapping** is the rest of the config: how this worker runs each complexity ([QUEUE.md](QUEUE.md), Models, A
 worker's mapping). Each change saves at once in the PC's settings (`workers.<id>.mapping`) and counts from the
@@ -143,6 +149,7 @@ Each card has two slots:
   own ticket, the ticket that **Queue next** gave it (Queue), then the first queued ticket whose area is free and
   whose size its account takes now, one ticket for each worker. If the queue holds it back, it still shows the best
   one, with a lock and the reason. A ticket of Queue next is tagged `queued next`, in a slot with a solid border.
+  On a passive worker a new ticket says "waits for the arrow": the worker takes it only then.
 - **Force** (the arrow in the Next slot) gives the worker that ticket past what holds it back: its blockers, the
   areas, the pick-up limits and the stop line ([QUEUE.md](QUEUE.md), Queue next).
   - A free worker takes it at its next poll. The page asks first only for a locked ticket, with the reason.

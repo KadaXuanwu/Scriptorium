@@ -84,7 +84,7 @@ with the log's path, so a failing ticket never loops.
 An idle worker script, under the shared lock, takes the first of: the ticket of the owner's Now (Now), the ticket
 queued as its next and forced (Queue next), its own PRs (`answered`, then `needs-rebase`), its own
 ticket without an open PR (answered, rejected, given to it, or a run cut short), the ticket queued as its next (Queue
-next), then new tickets. New tickets go in
+next), then new tickets. A passive worker stops before the last two (A passive worker). New tickets go in
 queue order: the priority, then the bigger ticket, then the older one (`Get-SizeRank` in [limits.ps1](../limits.ps1)).
 A fresh window then goes to the big tickets, and the small ones fill what the pick-up limits leave. Each ticket goes to
 the idle worker whose account's free room most wants spending, labelled `worker:N` for it; the script stops at the
@@ -361,12 +361,12 @@ between runs.
 - `merger.ghConfigDir`: the same for the merger, which then merges as that bot.
 - `plugins.<name>`: settings of a plugin for this PC, over its entry in `scriptorium.json` ([PLUGINS.md](PLUGINS.md)).
 - `ntfy.topic`, `ntfy.server`: the page's pushes ([APP.md](APP.md), Notifications).
-- `workers.<id>` (the PC's): `ghConfigDir` for that worker only, `enabled`, `assignedOnly`, `complexity`, `mapping` and `name`
+- `workers.<id>` (the PC's): `ghConfigDir` for that worker only, `enabled`, `passive`, `complexity`, `mapping` and `name`
   (the worker's name on the page only; [APP.md](APP.md), Workers, Names).
 - `workers.<id>.complexity`: the worker's complexity switches, for example `{ "design": false }`: it takes no ticket of
   a complexity set to false (Dispatching). Left out: every complexity is on. The worker's Config sets it.
-- `workers.<id>.assignedOnly: true` keeps a worker to the tickets labelled `worker:<id>` and their PRs: no worker gives
-  it a new ticket, and it takes none. The front desk labels the ticket.
+- `workers.<id>.passive: true` makes a worker passive (A passive worker): it takes only what the owner gives it. The
+  worker's Config sets it.
 - `workers.<id>.enabled: false` disables a worker, for example one whose borrowed account is gone. The page's worker
   status sets it ([APP.md](APP.md), Worker status). Once its run has ended, the plugins close what they opened for it,
   an editor for example ([PLUGINS.md](PLUGINS.md), Close). A disabled worker's run wraps up at its next checkpoint, and its
@@ -574,10 +574,28 @@ Queue). It forces nothing. The server writes the ticket to that worker's next fi
 - A worker that holds a paused run keeps it: that run goes first, also before a forced ticket. Only Replace now
   frees it, and only one held at a checkpoint (Now).
 
+## A passive worker
+
+A passive worker takes only what the owner gives it, and keeps its environment closed between runs. It is a switch in
+the worker's Config (`workers.<id>.passive`; [APP.md](APP.md), Workers), and the worker's Active then reads Passive.
+
+- **It takes** the ticket of a Now, the ticket that the arrow forces (Queue next, Forced), its own PRs (`answered`,
+  `needs-rebase`) and its own ticket without an open PR. A ticket that carries its `worker:<id>` label is its own.
+- **It takes no** new ticket from the queue, and no worker gives it one. A ticket of Queue next waits on its card
+  until the arrow forces it.
+- **Its card** still shows the queue's best ticket as its next. That ticket is shown, not given: another worker
+  takes it as before, unless the arrow gives it to the passive one first.
+- **Its environment** opens only for a run. The plugins' `Start` runs before the run, not before each look for a
+  job, so the run starts later by the time `Start` takes. When the worker waits with no run and none held, the
+  plugins close what they opened (`Close`; [PLUGINS.md](PLUGINS.md)). A held run keeps it open: `Close` saves nothing.
+- **After its script starts,** a passive worker with no held run closes its environment once: the script before may
+  have left it open. An editor that the owner opened by hand in that copy closes with it.
+
 ## Plugins
 
 A worker's environment comes from the project's plugins ([PLUGINS.md](PLUGINS.md)). The worker script calls `Start`
-before each look for a job, `GetRun` and `Start` for another repo's checkout before a run, and `EndRun` after it.
+before each look for a job (a passive worker's: before a run, A passive worker), `GetRun` and `Start` for another
+repo's checkout before a run, and `EndRun` after it.
 A `Start` or `GetRun` that throws starts no run: the worker's card shows the error, and the worker tries again at its
 next look. With no environment plugin, a run gets no MCP server and only the base's commands (`git`, `gh`). The
 provider is a plugin too: with none, a worker starts no run and its card says so. A plugin that `scriptorium.json`

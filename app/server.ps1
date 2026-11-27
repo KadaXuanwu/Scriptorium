@@ -703,6 +703,15 @@ function Invoke-Action($request) {
             Save-Settings (Set-WorkerName (Read-SettingsToEdit) $worker ([string]$request.name))
             return "worker $worker named '$(([string]$request.name).Trim())'"
         }
+        'passive' {
+            # The switch in the worker's Config (docs/QUEUE.md, A passive worker). The workers look at once.
+            if (-not (Test-Path (Join-Path $mainQueue "worker-$worker.json"))) {
+                throw "no worker $worker"
+            }
+            Save-Settings (Set-WorkerPassive (Read-SettingsToEdit) $worker ([bool]$request.on))
+            Send-Wake (Join-Path $mainQueue 'wake-workers')
+            return "worker $worker $(if ($request.on) { 'passive' } else { 'not passive' })"
+        }
         'order' {
             # The owner's order of the worker or account cards (docs/APP.md, Order): the PC's, so every device shows it.
             Save-Settings (Set-CardOrder (Read-SettingsToEdit) ([string]$request.kind) $request.list)

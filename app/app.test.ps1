@@ -241,6 +241,7 @@ Assert-Equal (Get-CarriedStatus $null $null '3') 'active' 'no settings and no co
 $setup = @(@{ id = '4'; state = [pscustomobject]@{ state = 'setup-failed'; at = 0; error = 'git clone failed' } })
 $view = (New-Snapshot @{ now = 100000; slug = 'o/r'; runs = @(); settings = @{ workers = @{ '4' = @{ enabled = $false } } }; workers = $setup }).workers[0]
 Assert-Equal "$($view.activity) $($view.status) $($view.error)" 'setup-failed disabled git clone failed' 'a failed setup'
+Assert-Equal "$($view.passive) $((New-Snapshot @{ now = 100000; slug = 'o/r'; runs = @(); settings = @{ workers = @{ '4' = @{ passive = $true } } }; workers = $setup }).workers[0].passive)" 'False True' 'a passive worker says so'
 $setup[0].state = [pscustomobject]@{ state = 'opening'; at = 10; report = 'Opening its editor' }
 $view = (New-Snapshot @{ now = 20; slug = 'o/r'; runs = @(); workers = $setup }).workers[0]
 Assert-Equal "$($view.activity): $($view.report)" 'opening: Opening its editor' 'a plugin makes the environment ready'
@@ -424,6 +425,15 @@ Assert-Equal (Next $next '5') '4 False the worker is paused' 'a paused worker ta
 Assert-Equal "$($next.ContainsKey('6'))" 'False' 'a disabled worker has no next ticket'
 $next = Get-NextTickets $issues @() @(@{ id = '4'; status = 'active'; activity = 'room' })
 Assert-Equal (Next $next '4') '4 False its account is at its stop line' 'no room under the stop line'
+# A passive worker (docs/QUEUE.md, A passive worker): its next ticket is shown, not given, and waits for the arrow; the
+# queue does not count it as a worker that takes a ticket.
+$quiet = @{ id = '4'; status = 'active'; activity = 'free'; passive = $true }
+$next = Get-NextTickets $issues @() @($quiet, $idle)
+Assert-Equal "$(Next $next '4') $($next['4'].manual) | $(Next $next '5') $($next['5'].manual)" '4 True True | 4 True False' 'a passive worker''s next ticket is shown, and still given to another worker'
+Assert-Equal (Get-QueueRows $issues @($quiet)).queued[2].reason 'no free worker' 'a passive worker takes none from the queue'
+$passive = Set-WorkerPassive ('{"workers":{"2":{"enabled":true}}}' | ConvertFrom-Json) '2' $true
+Assert-Equal ($passive.workers.'2' | ConvertTo-Json -Compress) '{"enabled":true,"passive":true}' 'a worker set passive'
+Assert-Equal ((Set-WorkerPassive $passive '2' $false).workers.'2' | ConvertTo-Json -Compress) '{"enabled":true}' 'passive taken away'
 # The next ticket follows the pick-up limits of the worker's account (S 90 %, M 75 %, L 50 % of 5 hours here): the
 # biggest ticket of the priority that the account takes now; over every limit, the first one, locked, with the reason.
 $sized = @((Issue 11 @('P1', 'size:S')), (Issue 12 @('P1')), (Issue 13 @('P1', 'size:L')))
