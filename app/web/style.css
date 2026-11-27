@@ -804,6 +804,9 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(3px); a
 .who .badge.of { margin-left: 8px; vertical-align: 2px; }
 /* The coding tool of a worker or an account (app.js, toolBadge): an outline, so it never reads as a project's mark. */
 .badge.tool { background: transparent; box-shadow: inset 0 0 0 1px var(--line, currentColor); }
+/* With its provider's colour (the manifest's `color`): the outline and the text take it, mixed for either theme. */
+.badge.tool[style] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tool) 55%, transparent); color: color-mix(in srgb, var(--tool) 65%, var(--ink)); }
+.badge.tool img { width: 12px; height: 12px; }
 /* On a card it ends the worker's status line or the account's email line, at the right. */
 .who-line { display: flex; align-items: center; gap: 8px; }
 .who-line .badge.tool, .meta .badge.tool { margin-left: auto; }

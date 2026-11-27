@@ -33,7 +33,7 @@ function Get-Names($item) {
 
 # The picture behind a provider's account cards (docs/PLUGINS.md, Its manifest, `card`) as a data URL, '' for none:
 # an SVG in the plugin's folder, read again when the file changes. A pull of the plugin changes no .ps1 when only its
-# picture is new, so the server does not restart for it (restart.ps1).
+# picture is new, so the server does not restart for it (restart.ps1). The icon of its tag (`icon`) is read the same way.
 $CardArt = @{}
 function Get-CardArt($plugin) {
     if (-not $plugin.Card -or $plugin.Card -notmatch '^[\w.-]+\.svg$') {
@@ -1218,6 +1218,7 @@ function New-Snapshot($data) {
             models = $list; config = $toolConfig; own = @(Get-OwnComplexities $list $toolConfig)
             view = @{
                 title = [string]$plugin.Title; hooks = @($ProviderFeatures | Where-Object { Test-ProviderHook $_ }); card = Get-CardArt $plugin
+                color = [string]$plugin.Color; icon = Get-CardArt @{ Dir = $plugin.Dir; Card = $plugin.Icon }
                 models = @($list.models.PSObject.Properties | ForEach-Object { $_.Name }); efforts = @($list.efforts | Where-Object { $_ })
                 perModel = Get-OwnEfforts $list
                 compactRange = @($list.compactRange | Where-Object { $_ }); advisor = [string]$list.advisor.model
