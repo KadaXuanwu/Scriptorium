@@ -360,7 +360,7 @@ function Test-Enabled([int] $worker) {
 }
 
 # Whether the owner's Now (docs/QUEUE.md, Now) names another ticket than this job's: the job's run then ends at its
-# next checkpoint and is not held.
+# next checkpoint and is not held, and a run held at a checkpoint is freed.
 function Test-NowElsewhere($job) {
     $now = Read-Now $forceFile
     return [bool]($now -and $now -ne [int]$job.Ticket)
@@ -1682,7 +1682,20 @@ while ($true) {
         }
         if (Test-Path $pausedFile) {
             $paused = Get-Content $pausedFile -Raw | ConvertFrom-Json
-            # A held run goes first. A Now that waits behind it would keep its ticket from every worker: it ends.
+            # The owner's Now for another ticket (docs/QUEUE.md, Now) takes the place of a run held at a checkpoint
+            # (Test-HeldAtCheckpoint): its session goes, and its ticket starts fresh from its handoff comment, here or
+            # on another worker. A PR's job stays this worker's.
+            # shortcut: the Now's ticket is not looked at first, so one that left the queue since the click still frees
+            # the held run; look it up here if that costs a session in use.
+            if ((Test-HeldAtCheckpoint $paused) -and (Test-NowElsewhere $paused)) {
+                Remove-Item $pausedFile
+                if ($paused.Kind -eq 'ticket') {
+                    & gh issue edit $paused.Ticket --remove-label $me -R $repo | Out-Null
+                }
+                Write-Log "freed the held #$($paused.Ticket) for the owner's Now"
+                continue
+            }
+            # Any other held run goes first. A Now that waits behind it would keep its ticket from every worker: it ends.
             if (Read-Now $forceFile) {
                 Remove-Item $forceFile -ErrorAction SilentlyContinue
                 Write-Log "now: ended, the worker holds the run of #$($paused.Ticket)"
@@ -1734,10 +1747,11 @@ while ($true) {
                 $view = Get-HeldView $paused
                 # A run held for a pause that now waits for room reads as one held at the stop line.
                 $view.atLimit = $view.atLimit -or $view.stopped
-                # Looked at again every poll, so a stop meanwhile holds it; a disable wakes it within a minute.
+                # Looked at again every poll, so a stop meanwhile holds it; a disable or the owner's Now wakes it
+                # within a minute.
                 Write-State 'paused' $view
                 $wake = (Get-Now) + [math]::Min($wait + 60, $PollSeconds)
-                while ((Get-Now) -lt $wake -and (Test-Enabled $Id)) {
+                while ((Get-Now) -lt $wake -and (Test-Enabled $Id) -and -not ((Test-HeldAtCheckpoint $paused) -and (Test-NowElsewhere $paused))) {
                     Start-Sleep ([math]::Max(1, [math]::Min(60, $wake - (Get-Now))))
                 }
                 continue
