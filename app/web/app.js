@@ -1109,7 +1109,7 @@ function ask(title, text, yes, { fields = '', danger = false, also = '' } = {}) 
   dialog.showModal();
   // A removal never goes on a stray Enter.
   if (danger) $('ask-no').focus();
-  return new Promise((resolve) => dialog.addEventListener('close', () => resolve(!!dialog.returnValue
+  return new Promise((resolve) => dialog.addEventListener('close', () => resolve(['yes', 'also'].includes(dialog.returnValue)
     && { ...Object.fromEntries(new FormData(dialog.querySelector('form'))), ...(dialog.returnValue === 'also' && { also: true }) }), { once: true }));
 }
 

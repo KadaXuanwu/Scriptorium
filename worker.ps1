@@ -869,6 +869,8 @@ function Get-NextJob {
     # Queue next (docs/QUEUE.md, Queue next): the ticket the owner queued as this worker's next goes before its other
     # jobs, by the rules of a Now's ticket. Its claim carries it from here, so the file goes; so does one whose ticket
     # left the queue.
+    # shortcut: it also goes before a ticket of its own that comes back (a start its model refused, a run cut short); put
+    # it after those if such a ticket waits behind a queued one in use.
     $queuedNext = Read-Next $nextFile
     if ($queuedNext) {
         Remove-Item $nextFile -ErrorAction SilentlyContinue
