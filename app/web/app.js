@@ -307,16 +307,19 @@ function workerCard(worker) {
     : `<span class="free">${esc(worker.out?.text || worker.error || 'Free')}</span>`;
 
   // Force moves the next ticket into the free slot now, also one the queue would not give it. Now (the Queue tab)
-  // also waits for a run in progress: that run ends at its next checkpoint.
+  // also waits for a run in progress: that run ends at its next checkpoint. Queue next (the same dialog) gives the
+  // worker its next ticket and leaves its run alone: the slot is marked, and Cancel takes it back.
   const next = worker.next;
   const waits = worker.forced && (!worker.run || (worker.now && worker.now !== worker.ticket));
+  const queued = !waits && next?.kind === 'queued';
   let force = '';
   if (waits) force = `<button data-unforce="${id}">Cancel</button>`;
+  else if (queued) force = `<button data-unnext="${id}">Cancel</button>`;
   else if (next) {
     const can = worker.status === 'active' && !worker.run && !['down', 'signedout', 'setup', 'setup-failed', 'error'].includes(worker.activity);
     force = `<button class="round" data-force="${id}" title="${can ? 'Take it now' : 'Its slot is not free'}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`;
   }
-  const kind = next && { answered: 'your answers', 'needs-rebase': 'a rebase', now: 'now' }[next.kind];
+  const kind = next && { answered: 'your answers', 'needs-rebase': 'a rebase', now: 'now', queued: 'queued next' }[next.kind];
   const nextBody = next
     ? `<a class="title${next.available ? '' : ' off'}" href="${esc(next.url)}" target="_blank">${esc(next.title)}</a>
        <div class="meta">${badges([kind, ...(next.areas || []), next.size, next.complexity])}${waits ? `<span class="why">takes it at its next ${worker.run ? 'checkpoint' : 'poll'}</span>`
@@ -355,7 +358,7 @@ function workerCard(worker) {
     <div class="worker-tools"><label>${icon('accounts')}<select data-assign="${id}" aria-label="Account of worker ${id}">${options}</select></label>
       ${config}<button data-steps="${id}">${icon('steps')}Steps</button></div>
     <div class="slot now"><span class="slot-label">Now</span><div class="slot-body">${now}</div></div>
-    <div class="slot next"><span class="slot-label">Next</span><div class="slot-body">${nextBody}</div>${force}</div></article>`;
+    <div class="slot next${queued ? ' queued' : ''}"><span class="slot-label">Next</span><div class="slot-body">${nextBody}</div>${force}</div></article>`;
 }
 
 // A worker's config, the dialog its Config button opens (docs/APP.md, Workers, Config): its mapping (docs/QUEUE.md, A
@@ -1089,7 +1092,8 @@ async function act(project, body, { keys = [], apply, after, done } = {}) {
 // Asks before an action, in the page's own dialog, the same for every action: a title, a text, the fields to fill
 // (`fields`, HTML; adding something) and the action's button (red for `danger`). Resolves to the fields' values for yes
 // (an object, empty without fields), false for Cancel and Escape. Without `yes` it only tells: one Close button.
-function ask(title, text, yes, { fields = '', danger = false } = {}) {
+// `also`: a second answer beside `yes`; the values then hold `also: true`.
+function ask(title, text, yes, { fields = '', danger = false, also = '' } = {}) {
   const dialog = $('ask');
   $('ask-title').textContent = title;
   $('ask-text').textContent = text;
@@ -1098,13 +1102,15 @@ function ask(title, text, yes, { fields = '', danger = false } = {}) {
   $('ask-yes').textContent = yes || '';
   $('ask-yes').hidden = !yes;
   $('ask-yes').className = danger ? 'danger' : 'primary';
+  $('ask-also').textContent = also;
+  $('ask-also').hidden = !also;
   $('ask-no').textContent = yes ? 'Cancel' : 'Close';
   dialog.returnValue = '';
   dialog.showModal();
   // A removal never goes on a stray Enter.
   if (danger) $('ask-no').focus();
-  return new Promise((resolve) => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'yes'
-    && Object.fromEntries(new FormData(dialog.querySelector('form')))), { once: true }));
+  return new Promise((resolve) => dialog.addEventListener('close', () => resolve(['yes', 'also'].includes(dialog.returnValue)
+    && { ...Object.fromEntries(new FormData(dialog.querySelector('form'))), ...(dialog.returnValue === 'also' && { also: true }) }), { once: true }));
 }
 
 // A list in words: "a", "a and b", "a, b and c".
@@ -1435,22 +1441,26 @@ document.addEventListener('click', async (e) => {
     // Every worker that can take it, the server's pick first. Each runs the ticket on the model of its own mapping.
     const able = pick.able?.length ? pick.able : [pick];
     const named = (p) => workerLabel(workerOf(states[project], p.worker) || { id: p.worker });
+    // The worker's status, and what each button does with it. The list names the worker; alone, the text does.
+    const who = (p, does) => (able.length > 1 ? does[0].toUpperCase() + does.slice(1) : `${named(p)} is ${does}`);
     const how = (p) => `${p.stops
-      ? `${named(p)} ends its run of "${p.title}" at its next checkpoint and takes this ticket. That ticket goes back to the queue and starts fresh from its handoff comment.`
-      : `${named(p)} is free and takes it at its next poll, before its other jobs.`} Its run does not stop at the account's stop line.${
-      p.busy?.length ? ` ${inWords(p.busy)} ${p.busy.length > 1 ? 'are' : 'is'} busy with another ticket: the two can change the same files.` : ''}`;
+      ? `${who(p, `in a run of "${p.title}"`)}. Do it now ends that run at its next checkpoint. Queue next waits for it to finish.`
+      : `${who(p, 'free')}. It takes the ticket at its next poll.`}${
+      p.busy?.length ? ` ${inWords(p.busy)} ${p.busy.length > 1 ? 'are' : 'is'} busy with another ticket.` : ''}`;
     const runOn = (p) => within(project, () => runModel(takeOf(states[project], p.worker, row.complexity) || {}));
     const fields = able.length > 1 ? `<label>Worker<select name="worker">${able.map((p, i) => `<option value="${esc(p.worker)}"${i ? '' : ' selected'}>${
-      esc([named(p), runOn(p), p.stops ? 'in a run' : 'free'].filter(Boolean).join(' · '))}</option>`).join('')}</select></label>` : '';
-    const asked = ask(`Do "${row.title}" now?`, how(pick), 'Do it now', { fields });
+      esc([named(p), runOn(p)].filter(Boolean).join(' · '))}</option>`).join('')}</select></label>` : '';
+    const asked = ask(`Do "${row.title}" now?`, how(pick), 'Do it now', { fields, also: 'Queue next' });
     // The text is of the worker that the list shows.
     $('ask-fields').querySelector('select')?.addEventListener('change', (ev) => { $('ask-text').textContent = how(able.find((p) => p.worker === ev.target.value)); });
     const values = await asked;
     if (!values) return;
     const chosen = able.find((p) => p.worker === values.worker) || pick;
-    await act(project, { action: 'now', number, worker: chosen.worker }, {
+    // Queue next: the worker takes it after its run, as its next ticket (docs/QUEUE.md, Queue next).
+    const next = !!values.also;
+    await act(project, { action: 'now', number, worker: chosen.worker, next }, {
       keys: [`ticket:${number}`],
-      apply: (s) => { const r = rowOf(s, number); if (r) Object.assign(r, { taken: chosen.worker, now: null, reason: `worker ${chosen.worker} does it now` }); },
+      apply: (s) => { const r = rowOf(s, number); if (r) Object.assign(r, { taken: chosen.worker, now: null, reason: `worker ${chosen.worker} does it ${next ? 'next' : 'now'}` }); },
       done: (s) => !rowOf(s, number) || !!rowOf(s, number).taken,
     });
   } else if (data.drop) {
@@ -1466,6 +1476,8 @@ document.addEventListener('click', async (e) => {
       after: (s) => { s.parked = s.parked.filter((r) => r.number !== number); },
       done: (s) => !s.parked.some((r) => r.number === number),
     });
+  } else if (data.unnext) {
+    await act(project, { action: 'unnext', worker: data.unnext }, { keys: [`worker:${data.unnext}`], apply: (s) => { workerOf(s, data.unnext).next = null; } });
   } else if (data.unforce) {
     await act(project, { action: 'unforce', worker: data.unforce }, { keys: [`worker:${data.unforce}`], apply: (s) => { workerOf(s, data.unforce).forced = false; } });
   } else if (data.answer) {

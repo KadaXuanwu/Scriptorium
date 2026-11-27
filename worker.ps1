@@ -58,6 +58,8 @@ $historyFile = Join-Path $mainQueueDir 'history.jsonl'
 $accessFile = Join-Path $PcDir 'access.json'
 # Forced from the queue app: the next job starts past the area, room and ceiling checks; the run ending clears it.
 $forceFile = Join-Path $mainQueueDir "force-$Id.json"
+# Queued as this worker's next from the queue app (docs/QUEUE.md, Queue next): no force, the run in progress goes on.
+$nextFile = Join-Path $mainQueueDir "next-$Id.json"
 # Wakes (docs/QUEUE.md, Wakes): a write to the first ends the merger's wait, a write to the second an idle worker's.
 $wakeMerger = Join-Path $mainQueueDir 'wake-merger'
 $wakeWorkers = Join-Path $mainQueueDir 'wake-workers'
@@ -864,6 +866,24 @@ function Get-NextJob {
         Write-Log "now: #$now left the queue, so the Now ends"
     }
 
+    # Queue next (docs/QUEUE.md, Queue next): the ticket the owner queued as this worker's next goes before its other
+    # jobs, by the rules of a Now's ticket. Its claim carries it from here, so the file goes; so does one whose ticket
+    # left the queue.
+    # shortcut: it also goes before a ticket of its own that comes back (a start its model refused, a run cut short); put
+    # it after those if such a ticket waits behind a queued one in use.
+    $queuedNext = Read-Next $nextFile
+    if ($queuedNext) {
+        Remove-Item $nextFile -ErrorAction SilentlyContinue
+        $ticket = Select-Now $issues $queuedNext $me $prBranches
+        if ($ticket -and -not (Test-ComplexityOff (Get-Complexity $ticket) $settings "$Id")) {
+            & gh issue edit $ticket.number --add-label $me -R $repo | Out-Null
+            Write-Log "next: #$($ticket.number) onto worker $Id"
+            return @{ Kind = 'ticket'; Ticket = $ticket.number; Title = $ticket.title; Repo = Get-TicketRepo $ticket; Size = Get-Size $ticket
+                Complexity = Get-Complexity $ticket; Blockers = @(Get-Blockers $ticket $open) }
+        }
+        Write-Log "next: #$queuedNext left the queue"
+    }
+
     foreach ($kind in @('answered', 'needs-rebase')) {
         $pr = $prs | Where-Object {
             $n = Get-Names $_
@@ -898,9 +918,11 @@ function Get-NextJob {
         ($n | Where-Object { $_ -like 'worker:*' }) -and $n -notcontains 'needs-owner'
     } | ForEach-Object { Get-Names $_ } | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
 
-    # A ticket that another worker's force file names for Now waits for that worker.
+    # A ticket that another worker's force file names for Now waits for that worker, and so does one queued as another
+    # worker's next (this worker's own is read above).
     $reserved = @(Get-ChildItem (Join-Path $mainQueueDir 'force-*.json') -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -ne "force-$Id.json" } | ForEach-Object { Read-Now $_.FullName } | Where-Object { $_ })
+        Where-Object { $_.Name -ne "force-$Id.json" } | ForEach-Object { Read-Now $_.FullName } | Where-Object { $_ }) +
+        @(Get-ChildItem (Join-Path $mainQueueDir 'next-*.json') -ErrorAction SilentlyContinue | ForEach-Object { Read-Next $_.FullName } | Where-Object { $_ })
     $queued = @($issues | Where-Object {
         $n = Get-Names $_
         ($n | Where-Object { $_ -match '^P[0-2]$' }) -and -not ($n | Where-Object { $_ -like 'worker:*' -or $_ -eq 'needs-owner' }) -and
@@ -930,7 +952,8 @@ function Get-NextJob {
             Complexity = Get-Complexity $ticket }
     }
 
-    $candidates = @(Get-Candidates)
+    # Not a worker with a ticket queued as its next: it takes that one at its next look.
+    $candidates = @(Get-Candidates | Where-Object { -not (Test-Path (Join-Path $mainQueueDir "next-$($_.Worker).json")) })
     # Why each ticket this pass skipped waits, for the queue app (docs/APP.md).
     $waiting = @{}
     $nextReset = if ($ShortWindow) { @($candidates | ForEach-Object { (Get-Now) + [long]$_.Budget[$ShortWindow].left } | Sort-Object)[0] } else { Get-Now }

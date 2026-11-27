@@ -330,6 +330,8 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 .pending-note { position: absolute; left: 4px; right: 4px; bottom: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--warn); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .slot { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--raised); }
 .slot.next { background: transparent; border: 1px dashed var(--line); }
+/* The ticket the owner queued as the worker's next (Queue next). */
+.slot.next.queued { border: 1px solid var(--accent); }
 .slot-label { width: 38px; flex: none; padding-top: 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .slot-body { flex: 1; min-width: 0; }
 .title { font-weight: 600; overflow-wrap: anywhere; color: var(--ink); }
@@ -701,7 +703,7 @@ button.x .i { width: 16px; height: 16px; }
 @media (pointer: coarse) { button.x { width: 36px; height: 36px; min-height: 36px; margin: -8px -10px -8px 0; } }
 /* In a row the cross stands before the priority, not at a card's corner: no pull to the edge. */
 .row > button.x { margin: 0; }
-#ask-fields[hidden], #ask-yes[hidden] { display: none; }
+#ask-fields[hidden], #ask-yes[hidden], #ask-also[hidden] { display: none; }
 #ask-fields { margin: -6px 0 18px; }
 #ask label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
 #ask select { width: 100%; }

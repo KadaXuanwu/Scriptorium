@@ -515,6 +515,17 @@ $blocked = (Get-QueueRows @((Issue 30 @('P1') 'Blocked by #31'), (Issue 31 @('P1
 Assert-Equal "$($blocked.reason) $($blocked.now.worker)" 'blocked by #31 4' 'a blocked ticket waits, and its Now names a worker'
 $next = Get-NextTickets $flight @() @($taking, $idle)
 Assert-Equal "$($next['3'].number) $($next['3'].kind) $($next['4'].number)" '20 now ' 'the Now is its worker''s next, and no other worker''s'
+# Queue next: the ticket of its worker's next file is that worker's next after its run, and no other worker's.
+Set-Content $file '{"ticket":6}' -Encoding utf8
+Assert-Equal (Read-Next $file) 6 'the ticket queued as a worker''s next'
+Remove-Item $file
+Assert-Equal (Read-Next $file) 0 'no next file'
+$later = Working '3' 23 'a' 200
+$later.queued = 20
+$rows = Get-QueueRows $flight @($later, $idle) $null $null $accounts
+Assert-Equal "$($rows.queued[0].taken) $($rows.queued[0].reason) $([bool]$rows.queued[0].now)" '3 worker 3 does it next False' 'a ticket queued as a worker''s next waits for it'
+$next = Get-NextTickets $flight @() @($later, $idle)
+Assert-Equal "$($next['3'].number) $($next['3'].kind) $($next['4'].number)" '20 queued ' 'it is its worker''s next, and no other worker''s'
 # Its own work comes first: a PR to answer, then its claimed ticket without a PR. A ticket it works on now is not next.
 $own = @((Issue 7 @('P1', 'worker:1')), (Issue 8 @('P1', 'worker:1')), (Issue 9 @('P0')))
 $prs = @((Pr 70 7 @('worker:1', 'answered')))

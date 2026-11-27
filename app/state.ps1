@@ -855,8 +855,8 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
 
 # Tickets not yet claimed, in the dispatcher's order (docs/QUEUE.md, Dispatching), each with why it waits; and the parked
 # ones (no priority). A ticket that waits on the owner is a question, a stuck run or on hold: not here. `taken`: the
-# worker whose force file names the ticket for Now. `now`: for each other ticket that can run, the worker that would do
-# it at once or why none can (Select-NowWorker).
+# worker whose force file names the ticket for Now, or that has it queued as its next (Queue next). `now`: for each other
+# ticket that can run, the worker that would do it at once or why none can (Select-NowWorker).
 function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $null, $accounts = @()) {
     $open = @($issues | ForEach-Object { $_.number })
     # Each ticket's open blockers, read once: the parked rows ask every ticket whether it waits on them.
@@ -867,6 +867,10 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
     $nows = @{}
     foreach ($view in $workerViews | Where-Object { $_.now }) {
         $nows[[int]$view.now] = [string]$view.id
+    }
+    $nexts = @{}
+    foreach ($view in $workerViews | Where-Object { $_.queued }) {
+        $nexts[[int]$view.queued] = [string]$view.id
     }
     $busy = Get-BusyAreas $issues
     $enabled = @($workerViews | Where-Object { $_.status -ne 'disabled' })
@@ -898,6 +902,9 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
         if ($nows[[int]$issue.number]) {
             $row.taken = $nows[[int]$issue.number]
             $row.reason = "worker $($row.taken) does it now"
+        } elseif ($nexts[[int]$issue.number]) {
+            $row.taken = $nexts[[int]$issue.number]
+            $row.reason = "worker $($row.taken) does it next"
         } elseif ($blockers.Count -gt 0) {
             $row.reason = "blocked by #$($blockers -join ', #')"
         } elseif ($enabled.Count -gt 0 -and $takers.Count -eq 0) {
@@ -922,7 +929,8 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
 }
 
 # Each worker's next ticket, as the dispatcher would choose once its slot is free (worker.ps1, Get-NextJob): the
-# ticket its force file names for Now (kind 'now'; no other worker gets that one), its own
+# ticket its force file names for Now (kind 'now'; no other worker gets that one), the ticket the owner queued as its
+# next (kind 'queued'; no other worker gets that one either), its own
 # PR to answer or rebase, its own ticket, then the first queued ticket whose area is free and whose size its account
 # takes now (the pick-up limits, Get-Fit; $accounts: the snapshot's accounts), one ticket per worker. With
 # no such ticket, the first unblocked one, marked not available with the reason: only Force takes it. A paused
@@ -940,7 +948,7 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             -not ($n | Where-Object { $_ -like 'worker:*' -or $_ -in @('follow-up', 'open-question', 'needs-owner') }) -and
             @(Get-Blockers $_ $open).Count -eq 0
     } | Sort-Object @{ Expression = { Get-Priority $_ } }, @{ Expression = { Get-SizeRank (Get-Size $_) } }, createdAt)
-    $given = @($workerViews | ForEach-Object { [int]$_.now } | Where-Object { $_ })
+    $given = @($workerViews | ForEach-Object { [int]$_.now; [int]$_.queued } | Where-Object { $_ })
     # A free worker takes a ticket before a working one. Each worker's account is read with the windows of the
     # worker's own coding tool.
     $default = $script:Provider
@@ -967,6 +975,12 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             $pick = $queue | Where-Object { $_.number -eq [int]$view.now } | Select-Object -First 1
             if ($pick) {
                 $kind = 'now'
+            }
+        }
+        if (-not $pick -and $view.queued) {
+            $pick = Select-Now $issues ([int]$view.queued) $me $branches
+            if ($pick) {
+                $kind = 'queued'
             }
         }
         $pr = $(if ($pick) { @() } else { $prs }) | Where-Object {
@@ -1144,7 +1158,7 @@ function Get-PushUrl($views, [string] $own, [string] $click) {
     return "$(if ($plain) { $plain } else { $own })/#$click"
 }
 
-# Everything the page shows. $data: now, slug, workers (id, state, progress, forced, now: the ticket its force file
+# Everything the page shows. $data: now, slug, workers (id, state, progress, forced, queued: the ticket queued as its next, now: the ticket its force file
 # names for Now), control, usage,
 # settings, runs, gh (issues, prs, merged, titles, questions; $null until the first fetch), appUrl, logins, login,
 # name and projects (this project's name and the PC's projects, Get-ProjectViews),
@@ -1201,7 +1215,7 @@ function New-Snapshot($data) {
         $enabled = -not ($data.settings -and $data.settings.workers -and $data.settings.workers.$id -and $data.settings.workers.$id.enabled -eq $false)
         $marked = [bool]($data.control -and $data.control.disable -and $data.control.disable.$id)
         $status = Get-WorkerStatus ([string]$s.state) (Get-Mode $data.control $id) $enabled $marked
-        $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced; now = [int]$worker.now }
+        $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced; now = [int]$worker.now; queued = [int]$worker.queued }
         # The owner's name for it (Set-WorkerName), '' for none.
         $view.name = if ($data.settings -and $data.settings.workers -and $data.settings.workers.$id) { [string]$data.settings.workers.$id.name } else { '' }
         # The worker's coding tool: its account's (plugins.ps1, Get-WorkerProvider), by its provider plugin's name.

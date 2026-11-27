@@ -468,6 +468,7 @@ function Update-Snapshot {
         $workers += @{
             id = $id; state = $state; forced = Test-Path (Join-Path $mainQueue "force-$id.json")
             now = Read-Now (Join-Path $mainQueue "force-$id.json")
+            queued = Read-Next (Join-Path $mainQueue "next-$id.json")
             progress = Read-Json (Join-Path $clone '.queue/progress.json')
         }
     }
@@ -494,6 +495,16 @@ function Update-Snapshot {
         }
     }
     $saved = $script:saved
+    # Queue next (docs/QUEUE.md, Queue next) ends when the worker's config no longer takes the ticket: its complexity
+    # is off for the worker. Here, not only in the worker script: that one looks only when its run has ended.
+    foreach ($worker in $workers | Where-Object { $_.queued -and $script:gh }) {
+        $issue = $script:gh.issues | Where-Object { $_.number -eq $worker.queued } | Select-Object -First 1
+        if ($issue -and (Test-ComplexityOff (Get-Label $issue 'complexity:') $saved $worker.id)) {
+            Remove-Item (Join-Path $mainQueue "next-$($worker.id).json") -ErrorAction SilentlyContinue
+            $worker.queued = 0
+            Write-AppLog "next: #$($issue.number) left worker $($worker.id), its complexity is off"
+        }
+    }
     $data = @{
         now = Get-Now; slug = $slug; workers = $workers; control = $control
         usage = Read-Json (Join-Path $PcDir 'usage.json'); out = Read-Json (Join-Path $PcDir 'out.json'); settings = $saved
@@ -614,19 +625,24 @@ function Invoke-Action($request) {
                 if ([string]$request.to -ne 'active' -and $now -and $now -ne [int]$state.ticket) {
                     Remove-Item $force -ErrorAction SilentlyContinue
                 }
+                # The same for a ticket queued as its next.
+                if ([string]$request.to -ne 'active') {
+                    Remove-Item (Join-Path $mainQueue "next-$id.json") -ErrorAction SilentlyContinue
+                }
                 if ($result.kill) {
                     $ended += Stop-Run $id $state
                 }
             }
             return "$($request.to) ($($request.how)): worker $worker$(if ($ended) { ", $ended process(es) ended" })"
         }
-        { @('force', 'unforce') -contains $_ } {
+        { @('force', 'unforce', 'unnext') -contains $_ } {
             # The worker's force file (worker.ps1, $forceFile): its next job starts past the area, room and ceiling checks.
-            # It names the ticket the page shows as the worker's next, so the worker takes that one.
+            # It names the ticket the page shows as the worker's next, so the worker takes that one. `unnext` takes
+            # back the ticket queued as its next (its next file).
             if (-not (Test-Path (Join-Path $mainQueue "worker-$worker.json"))) {
                 throw "no worker $worker"
             }
-            $file = Join-Path $mainQueue "force-$worker.json"
+            $file = Join-Path $mainQueue "$(if ($request.action -eq 'unnext') { 'next' } else { 'force' })-$worker.json"
             if ($request.action -eq 'force') {
                 $next = ($script:snapshot.workers | Where-Object { $_.id -eq $worker } | Select-Object -First 1).next
                 Set-Content $file (@{ ticket = $(if ($next) { [int]$next.number } else { 0 }) } | ConvertTo-Json -Compress) -Encoding utf8
@@ -640,6 +656,8 @@ function Invoke-Action($request) {
             # for it (Select-NowWorker), with `now`: the server's pick, or the one of its list that the owner chose
             # (`worker`). That worker takes it before every other job. Its run in progress
             # ends at its next checkpoint, and that run's ticket goes back to the queue.
+            # With `next` (Queue next) it goes into that worker's next file instead: the worker takes it when it looks
+            # for its next job, and its run goes on. One more for the same worker replaces the first.
             $number = [int]$request.number
             $row = $script:snapshot.queued | Where-Object { [int]$_.number -eq $number } | Select-Object -First 1
             if (-not $row -or -not $row.now) {
@@ -651,6 +669,10 @@ function Invoke-Action($request) {
             $pick = if ($worker) { $row.now.able | Where-Object { $_.worker -eq $worker } | Select-Object -First 1 } else { $row.now }
             if (-not $pick) {
                 throw "worker $worker cannot take ticket $number now"
+            }
+            if ($request.next) {
+                Set-Content (Join-Path $mainQueue "next-$($pick.worker).json") (@{ ticket = $number } | ConvertTo-Json -Compress) -Encoding utf8
+                return "next: #$number on worker $($pick.worker)"
             }
             $file = Join-Path $mainQueue "force-$($pick.worker).json"
             if (Test-Path $file) {
@@ -737,7 +759,7 @@ function Invoke-Action($request) {
             Save-Settings (Set-WorkerEntry (Read-SettingsToEdit) $id $true $account)
             # What a removed worker of this number left must not hold the new one: a pause, a disable to come, a Force.
             Save-Control (Set-WorkerStatus (Read-Json (Join-Path $mainQueue 'control.json')) $id 'active' '' $false).control
-            Remove-Item (Join-Path $mainQueue "force-$id.json") -ErrorAction SilentlyContinue
+            Remove-Item (Join-Path $mainQueue "force-$id.json"), (Join-Path $mainQueue "next-$id.json") -ErrorAction SilentlyContinue
             Write-Setup $id 'setup' ''
             $script:setups[$id] = @{ at = Get-Now
                 job = Start-Job -ScriptBlock $installWorker -ArgumentList (Join-Path $PSScriptRoot '../tasks.ps1'), $Main, $config.name, $slug, $id }
@@ -769,7 +791,7 @@ function Invoke-Action($request) {
             # A run that its dead script left behind ends too.
             Stop-Run $worker $state | Out-Null
             Remove-Item $file
-            Remove-Item (Join-Path $mainQueue "force-$worker.json") -ErrorAction SilentlyContinue
+            Remove-Item (Join-Path $mainQueue "force-$worker.json"), (Join-Path $mainQueue "next-$worker.json") -ErrorAction SilentlyContinue
             # A worker that followed its mapping keeps those picks (state.ps1, Remove-MappingLinks).
             Save-Settings (Set-WorkerEntry (Remove-MappingLinks $settings $worker) $worker $false)
             Save-Control (Set-WorkerStatus (Read-Json (Join-Path $mainQueue 'control.json')) $worker 'active' '' $false).control
@@ -816,12 +838,12 @@ function Invoke-Action($request) {
             # arrives active.
             $control = Read-Json (Join-Path $mainQueue 'control.json')
             Save-Control (Set-WorkerStatus $control $worker $status '' $false).control
-            Remove-Item (Join-Path $mainQueue "force-$worker.json") -ErrorAction SilentlyContinue
+            Remove-Item (Join-Path $mainQueue "force-$worker.json"), (Join-Path $mainQueue "next-$worker.json") -ErrorAction SilentlyContinue
             Write-Setup $worker 'setup' ''
             try {
                 Uninstall-Worker $old.main $old.name $worker
                 Remove-Item (Join-Path $oldQueue "worker-$worker.json")
-                Remove-Item (Join-Path $oldQueue "force-$worker.json") -ErrorAction SilentlyContinue
+                Remove-Item (Join-Path $oldQueue "force-$worker.json"), (Join-Path $oldQueue "next-$worker.json") -ErrorAction SilentlyContinue
                 # No entry of it stays in the old control. There a disable mark of a worker with no state file is
                 # due (Get-DueDisables), and the old project's server would write `enabled: false` for the worker
                 # here.

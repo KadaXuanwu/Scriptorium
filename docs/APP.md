@@ -145,7 +145,8 @@ Each card has two slots:
   moves the next ticket into a free slot now, also a locked one: it writes that ticket's number to
   `.queue/force-<N>.json`, the worker takes it at its next poll (`Select-Forced`), and the run goes past the stop line
   and the pick-up limits. A ticket that **Now** gave the worker (Queue) stands here first, tagged `now`, also while a
-  run still works. **Cancel** takes a Force or a Now back.
+  run still works. A ticket that **Queue next** gave it stands here too, tagged `queued next`, in a slot with a
+  solid border. **Cancel** takes a Force, a Now or a Queue next back.
 
 **A ticket's tags** stand in one order on every tab: kind (your answers, a rebase, part), repo (only another repo than
 the project's), areas, size, then the model and effort of its run (Now) or, for a ticket not started, its complexity
@@ -259,12 +260,14 @@ The repo may be private, so the server fetches each one once with the owner's `g
     ticket whose model has a window of its own, the account must be under that window's start line.
   - Of those, the first is a worker whose ticket in work holds an area of this one. Then a free worker, then the
     account with the most room in its shortest window, then in its longest, then the run that started last.
-  - The page asks first. It names the worker, the run that ends, and the areas that another ticket still holds.
+  - The page asks first. Its text is the worker's status (free, or the run it is in) and the areas that another
+    ticket still holds.
   - With two such workers or more, the dialog lists them, the server's pick first, each with the model and effort it
-    would run the ticket on (its own mapping) and whether it is free. The owner can choose another one; the text is
-    then that worker's.
+    would run the ticket on (its own mapping). The owner can choose another one; the text is then that worker's.
+  - **Queue next**, the dialog's second button, gives the ticket to that worker as its next one and ends no run
+    ([QUEUE.md](QUEUE.md), Queue next).
   - With no such worker the button is off, and its tooltip says why.
-  - A pause or a disable of the worker ends a Now that still waits.
+  - A pause or a disable of the worker ends a Now that still waits, and a Queue next.
 - **On hold:** a ticket labelled `needs-owner` with no question on it.
 - **Parked:** no priority; a priority queues one.
   - **The cross** drops one. The page asks first, and names each open ticket whose `Blocked by` line names it: such a
@@ -418,6 +421,8 @@ random one); `ntfy.server` overrides `https://ntfy.sh`.
   moments of its loop, so a status change never passes through a moment with neither.
 - **Force** (`.queue/force-<N>.json`, written by the server only): `{ticket}` for Force, `{ticket, now: true}` for
   Now. The worker script deletes it when the forced run ends, or when a Now ends without a run.
+- **Next** (`.queue/next-<N>.json`, written by the server only): `{ticket}`, the ticket of a Queue next. The worker
+  script deletes it when it takes the ticket; the server, when the ticket's complexity is off for the worker.
 - **History** (`.queue/history.jsonl`): each run's `duration` in seconds of wall time (`wall: true` marks it).
 - **Progress** (`<copy>/.queue/progress.json`): the run's last checkpoint, `{ticket, done, next}`.
 
