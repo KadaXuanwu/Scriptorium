@@ -708,7 +708,8 @@ function info(s) {
       <li>A ticket with a priority (P0, P1, P2) waits in the ${setting('Queue', 'queue')}: the higher priority first,
         then the larger size, then the older ticket. With no priority it is Parked.</li>
       <li>A free worker first answers and rebases its own PRs, then takes the first queued ticket its account has room
-        for. <b>Now</b> gives a ticket to a worker at once.</li>
+        for. <b>Now</b> gives a ticket to a worker you pick: <b>Do it now</b> ends the worker's run at its next
+        checkpoint and goes past the stop line; <b>Queue next</b> lets the run finish and makes the ticket its next.</li>
       <li>Two tickets of the same area never run at the same time, and one "Blocked by" others waits until they close.</li>
       <li>A run ends in a PR, a question for you, or held at a limit. The merged PR closes its ticket; its follow-ups
         join the queue or wait under Questions.</li>
@@ -1441,16 +1442,14 @@ document.addEventListener('click', async (e) => {
     // Every worker that can take it, the server's pick first. Each runs the ticket on the model of its own mapping.
     const able = pick.able?.length ? pick.able : [pick];
     const named = (p) => workerLabel(workerOf(states[project], p.worker) || { id: p.worker });
-    // The worker's status, and what each button does with it. The list names the worker; alone, the text does.
-    const who = (p, does) => (able.length > 1 ? does[0].toUpperCase() + does.slice(1) : `${named(p)} is ${does}`);
-    const how = (p) => `${p.stops
-      ? `${who(p, `in a run of "${p.title}"`)}. Do it now ends that run at its next checkpoint. Queue next waits for it to finish.`
-      : `${who(p, 'free')}. It takes the ticket at its next poll.`}${
-      p.busy?.length ? ` ${inWords(p.busy)} ${p.busy.length > 1 ? 'are' : 'is'} busy with another ticket.` : ''}`;
+    // Only the worker's status and the areas another ticket still holds; what the buttons do is on Details. The list
+    // names the worker; alone, the text does.
+    const how = (p) => [able.length > 1 ? '' : named(p), p.stops ? `In a run: ${p.title}` : 'Free',
+      p.busy?.length ? `${p.busy.join(', ')} busy` : ''].filter(Boolean).join(' · ');
     const runOn = (p) => within(project, () => runModel(takeOf(states[project], p.worker, row.complexity) || {}));
     const fields = able.length > 1 ? `<label>Worker<select name="worker">${able.map((p, i) => `<option value="${esc(p.worker)}"${i ? '' : ' selected'}>${
       esc([named(p), runOn(p)].filter(Boolean).join(' · '))}</option>`).join('')}</select></label>` : '';
-    const asked = ask(`Do "${row.title}" now?`, how(pick), 'Do it now', { fields, also: 'Queue next' });
+    const asked = ask(row.title, how(pick), 'Do it now', { fields, also: 'Queue next' });
     // The text is of the worker that the list shows.
     $('ask-fields').querySelector('select')?.addEventListener('change', (ev) => { $('ask-text').textContent = how(able.find((p) => p.worker === ev.target.value)); });
     const values = await asked;
