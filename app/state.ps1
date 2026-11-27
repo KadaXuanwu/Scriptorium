@@ -767,56 +767,35 @@ function Test-PrOff($pr, $issues, $settings, [string] $worker) {
     return Test-ComplexityOff (Get-QueueComplexity $pr $issues) $settings $worker
 }
 
-# Now (docs/QUEUE.md, Now): the worker that does a queued ticket at once, for the page's Now button. Only a worker that
-# looks for its next job on its own: active with no change of status to come, free or in a run, with no force on it and
-# with the ticket's complexity on. Its account must take the ticket's size now (Get-Fit, as for a worker's next ticket),
-# and for a ticket whose model has a window of its own it must be under that window's start line.
+# Queue next (docs/QUEUE.md, Queue next): the worker that gets a queued ticket as its next, for the page's Next
+# button. Only a worker that looks for its next job: active with no change of status to come, with a script that runs
+# and an account that takes runs, and with the ticket's complexity on. Room on its account is no condition: the
+# ticket waits with the worker, or the owner forces it on the worker's card.
 # Of those: first a worker whose ticket in work holds an area of this one (the two would change the same files), then a
-# free one, then the most room in the shortest window, then in the longest, then the run that started last (it loses the least
-# work). Returns @{ worker; stops; title; busy; able }: `stops` and `title` are the ticket of the run that ends at its
-# next checkpoint (0 for a free worker); `busy` are this ticket's areas that other tickets in flight still hold; `able`
+# free one, then the most room in the shortest window, then in the longest, then the run that started last.
+# Returns @{ worker; stops; title; busy; able }: `stops` and `title` are the ticket of its run in progress
+# (0 without one); `busy` are this ticket's areas that other tickets in flight still hold; `able`
 # are all the workers that can take it, each with the same four fields, in that order: the owner may pick another one,
 # as each worker runs the ticket on the models of its own mapping. With no such worker: @{ why }.
-function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $accounts = @()) {
+function Select-NextWorker($ticket, $issues, $workerViews, $settings = $null, $accounts = @()) {
     $complexity = Get-Label $ticket 'complexity:'
     if (-not $complexity) {
         $complexity = 'medium'
     }
-    $size = Get-Size $ticket
     $areas = @(Get-Names $ticket | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
     $able = @($workerViews | Where-Object {
-        $_.status -eq 'active' -and -not $_.pending -and $_.activity -in @('free', 'running') -and -not $_.forced -and
+        $_.status -eq 'active' -and -not $_.pending -and
+            $_.activity -notin @('down', 'signedout', 'setup', 'setup-failed', 'opening', 'error') -and
             -not (Test-ComplexityOff $complexity $settings ([string]$_.id))
     })
     if ($able.Count -eq 0) {
-        return @{ why = 'no worker can take it: each is paused, held, forced or has its complexity off' }
+        return @{ why = 'no worker can take it: each is paused, out or has its complexity off' }
     }
-    $noModel = 0
     # Each worker's account is read with the windows of the worker's own coding tool.
     $default = $script:Provider
     $ranked = @(foreach ($view in $able) {
         Select-Provider (Get-ViewProvider $view $default)
         $account = $accounts | Where-Object { $_.name -eq $view.account } | Select-Object -First 1
-        # Not an account at the start line of the model's own window (docs/QUEUE.md, A model's limit): a run would end
-        # for a ticket that cannot start.
-        # shortcut: a model that the plan refused (the PC's access.json) is not read here; the worker script puts such a
-        # ticket back in the queue. Read it here when a Now is lost to it in use.
-        $model = [string]($view.takes | Where-Object { $_.name -eq $complexity } | Select-Object -First 1).model
-        $window = Get-ModelWindow $model
-        $reading = if ($account -and $window) { $account[$window] } else { $null }
-        if ($reading) {
-            $start = [double]$reading.stopAt
-            if ($reading.pickUp) {
-                $start = [math]::Min([double](@($reading.pickUp.Values) | Measure-Object -Minimum).Minimum, $start)
-            }
-            if ([double]$reading.used -ge $start) {
-                $noModel++
-                continue
-            }
-        }
-        if ($account -and -not (Get-Fit $size $account)) {
-            continue
-        }
         # Only a ticket's own run frees its areas when it ends: a PR's job keeps its ticket.
         $works = $view.activity -eq 'running' -and (-not $view.kind -or $view.kind -eq 'ticket')
         $held = if ($works) {
@@ -838,9 +817,6 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
         }
     })
     Select-Provider $default
-    if ($ranked.Count -eq 0) {
-        return @{ why = $(if ($noModel -eq $able.Count) { "no account has the model of a $complexity ticket left" } else { "no account has room for a size $size ticket now" }) }
-    }
     $order = @($ranked | Sort-Object @{ Expression = { $_.clash }; Descending = $true }, @{ Expression = { $_.free }; Descending = $true },
         @{ Expression = { $_.short }; Descending = $true }, @{ Expression = { $_.long }; Descending = $true },
         @{ Expression = { $_.started }; Descending = $true }, @{ Expression = { [int]$_.view.id } })
@@ -855,8 +831,8 @@ function Select-NowWorker($ticket, $issues, $workerViews, $settings = $null, $ac
 
 # Tickets not yet claimed, in the dispatcher's order (docs/QUEUE.md, Dispatching), each with why it waits; and the parked
 # ones (no priority). A ticket that waits on the owner is a question, a stuck run or on hold: not here. `taken`: the
-# worker whose force file names the ticket for Now, or that has it queued as its next (Queue next). `now`: for each other
-# ticket that can run, the worker that would do it at once or why none can (Select-NowWorker).
+# worker whose force file names the ticket for Now, or that has it queued as its next (Queue next; `pinned`). `next`:
+# for each other ticket that can run, the worker that would get it as its next or why none can (Select-NextWorker).
 function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $null, $accounts = @()) {
     $open = @($issues | ForEach-Object { $_.number })
     # Each ticket's open blockers, read once: the parked rows ask every ticket whether it waits on them.
@@ -904,6 +880,7 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
             $row.reason = "worker $($row.taken) does it now"
         } elseif ($nexts[[int]$issue.number]) {
             $row.taken = $nexts[[int]$issue.number]
+            $row.pinned = $true
             $row.reason = "worker $($row.taken) does it next"
         } elseif ($blockers.Count -gt 0) {
             $row.reason = "blocked by #$($blockers -join ', #')"
@@ -919,9 +896,9 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
         } else {
             $row.reason = 'next up'
         }
-        # Also a blocked ticket: the owner accepts a merge conflict with its blocker (docs/QUEUE.md, Now).
+        # Also a blocked ticket: it waits with its worker, or the owner forces it there (docs/QUEUE.md, Queue next).
         if (-not $row.taken) {
-            $row.now = Select-NowWorker $issue $issues $workerViews $settings $accounts
+            $row.next = Select-NextWorker $issue $issues $workerViews $settings $accounts
         }
         $queued += $row
     }
@@ -930,12 +907,16 @@ function Get-QueueRows($issues, $workerViews, $dispatch = $null, $settings = $nu
 
 # Each worker's next ticket, as the dispatcher would choose once its slot is free (worker.ps1, Get-NextJob): the
 # ticket its force file names for Now (kind 'now'; no other worker gets that one), the ticket the owner queued as its
-# next (kind 'queued'; no other worker gets that one either), its own
-# PR to answer or rebase, its own ticket, then the first queued ticket whose area is free and whose size its account
+# next and forced (kind 'queued', `forced`), its own
+# PR to answer or rebase, its own ticket, the ticket the owner queued as its next (kind 'queued'; no other worker gets
+# that one, and it is not available while it waits: Get-NextWait, the pick-up limits), then the first queued ticket
+# whose area is free and whose size its account
 # takes now (the pick-up limits, Get-Fit; $accounts: the snapshot's accounts), one ticket per worker. With
 # no such ticket, the first unblocked one, marked not available with the reason: only Force takes it. A paused
 # worker's next is not available; a disabled worker has none. Worker id -> @{ number; title; url; areas; size;
-# complexity (medium without the label); kind; available; why }.
+# complexity (medium without the label); kind; forced; available; why }.
+# shortcut: a queued next that waits for a model its account has left (worker.ps1, Test-ModelLeft) shows as available;
+# read the model's window here when that misleads in use.
 # shortcut: one ticket per worker in the workers' order, not the dispatcher's best fit by account; worker.ps1's
 # dispatcher decides. Upgrade when the two disagree in play.
 function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settings = $null, $accounts = @()) {
@@ -971,16 +952,23 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
         $pick = $null
         $shown = $false
         $kind = 'ticket'
+        $forced = $false
+        $account = $accounts | Where-Object { $_.name -eq $view.account } | Select-Object -First 1
         if ($view.now) {
-            $pick = $queue | Where-Object { $_.number -eq [int]$view.now } | Select-Object -First 1
+            # As the worker reads it: also a blocked ticket.
+            $pick = Select-Now $issues ([int]$view.now) $me $branches
             if ($pick) {
                 $kind = 'now'
             }
         }
-        if (-not $pick -and $view.queued) {
-            $pick = Select-Now $issues ([int]$view.queued) $me $branches
-            if ($pick) {
-                $kind = 'queued'
+        $pinned = if ($view.queued) { Select-Now $issues ([int]$view.queued) $me $branches }
+        if (-not $pick -and $pinned -and $view.queuedForced) {
+            $pick = $pinned
+            $kind = 'queued'
+            $forced = $true
+            # A forced run starts past the stop line.
+            if ($view.activity -in @('room', 'limit')) {
+                $why = ''
             }
         }
         $pr = $(if ($pick) { @() } else { $prs }) | Where-Object {
@@ -1002,6 +990,16 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
                 $n -contains $me -and $n -notcontains 'needs-owner' -and $branches -notcontains "t$($_.number)" -and $_.number -ne $current
             } | Sort-Object createdAt | Select-Object -First 1
         }
+        if (-not $pick -and $pinned) {
+            $pick = $pinned
+            $kind = 'queued'
+            if (-not $why) {
+                $why = Get-NextWait $pick $open (Get-BusyAreas $issues $current)
+            }
+            if (-not $why -and $account -and -not (Get-Fit (Get-Size $pick) $account)) {
+                $why = "over the pick-up limit for size $(Get-Size $pick)"
+            }
+        }
         if (-not $pick) {
             # Not a ticket of a complexity the owner switched off for this worker (limits.ps1).
             $rest = @($queue | Where-Object {
@@ -1014,7 +1012,6 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             })
             # Not a ticket of a size its account does not take now: over the size's pick-up limit, a worker takes the
             # next smaller ticket, and a bigger one again after the window's reset.
-            $account = $accounts | Where-Object { $_.name -eq $view.account } | Select-Object -First 1
             $pick = $free | Where-Object { -not $account -or (Get-Fit (Get-Size $_) $account) } | Select-Object -First 1
             if ($pick) {
                 if (-not $why -and $dispatch -and $dispatch.waiting -and $dispatch.waiting."$($pick.number)") {
@@ -1042,7 +1039,7 @@ function Get-NextTickets($issues, $prs, $workerViews, $dispatch = $null, $settin
             $complexity = Get-Label $pick 'complexity:'
             $next[[string]$view.id] = @{
                 number = $pick.number; title = $pick.title; url = $pick.url; areas = Get-Areas $pick; size = Get-Label $pick 'size:'
-                complexity = $(if ($complexity) { $complexity } else { 'medium' }); kind = $kind; available = -not $why; why = $why
+                complexity = $(if ($complexity) { $complexity } else { 'medium' }); kind = $kind; forced = $forced; available = -not $why; why = $why
             }
         }
     }
@@ -1215,7 +1212,8 @@ function New-Snapshot($data) {
         $enabled = -not ($data.settings -and $data.settings.workers -and $data.settings.workers.$id -and $data.settings.workers.$id.enabled -eq $false)
         $marked = [bool]($data.control -and $data.control.disable -and $data.control.disable.$id)
         $status = Get-WorkerStatus ([string]$s.state) (Get-Mode $data.control $id) $enabled $marked
-        $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced; now = [int]$worker.now; queued = [int]$worker.queued }
+        $view = @{ id = $id; status = $status.status; pending = $status.pending; at = [long]$s.at; forced = [bool]$worker.forced; now = [int]$worker.now; queued = [int]$worker.queued
+            queuedForced = [bool]$worker.queuedForced }
         # The owner's name for it (Set-WorkerName), '' for none.
         $view.name = if ($data.settings -and $data.settings.workers -and $data.settings.workers.$id) { [string]$data.settings.workers.$id.name } else { '' }
         # The worker's coding tool: its account's (plugins.ps1, Get-WorkerProvider), by its provider plugin's name.

@@ -866,22 +866,23 @@ function Get-NextJob {
         Write-Log "now: #$now left the queue, so the Now ends"
     }
 
-    # Queue next (docs/QUEUE.md, Queue next): the ticket the owner queued as this worker's next goes before its other
-    # jobs, by the rules of a Now's ticket. Its claim carries it from here, so the file goes; so does one whose ticket
-    # left the queue.
-    # shortcut: it also goes before a ticket of its own that comes back (a start its model refused, a run cut short); put
-    # it after those if such a ticket waits behind a queued one in use.
-    $queuedNext = Read-Next $nextFile
-    if ($queuedNext) {
+    # Queue next, forced (docs/QUEUE.md, Queue next): the ticket the owner queued as this worker's next and forced with
+    # the arrow goes before its other jobs, by the rules of a Now's ticket. Its claim carries it from here, so the next
+    # file goes; the force file makes its run a forced run. A ticket that left the queue ends it, and the worker takes no
+    # other job this pass: it came here past the stop line (the main loop).
+    $forcedNext = Read-Next $nextFile -Forced
+    if ($forcedNext) {
         Remove-Item $nextFile -ErrorAction SilentlyContinue
-        $ticket = Select-Now $issues $queuedNext $me $prBranches
+        $ticket = Select-Now $issues $forcedNext $me $prBranches
         if ($ticket -and -not (Test-ComplexityOff (Get-Complexity $ticket) $settings "$Id")) {
+            Set-Content $forceFile (@{ ticket = $ticket.number } | ConvertTo-Json -Compress) -Encoding utf8
             & gh issue edit $ticket.number --add-label $me -R $repo | Out-Null
-            Write-Log "next: #$($ticket.number) onto worker $Id"
+            Write-Log "next: forced #$($ticket.number) onto worker $Id"
             return @{ Kind = 'ticket'; Ticket = $ticket.number; Title = $ticket.title; Repo = Get-TicketRepo $ticket; Size = Get-Size $ticket
                 Complexity = Get-Complexity $ticket; Blockers = @(Get-Blockers $ticket $open) }
         }
-        Write-Log "next: #$queuedNext left the queue"
+        Write-Log "next: #$forcedNext left the queue"
+        return $null
     }
 
     foreach ($kind in @('answered', 'needs-rebase')) {
@@ -907,9 +908,6 @@ function Get-NextJob {
         return @{ Kind = 'ticket'; Ticket = $resume.number; Title = $resume.title; Repo = Get-TicketRepo $resume; Size = Get-Size $resume
             Complexity = Get-Complexity $resume; Blockers = @(Get-Blockers $resume $open) }
     }
-    if ((Get-RunSettings $Id).assignedOnly) {
-        return $null
-    }
 
     # Areas held by any ticket in flight: claimed by a worker and not parked on a question. Another repo counts as an
     # area of its own.
@@ -917,6 +915,34 @@ function Get-NextJob {
         $n = Get-Names $_
         ($n | Where-Object { $_ -like 'worker:*' }) -and $n -notcontains 'needs-owner'
     } | ForEach-Object { Get-Names $_ } | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' })
+
+    # Queue next (docs/QUEUE.md, Queue next): the ticket the owner queued as this worker's next is its next new ticket,
+    # in place of the queue's. It waits as a queue's ticket does: for its blockers and its areas (Get-NextWait), for a
+    # model the account has left and for the pick-up limit of its size. While it waits, the file stays and this worker
+    # takes no other new ticket (the dispatcher below gives it none). Its claim carries it from here, so the file goes;
+    # so does one whose ticket left the queue.
+    $queuedNext = Read-Next $nextFile
+    if ($queuedNext) {
+        $ticket = Select-Now $issues $queuedNext $me $prBranches
+        if (-not $ticket -or (Test-ComplexityOff (Get-Complexity $ticket) $settings "$Id")) {
+            Remove-Item $nextFile -ErrorAction SilentlyContinue
+            Write-Log "next: #$queuedNext left the queue"
+        } elseif (-not (Get-NextWait $ticket $open $busy)) {
+            $own = Get-RunSettings $Id
+            $account = Get-Account $own.configDir
+            if ((Test-ModelLeft (Get-Complexity $ticket) $own $account) -and
+                (Get-Fit (Get-Size $ticket) (Get-Budget $account (Get-FreshUsage $own.configDir)))) {
+                Remove-Item $nextFile -ErrorAction SilentlyContinue
+                & gh issue edit $ticket.number --add-label $me -R $repo | Out-Null
+                Write-Log "next: #$($ticket.number) onto worker $Id"
+                return @{ Kind = 'ticket'; Ticket = $ticket.number; Title = $ticket.title; Repo = Get-TicketRepo $ticket; Size = Get-Size $ticket
+                    Complexity = Get-Complexity $ticket }
+            }
+        }
+    }
+    if ((Get-RunSettings $Id).assignedOnly) {
+        return $null
+    }
 
     # A ticket that another worker's force file names for Now waits for that worker, and so does one queued as another
     # worker's next (this worker's own is read above).
@@ -1724,7 +1750,7 @@ while ($true) {
                 $job = $null
                 $paused = $null
             }
-        } elseif (-not (Test-Path $forceFile) -and (Test-OverBudget $runConfigDir)) {
+        } elseif (-not (Test-Path $forceFile) -and -not (Read-Next $nextFile -Forced) -and (Test-OverBudget $runConfigDir)) {
             Write-State 'over-budget'
             # The account has room when its last full window resets: the wait below ends then, not a poll later.
             $roomAt = ($windows | Where-Object { $script:budget[$_].used -ge $script:budget[$_].ceiling } |
@@ -1880,6 +1906,7 @@ while ($true) {
     $enabled = $true
     while ((Get-Now) -lt $wake -and -not (Test-CodeChanged) -and $enabled -and
         -not ((Test-Path $forceFile) -and (Get-Item $forceFile).LastWriteTime -gt $polledAt) -and
+        -not ((Test-Path $nextFile) -and (Get-Item $nextFile).LastWriteTime -gt $polledAt) -and
         -not ((Test-Path $wakeWorkers) -and (Get-Item $wakeWorkers).LastWriteTime -gt $polledAt)) {
         Start-Sleep 5
         if ((Get-Now) - $enabledAt -ge 60) {

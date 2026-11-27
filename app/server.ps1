@@ -469,6 +469,7 @@ function Update-Snapshot {
             id = $id; state = $state; forced = Test-Path (Join-Path $mainQueue "force-$id.json")
             now = Read-Now (Join-Path $mainQueue "force-$id.json")
             queued = Read-Next (Join-Path $mainQueue "next-$id.json")
+            queuedForced = [bool](Read-Next (Join-Path $mainQueue "next-$id.json") -Forced)
             progress = Read-Json (Join-Path $clone '.queue/progress.json')
         }
     }
@@ -502,6 +503,7 @@ function Update-Snapshot {
         if ($issue -and (Test-ComplexityOff (Get-Label $issue 'complexity:') $saved $worker.id)) {
             Remove-Item (Join-Path $mainQueue "next-$($worker.id).json") -ErrorAction SilentlyContinue
             $worker.queued = 0
+            $worker.queuedForced = $false
             Write-AppLog "next: #$($issue.number) left worker $($worker.id), its complexity is off"
         }
     }
@@ -636,50 +638,71 @@ function Invoke-Action($request) {
             return "$($request.to) ($($request.how)): worker $worker$(if ($ended) { ", $ended process(es) ended" })"
         }
         { @('force', 'unforce', 'unnext') -contains $_ } {
-            # The worker's force file (worker.ps1, $forceFile): its next job starts past the area, room and ceiling checks.
-            # It names the ticket the page shows as the worker's next, so the worker takes that one. `unnext` takes
-            # back the ticket queued as its next (its next file).
+            # Force, the arrow on the worker's card: the ticket the page shows as the worker's next (`number`: the one
+            # the owner saw) starts past the blocker, area, room and ceiling checks. A ticket goes into the worker's
+            # next file with `force` (docs/QUEUE.md, Queue next): the worker takes that very one after its run. With
+            # `how: replace` it goes into the force file with `now` instead (docs/QUEUE.md, Now): the run in progress
+            # ends for it at its next checkpoint. A PR's job goes into the force file (worker.ps1, $forceFile).
+            # `unforce` takes a Force or a Now back, `unnext` the ticket queued as its next, forced or not.
             if (-not (Test-Path (Join-Path $mainQueue "worker-$worker.json"))) {
                 throw "no worker $worker"
             }
-            $file = Join-Path $mainQueue "$(if ($request.action -eq 'unnext') { 'next' } else { 'force' })-$worker.json"
-            if ($request.action -eq 'force') {
-                $next = ($script:snapshot.workers | Where-Object { $_.id -eq $worker } | Select-Object -First 1).next
-                Set-Content $file (@{ ticket = $(if ($next) { [int]$next.number } else { 0 }) } | ConvertTo-Json -Compress) -Encoding utf8
+            $force = Join-Path $mainQueue "force-$worker.json"
+            $pin = Join-Path $mainQueue "next-$worker.json"
+            if ($request.action -eq 'unnext') {
+                Remove-Item $pin -ErrorAction SilentlyContinue
+            } elseif ($request.action -eq 'unforce') {
+                Remove-Item $force -ErrorAction SilentlyContinue
             } else {
-                Remove-Item $file -ErrorAction SilentlyContinue
+                $view = $script:snapshot.workers | Where-Object { $_.id -eq $worker } | Select-Object -First 1
+                $next = $view.next
+                $number = if ($next) { [int]$next.number } else { 0 }
+                if ($request.number -and [int]$request.number -ne $number) {
+                    throw "worker $worker has another next ticket now"
+                }
+                $ticket = $next -and @('ticket', 'queued') -contains $next.kind
+                if ($request.how -eq 'replace') {
+                    if (-not $ticket) {
+                        throw 'only a ticket takes the place of a run'
+                    }
+                    # A held run goes first, and a Now behind it ends (worker.ps1).
+                    if ($view.run -and $view.activity -ne 'running') {
+                        throw "worker $worker holds a run: that one goes first"
+                    }
+                    if (Read-Now $force) {
+                        throw "worker $worker has a Now already"
+                    }
+                    Set-Content $force (@{ ticket = $number; now = $true } | ConvertTo-Json -Compress) -Encoding utf8
+                    if ((Read-Next $pin) -eq $number) {
+                        Remove-Item $pin -ErrorAction SilentlyContinue
+                    }
+                } elseif ($ticket) {
+                    Set-Content $pin (@{ ticket = $number; force = $true } | ConvertTo-Json -Compress) -Encoding utf8
+                } else {
+                    Set-Content $force (@{ ticket = $number } | ConvertTo-Json -Compress) -Encoding utf8
+                }
             }
-            return "$($request.action): worker $worker"
+            return "$($request.action)$(if ($request.how) { " ($($request.how))" }): worker $worker"
         }
-        'now' {
-            # Now (docs/QUEUE.md, Now): the queued ticket goes into the force file of the worker that the page showed
-            # for it (Select-NowWorker), with `now`: the server's pick, or the one of its list that the owner chose
-            # (`worker`). That worker takes it before every other job. Its run in progress
-            # ends at its next checkpoint, and that run's ticket goes back to the queue.
-            # With `next` (Queue next) it goes into that worker's next file instead: the worker takes it when it looks
-            # for its next job, and its run goes on. One more for the same worker replaces the first.
+        'next' {
+            # Queue next (docs/QUEUE.md, Queue next): the queued ticket goes into the next file of the worker that the
+            # page showed for it (Select-NextWorker): the server's pick, or the one of its list that the owner chose
+            # (`worker`). It is that worker's next new ticket, and forces nothing. One more for the same worker
+            # replaces the first.
             $number = [int]$request.number
             $row = $script:snapshot.queued | Where-Object { [int]$_.number -eq $number } | Select-Object -First 1
-            if (-not $row -or -not $row.now) {
-                throw "ticket $number is not a queued ticket that can run now"
+            if (-not $row -or -not $row.next) {
+                throw "ticket $number is not a queued ticket that a worker can take"
             }
-            if (-not $row.now.worker) {
-                throw [string]$row.now.why
+            if (-not $row.next.worker) {
+                throw [string]$row.next.why
             }
-            $pick = if ($worker) { $row.now.able | Where-Object { $_.worker -eq $worker } | Select-Object -First 1 } else { $row.now }
+            $pick = if ($worker) { $row.next.able | Where-Object { $_.worker -eq $worker } | Select-Object -First 1 } else { $row.next }
             if (-not $pick) {
-                throw "worker $worker cannot take ticket $number now"
+                throw "worker $worker cannot take ticket $number"
             }
-            if ($request.next) {
-                Set-Content (Join-Path $mainQueue "next-$($pick.worker).json") (@{ ticket = $number } | ConvertTo-Json -Compress) -Encoding utf8
-                return "next: #$number on worker $($pick.worker)"
-            }
-            $file = Join-Path $mainQueue "force-$($pick.worker).json"
-            if (Test-Path $file) {
-                throw "worker $($pick.worker) has a forced ticket already"
-            }
-            Set-Content $file (@{ ticket = $number; now = $true } | ConvertTo-Json -Compress) -Encoding utf8
-            return "now: #$number on worker $($pick.worker)"
+            Set-Content (Join-Path $mainQueue "next-$($pick.worker).json") (@{ ticket = $number } | ConvertTo-Json -Compress) -Encoding utf8
+            return "next: #$number on worker $($pick.worker)"
         }
         'rename-worker' {
             # The worker's name on the page (docs/APP.md, Worker status): the PC's, so it stays with a move.

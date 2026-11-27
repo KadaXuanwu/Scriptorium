@@ -75,15 +75,16 @@ involved.
 | `follow-up` | A draft ticket that the merger filed from a merged PR's Follow-up section (one for each `###`), with questions for the owner. No worker takes it until the owner answers it (the page, Questions). One without questions is filed `P1` instead |
 | `open-question` | A question that the merger filed from a merged PR's Open questions section (one for each `###`, `size:S`); the product has its default already. The owner keeps the default (closed) or changes it (queued `P1` with the answer) under the page's Questions |
 
-A line `Blocked by #3, #5` in a ticket's body holds it until those close, unless the owner gives it a worker with Now. A run must end in a PR, a question or a
+A line `Blocked by #3, #5` in a ticket's body holds it until those close, unless the owner forces it onto a worker (Queue next, Now). A run must end in a PR, a question or a
 pause (for the usage limit, or for an account that is out). The worker script parks anything else as `needs-owner`,
 with the log's path, so a failing ticket never loops.
 
 ## Dispatching
 
 An idle worker script, under the shared lock, takes the first of: the ticket of the owner's Now (Now), the ticket
-queued as its next (Queue next), its own PRs (`answered`, then `needs-rebase`), its own
-ticket without an open PR (answered, rejected, given to it, or a run cut short), then new tickets. New tickets go in
+queued as its next and forced (Queue next), its own PRs (`answered`, then `needs-rebase`), its own
+ticket without an open PR (answered, rejected, given to it, or a run cut short), the ticket queued as its next (Queue
+next), then new tickets. New tickets go in
 queue order: the priority, then the bigger ticket, then the older one (`Get-SizeRank` in [limits.ps1](../limits.ps1)).
 A fresh window then goes to the big tickets, and the small ones fill what the pick-up limits leave. Each ticket goes to
 the idle worker whose account's free room most wants spending, labelled `worker:N` for it; the script stops at the
@@ -502,52 +503,66 @@ the click.
 
 ## Now
 
-**Now** on the page's Queue tab gives one queued ticket to one worker at once ([APP.md](APP.md), Queue). The server
-writes the ticket to that worker's force file with `now` (`.queue/force-<N>.json`).
+**Now** ends a worker's run for its next ticket. It is the answer **Replace now** to the arrow on the card of a worker
+in a run ([APP.md](APP.md), Workers). The server writes the ticket to that worker's force file with `now`
+(`.queue/force-<N>.json`).
 
-- **The worker** is the server's pick ([APP.md](APP.md), Queue), or another worker that can take the ticket, which
-  the owner chooses in the dialog: each worker runs the ticket on the models of its own mapping (Models, A worker's
-  mapping). A worker with the ticket's complexity off is not among them.
-- **The ticket** waits for that worker. No other worker takes it, and the page shows it as that worker's next.
+- **The ticket** is the one the card shows as the worker's next: a queued ticket, also one that Queue next gave the
+  worker. A PR's job takes no Now.
+- **It waits** for that worker. No other worker takes it, and the page shows it as that worker's next.
 - **A blocked ticket** takes Now too: the owner accepts a merge conflict with its blocker. The run's first message
   names the open blockers and tells the run to build on main as it is, without waiting or asking.
-- **A free worker** takes it at its next poll, before its own PRs and tickets.
-- **A worker in a run** gets the stop note (`stop.md`). The run ends at its next checkpoint: it pushes its work and
+- **The run in progress** gets the stop note (`stop.md`). It ends at its next checkpoint: it pushes its work and
   posts a handoff comment. The script holds no session.
   - A ticket's run loses its claim. The ticket goes back to the queue and starts fresh from the comment, on any worker.
   - A PR's job stays the worker's. It starts again after the Now ticket.
   - The run is in the history as a part.
-- **The Now run** is a forced run: it does not stop at the workers' ceiling. The server checks the account's room only
-  when the owner clicks.
-- **The model:** the server reads the window of the ticket's model on the account (A model's limit), not the models
-  that its plan refused (`access.json`).
+- **The Now run** is a forced run: it does not stop at the workers' ceiling.
+- **The model:** the server reads neither the window of the ticket's model on the account (A model's limit) nor the
+  models that its plan refused (`access.json`).
   The plan can therefore refuse the start of a Now run. The ticket then goes back to the queue (Models).
 - **The Now ends** without a run in these cases, and the worker deletes the file:
   - The ticket left the queue: closed, claimed by another worker, or its complexity is off for the worker.
     The worker takes only the ticket that the file names, never another one (`Select-Now` in [areas.ps1](../areas.ps1)).
-  - The worker holds a paused run. That run goes first.
-  - The owner cancels the Now on the worker's card, or pauses or disables the worker. A cancel before the checkpoint
-    withdraws the stop note, and the run goes on.
+  - The worker holds a paused run. That run goes first, so the page offers no Replace now for it.
+  - The owner cancels the Now on the worker's card or on the ticket's row, or pauses or disables the worker. A cancel
+    before the checkpoint withdraws the stop note, and the run goes on.
 
 ## Queue next
 
-**Queue next** in the same dialog gives the ticket to the worker as its next one and leaves its run alone. The server
-writes the ticket to that worker's next file (`.queue/next-<N>.json`).
+**Next** on the page's Queue tab gives one queued ticket to one worker as its next new ticket ([APP.md](APP.md),
+Queue). It forces nothing. The server writes the ticket to that worker's next file (`.queue/next-<N>.json`).
 
-- **The worker** is one of the dialog's list, as for Now.
-- **The ticket** waits for that worker. No other worker takes it, and the worker's card shows it as its next, marked
-  and tagged `queued next`. One more Queue next for the same worker replaces the first, which goes back to the queue.
-- **The worker takes it** when it looks for its next job, before its own PRs and tickets and by the rules of a Now's
-  ticket (`Select-Now`): also a blocked one, and whatever areas are busy. It deletes the file then: the ticket is its
-  own from there.
-- **Its run** is not a forced run: the worker starts none while its account is at the stop line, and the ticket waits
-  with it.
+- **The worker** is the server's pick ([APP.md](APP.md), Queue), or another worker that can take the ticket, which
+  the owner chooses in the dialog: each worker runs the ticket on the models of its own mapping (Models, A worker's
+  mapping). Not among them: a worker that is not active, one whose script or account is out, and one with the
+  ticket's complexity off. A worker at its usage limit is among them.
+- **The ticket** waits for that worker. No other worker takes it. The worker's card shows it as its next, marked
+  and tagged `queued next`, and its row on the Queue tab names the worker. One more Queue next for the same worker
+  replaces the first, which goes back to the queue.
+- **The worker takes it** when it looks for a new ticket: after its own PRs and tickets, in place of the queue's
+  next ticket. It deletes the file then: the ticket is its own from there.
+- **It waits** as a ticket of the queue does, and the card shows a lock with the reason:
+  - for its open blockers and for an area that a ticket in flight holds (`Get-NextWait` in [areas.ps1](../areas.ps1));
+  - for a model the account has left, and for the pick-up limit of its size;
+  - with the worker, while its account is at the stop line.
+
+  The worker takes no other new ticket meanwhile.
+- **Forced** (the arrow on the worker's card, [APP.md](APP.md), Workers): the server writes `force` into the next
+  file. The arrow does the same for a ticket that the card shows as the worker's next from the queue.
+  - The worker then takes the ticket before its other jobs, past its blockers, the areas, the pick-up limits and the
+    stop line, by the rules of a Now's ticket (`Select-Now`): that very ticket, never another one in its place.
+  - A free worker takes it at its next poll. A worker in a run takes it after that run, or ends the run for it if
+    the owner answers Replace now (Now).
+  - Its run is a forced run: the worker writes its force file as it takes the ticket.
 - **It ends** without a run in these cases:
   - The worker's config no longer takes it: the ticket's complexity is off for the worker. The server deletes the
     file at its next look, so the ticket is free while the worker's run still works.
-  - The ticket left the queue: closed or claimed by another worker. The worker takes no other ticket in its place.
-  - The owner cancels it on the worker's card, or pauses, disables, removes or moves the worker.
-- A worker that holds a paused run keeps it: that run goes first.
+  - The ticket left the queue: closed or claimed by another worker. For a forced one, the worker takes no other job
+    in its place at that look.
+  - The owner cancels it on the worker's card or on the ticket's row, or pauses, disables, removes or moves the
+    worker. A cancel of a forced one takes the whole Queue next back, not only the force.
+- A worker that holds a paused run keeps it: that run goes first, also before a forced ticket.
 
 ## Plugins
 
