@@ -1445,7 +1445,7 @@ document.addEventListener('click', async (e) => {
     // Only the worker's status and the areas another ticket still holds; what the buttons do is on Details. The list
     // names the worker; alone, the text does.
     const how = (p) => [able.length > 1 ? '' : named(p), p.stops ? `In a run: ${p.title}` : 'Free',
-      p.busy?.length ? `${p.busy.join(', ')} busy` : ''].filter(Boolean).join(' · ');
+      p.busy?.length ? `${p.busy.join(', ')} busy` : ''].filter(Boolean).join('\n');
     const runOn = (p) => within(project, () => runModel(takeOf(states[project], p.worker, row.complexity) || {}));
     const fields = able.length > 1 ? `<label>Worker<select name="worker">${able.map((p, i) => `<option value="${esc(p.worker)}"${i ? '' : ' selected'}>${
       esc([named(p), runOn(p)].filter(Boolean).join(' · '))}</option>`).join('')}</select></label>` : '';

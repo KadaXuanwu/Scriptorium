@@ -725,7 +725,7 @@ dialog {
 dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 #how, #ask { width: min(440px, calc(100vw - 32px)); }
 #ask h2 { margin: 0 0 8px; font-size: 16px; letter-spacing: 0; text-transform: none; color: var(--ink); }
-#ask p { margin: 0 0 18px; color: var(--muted); }
+#ask p { margin: 0 0 18px; color: var(--muted); white-space: pre-line; }
 #ask .buttons { justify-content: flex-end; }
 .dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
 .dialog-head h2 { margin: 0; font-size: 16px; letter-spacing: 0; text-transform: none; color: var(--ink); }
