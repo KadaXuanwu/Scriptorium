@@ -154,7 +154,7 @@ Each card has two slots:
   - The server writes a ticket to `.queue/next-<N>.json` with `force`, for Replace now to `.queue/force-<N>.json`
     with `now`, and a PR's job to the force file.
   - The slot then says when the worker takes the ticket. **Cancel** takes a Force or a Now back. On a ticket of Queue
-    next the arrow stands in the slot's bottom right corner, and a small cross in its top right corner takes the
+    next the arrow stands in the slot's bottom right corner, and a small cross on the border at its top right corner takes the
     Queue next back, forced or not.
 
 **A ticket's tags** stand in one order on every tab: kind (your answers, a rebase, part), repo (only another repo than

@@ -331,18 +331,14 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 .slot { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--raised); }
 .slot.next { background: transparent; border: 1px dashed var(--line); }
 /* The ticket the owner queued as the worker's next (Queue next). */
-.slot.next.queued { position: relative; min-height: 80px; border: 1px solid var(--accent); }
-/* The arrow stands in the slot's bottom right corner. The cross that takes a Queue next back is in the top right one,
-   out of the flow: it takes no width from the ticket. The slot's least height keeps the two apart. Without the arrow
-   the title ends before the cross. */
+.slot.next.queued { position: relative; border: 1px solid var(--accent); }
+/* The arrow stands in the slot's bottom right corner. The cross that takes a Queue next back sits on the border, at
+   the top right corner: out of the flow, so it takes no room from the ticket, and with the card's ground, so it
+   breaks the line. */
 .slot.next > .round { align-self: flex-end; }
-.slot.next > button.x { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; min-height: 22px; margin: 0; }
-.slot.next > .slot-body:has(+ button.x) { padding-right: 16px; }
-@media (pointer: coarse) {
-  .slot.next.queued { min-height: 96px; }
-  .slot.next > button.x { width: 30px; height: 30px; min-height: 30px; }
-  .slot.next > .slot-body:has(+ button.x) { padding-right: 22px; }
-}
+.slot.next > button.x { position: absolute; top: -8px; right: -8px; width: 22px; height: 22px; min-height: 22px; margin: 0; border-radius: 50%; background: var(--card); }
+.slot.next > button.x:hover { background: color-mix(in srgb, var(--bad) 12%, var(--card)); }
+@media (pointer: coarse) { .slot.next > button.x { top: -11px; right: -11px; width: 30px; height: 30px; min-height: 30px; } }
 .slot-label { width: 38px; flex: none; padding-top: 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .slot-body { flex: 1; min-width: 0; }
 .title { font-weight: 600; overflow-wrap: anywhere; color: var(--ink); }
