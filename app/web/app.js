@@ -1473,6 +1473,7 @@ document.addEventListener('click', async (e) => {
     const status = (p) => {
       const w = workerOf(states[project], p.worker);
       if (p.stops) return `In a run: ${p.title}`;
+      if (w?.status === 'paused') return w.run ? 'Paused, run held' : 'Paused';
       return ['room', 'limit'].includes(w?.activity) ? 'At its usage limit' : w?.run ? 'Run held' : 'Free';
     };
     const how = (p) => [able.length > 1 ? '' : named(p), status(p),
