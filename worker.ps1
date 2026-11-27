@@ -1181,22 +1181,6 @@ function Add-History($job, [string] $account, [string] $model, [string] $text, [
 function Invoke-Worker($job, [string] $log, $paused) {
     $slug = Get-JobRepo $job
     $dir = Get-JobDir $slug
-    # The environment of the job's checkout (the main loop's Start covered the clone, except a passive worker's, which
-    # opens here), then what the run gets from the plugins (docs/PLUGINS.md, GetRun). A hook that throws starts no
-    # run: the ticket stays this worker's.
-    if ($dir -ne $Clone) {
-        # Kept for Close-Environment, which closes what Start opens here.
-        $list = Join-Path $queueDir 'checkouts.txt'
-        if (-not ((Test-Path $list) -and @(Get-Content $list) -contains $dir)) {
-            Add-Content $list $dir -Encoding utf8
-        }
-    }
-    if ($dir -ne $Clone -or (Get-RunSettings $Id).passive) {
-        $script:environmentOpen = $true
-        Invoke-WorkerHooks 'Start' $dir | Out-Null
-    }
-    $given = Merge-RunAnswers (Invoke-WorkerHooks 'GetRun' $dir)
-
     # A resumed run keeps the model, effort and account its session started on.
     $settings = Get-RunSettings $Id
     $configDir = $settings.configDir
@@ -1232,6 +1216,27 @@ function Invoke-Worker($job, [string] $log, $paused) {
         # (Get-FallbackEffort). A resumed session keeps its effort.
         $effort = Get-FallbackEffort $advisorOf $job.Complexity $model $effort $hasAdvisor
     }
+
+    # The page names the run's model from here on, also while a plugin opens the environment below.
+    $script:running.model = $model
+    $script:running.effort = $effort
+    Write-State 'running' $script:running
+
+    # The environment of the job's checkout (the main loop's Start covered the clone, except a passive worker's, which
+    # opens here), then what the run gets from the plugins (docs/PLUGINS.md, GetRun). A hook that throws starts no
+    # run: the ticket stays this worker's.
+    if ($dir -ne $Clone) {
+        # Kept for Close-Environment, which closes what Start opens here.
+        $list = Join-Path $queueDir 'checkouts.txt'
+        if (-not ((Test-Path $list) -and @(Get-Content $list) -contains $dir)) {
+            Add-Content $list $dir -Encoding utf8
+        }
+    }
+    if ($dir -ne $Clone -or (Get-RunSettings $Id).passive) {
+        $script:environmentOpen = $true
+        Invoke-WorkerHooks 'Start' $dir | Out-Null
+    }
+    $given = Merge-RunAnswers (Invoke-WorkerHooks 'GetRun' $dir)
 
     # The base playbook's parts (Get-Playbooks) that a message names.
     $parts = "$($queueDir.Replace('\', '/'))/playbooks"
@@ -1315,8 +1320,6 @@ function Invoke-Worker($job, [string] $log, $paused) {
         Remove-Item $progressFile -ErrorAction SilentlyContinue
     }
     $account = Get-Account $configDir
-    $script:running.model = $model
-    $script:running.effort = $effort
     # What the run's process takes from this script's environment: what the plugins set (docs/PLUGINS.md, GetRun), then
     # the provider's own (its login, its switches). A variable with no value is taken away for the run.
     $variables = @{}
