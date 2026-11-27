@@ -53,6 +53,13 @@ function Test-ProbeAfterRun([bool] $readsLog, [bool] $probes) {
 # The seconds between two probes while such a run works: a probe starts a process, and the watch looks more often.
 $RunProbeSeconds = 120
 
+# When an account has room again: the latest reset of its windows at or over the workers' ceiling, 0 with none.
+# $budget: per window @{ used; ceiling; resetsAt } (worker.ps1, Save-Budget).
+function Get-RoomAt($budget) {
+    return [long](@($budget.Keys) | Where-Object { $budget[$_].used -ge $budget[$_].ceiling } |
+        ForEach-Object { [long]$budget[$_].resetsAt } | Measure-Object -Maximum).Maximum
+}
+
 # A provider's usage reading (docs/PLUGINS.md, ReadUsage, ReadProbe) as the queue keeps it, read at $now: each window's
 # share used and reset, and whether the plan refused the request. The refusal of a window of some models is not
 # `refused` but `modelRefused`, that window's name: it stops only those models. Only the windows that the provider's

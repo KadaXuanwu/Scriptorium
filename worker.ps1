@@ -1479,6 +1479,17 @@ function Suspend-Job($job, $end) {
     $resetsAt = (Get-Now) + $(if ($end.LoggedOut) { 0 } else { 1800 })
     if (-not $end.LoggedOut -and $end.Usage -and $end.Usage.refusedResetsAt -gt (Get-Now)) {
         $resetsAt = $end.Usage.refusedResetsAt
+    } elseif (-not $end.LoggedOut -and $end.Limited -and -not $end.Usage) {
+        # The plan's limit ended a run whose log holds no usage (budget.ps1, Test-ProbeAfterRun), so no reading names
+        # the reset: it is that of the account's full windows, from the probe when the run ended. Without it the run
+        # resumed blind every 30 minutes, each time with a comment. With no full window (the service's own shortage,
+        # a probe that failed): the 30 minutes.
+        $account = Get-Account $end.ConfigDir
+        Save-Budget (Get-Budget $account (Read-AllUsage)[$account])
+        $roomAt = Get-RoomAt $script:budget
+        if ($roomAt -gt (Get-Now)) {
+            $resetsAt = $roomAt
+        }
     }
     if ($end.Stopped -or $end.ModelOut) {
         # Not zero: the queue app reads a ticket with a reset time as a run in flight.
@@ -1768,8 +1779,7 @@ while ($true) {
         } elseif (-not (Test-Path $forceFile) -and -not (Read-Next $nextFile -Forced) -and (Test-OverBudget $runConfigDir)) {
             Write-State 'over-budget'
             # The account has room when its last full window resets: the wait below ends then, not a poll later.
-            $roomAt = ($windows | Where-Object { $script:budget[$_].used -ge $script:budget[$_].ceiling } |
-                ForEach-Object { [long]$script:budget[$_].resetsAt } | Measure-Object -Maximum).Maximum
+            $roomAt = Get-RoomAt $script:budget
         } elseif ((Read-Out)[(Get-Account $runConfigDir)]) {
             # The usage reading's probe found the account out: the next look waits for it.
             continue
