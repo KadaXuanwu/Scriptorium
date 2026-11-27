@@ -207,7 +207,9 @@ const toolHas = (s) => ({ efforts: (s?.efforts || []).length > 0, advisor: Boole
 const mappingHas = (tool) => ({ efforts: (tool?.efforts || []).length > 0, advisor: Boolean(tool?.advisor), compact: tool?.compactRange?.length === 2 });
 // The efforts one model of a coding tool takes: its own list where its models.json gives one (`perModel`), else the tool's.
 const effortsOf = (tool, model) => tool?.perModel?.[model]?.efforts || tool?.efforts || [];
-const toolBadge = (tool) => (tool ? `<span class="badge tool" title="The coding tool that runs here">${esc(tool)}</span>` : '');
+// `tool` is its view (toolView): the tag has the colour and the icon of its provider's manifest, where it has them.
+const toolBadge = (tool) => (tool?.title ? `<span class="badge tool" title="The coding tool that runs here"${tool.color ? ` style="--tool:${esc(tool.color)}"` : ''}>${
+  tool.icon ? `<img src="${esc(tool.icon)}" alt="">` : ''}${esc(toolTitle(tool.title))}</span>` : '');
 // The accounts as the options of a select, each by its name alone, so the closed select shows the name. While the PC
 // has more than one coding tool, the list is in groups, one for each tool. `tool` gives an account's tool by name.
 function accountOptions(accounts, tool, selected) {
@@ -361,7 +363,7 @@ function workerCard(worker) {
   const card = `worker:${worker.id}`;
   return `<article class="card worker ${esc(worker.status)}${open ? ' open' : ''}${busyClass(card)}" data-card="${esc(`${scope}|${worker.id}`)}"${busyAttr(card)}>
     <div class="worker-head"><div class="who"><strong>${renameable('worker', id, worker.name, `Worker ${id}`)}${project}</strong>
-      <div class="who-line"><span class="doing ${tone}">${icon(glyph)}${words}</span>${toolBadge(toolName(state, worker.provider))}</div></div>
+      <div class="who-line"><span class="doing ${tone}">${icon(glyph)}${words}</span>${toolBadge(toolView(state, worker.provider))}</div></div>
       <button class="round more" data-more="${id}" aria-expanded="${open}" aria-label="Details of worker ${id}">${icon('down')}</button>${cross('worker', id, `worker ${id}`)}</div>
     <div class="status"><div class="seg" role="group" aria-label="Status of worker ${id}">${seg}</div>${pending}</div>
     <div class="worker-tools"><label>${icon('accounts')}<select data-assign="${id}" aria-label="Account of worker ${id}">${options}</select></label>
@@ -473,7 +475,7 @@ function drawConfigOf(worker) {
       <small>${passive ? 'Takes only the tickets you give it' : 'Takes tickets from the queue'}</small></div>
     <div class="mapping-of${busyClass(followKey)}"${busyAttr(followKey)}>
       <label>Mapping<select data-follow="${id}" aria-label="Whose mapping worker ${id} uses">${followOptions(worker, all)}</select></label>
-      ${toolBadge(toolName(state, worker.provider))}</div>
+      ${toolBadge(toolView(state, worker.provider))}</div>
     ${own.length ? '<h3 class="config-group">In every project</h3>' : ''}
     <div class="config-head"><span>Complexity</span><span class="wide">Model</span><span class="wide${has.efforts ? '' : ' none'}">Effort</span><span${has.compact ? '' : ' class="none"'}>Compacts near</span></div>
     ${rows(shared)}${advisorRow}
@@ -662,7 +664,7 @@ function accountCard(a) {
   return `<article class="card account ${tone}${art ? ' art' : ''}${busyClass(card)}" data-card="${name}"${busyAttr(card)}${art ? ` style="--art:url('${esc(art)}')"` : ''}>
     <div class="account-head"><strong>${renameable('account', a.name, a.name, a.name)}</strong>${a.plan ? `<span class="badge">${esc(a.plan)}</span>` : ''}
       <span class="chip ${tone}">${icon(glyph)}${words}</span>${cross('account', a.name, a.name)}</div>
-    <div class="meta"><span class="email">${esc(a.signedIn ? maskEmail(a.email) : '')}</span>${toolBadge(toolOf(state))}${out}</div>
+    <div class="meta"><span class="email">${esc(a.signedIn ? maskEmail(a.email) : '')}</span>${toolBadge(toolView(state, a.provider))}${out}</div>
     ${accountMeters(a)}
     <div class="buttons">${buttons.join('')}</div></article>`;
 }

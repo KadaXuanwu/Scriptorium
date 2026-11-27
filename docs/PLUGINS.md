@@ -345,6 +345,12 @@ tool's accounts. It covers the card, so its middle shows on a card of any shape.
 carries it) and draw no logo. The page's server reads it again when the file changes, so a new picture shows with no
 restart. Left out: a plain card.
 
+`"color"` and `"icon"`: the look of the tool's tag on the page's cards. `color` is a hex colour of six digits
+(`#3366aa`): the tag's outline and text take it, mixed with the page's ink, so it reads in the light and the dark
+theme. `icon` is the name of an SVG beside `plugin.json` (`icon.svg`), drawn 12px high before the tool's name and read
+as `card` is. Draw a simple mark of your own that reads on a light and a dark ground, not the tool's logo. Left out:
+a plain tag with the name alone.
+
 ## What changes the version
 
 A new hook, a new context field or a new key in `GetRun`'s answer does not change the version: a plugin ignores what

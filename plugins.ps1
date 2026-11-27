@@ -113,8 +113,11 @@ function Import-Plugin([string] $dir, [string] $name, $entry) {
         Description = [string]$manifest.description; Requires = @($manifest.requires | Where-Object { $_ })
         Dir = $dir; Hooks = $hooks; Settings = $settings
         # A provider (docs/PLUGINS.md, A provider), the folder of the project where its skills go, and the picture
-        # behind its account cards.
+        # behind its account cards. Its tag's colour and icon (`color`, `icon`): the colour goes into the page's
+        # markup, so only a hex colour is one.
         Provider = [bool]$manifest.provider; Skills = [string]$manifest.skills; Card = [string]$manifest.card
+        Color = $(if ([string]$manifest.color -match '^#[0-9a-fA-F]{6}$') { [string]$manifest.color } else { '' })
+        Icon = [string]$manifest.icon
     }
 }
 

@@ -88,7 +88,7 @@ function Get-Word { 'two' }
     Assert-Equal ($message -like 'plugin none: no plugin.json and plugin.ps1 in *') $true 'a plugin not installed'
     # A provider's models.json is checked when it loads: each fault throws with the plugin's and the file's name.
     $checked = New-Plugin $root 'checked' '@{}'
-    Set-Content (Join-Path $checked 'plugin.json') '{ "name": "checked", "title": "Checked", "version": "1.0.0", "api": 1, "provider": true }' -Encoding utf8
+    Set-Content (Join-Path $checked 'plugin.json') '{ "name": "checked", "title": "Checked", "version": "1.0.0", "api": 1, "provider": true, "color": "red;x" }' -Encoding utf8
     $good = '{ "models": { "m": {} }, "complexities": { "low": { "models": ["m"] }, "medium": { "models": ["m"] }, "high": { "models": ["m"] }, "design": { "models": ["m@high"] } }, "windows": { "day": { "seconds": 86400 } }, "ownKey": 1 }'
     $faults = [ordered]@{
         'no JSON: *' = '{ "models": '
@@ -109,6 +109,7 @@ function Get-Word { 'two' }
     }
     Set-Content (Join-Path $checked 'models.json') $good -Encoding utf8
     Assert-Equal (Import-Plugin $checked 'checked' $null).Provider $true 'a good models.json, with a key of the provider''s own'
+    Assert-Equal (Import-Plugin $checked 'checked' $null).Color '' 'a colour that is no hex colour is none'
     # A plugin the file names that is not installed yet (the owner added it, setup.ps1 has not cloned it): a script
     # that waits loads the others, and starts again when the plugin's files are in its folder.
     $late = Join-Path (Join-Path $root 'W') 'plugins/late'
@@ -170,6 +171,7 @@ function Get-Word { 'two' }
     $test = Import-Plugin (Join-Path $PSScriptRoot 'provider') 'test' ('{ "level": 3 }' | ConvertFrom-Json)
     $found = Get-Provider (@($plugins) + @($test))
     Assert-Equal "$($found.Name) $($found.Provider) $($found.Skills)" 'test True .test/skills' 'the provider and its skills folder'
+    Assert-Equal "$($found.Color) $($found.Icon)" '#3366aa icon.svg' 'its tag''s colour and icon'
     Set-Provider $found @{ Project = 'D:/p'; Copy = 'D:/p-w1'; Worker = 4; QueueDir = 'D:/p-w1/.queue'; Machine = { '{ "plugins": { "test": { "level": 5 } } }' | ConvertFrom-Json } }
     Assert-Equal (Read-Models).advisor.model 'deep-1' 'the models are the provider''s'
     $seen = Invoke-Provider 'GetCommand' @{ Copy = 'D:/other'; Run = @{ Model = 'main-1'; Prompt = 'Do it.'; Session = 's1'; Login = 'C:/l'; Commands = @('git', 'unity command') } }
