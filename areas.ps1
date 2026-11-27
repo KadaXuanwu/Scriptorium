@@ -60,13 +60,31 @@ function Read-Now([string] $file) {
 
 # Queue next (docs/QUEUE.md, Queue next): the ticket that the owner queued as a worker's next (`.queue/next-<N>.json`),
 # 0 without one. The worker takes it when it looks for its next job, so its run in progress goes on; no other worker
-# takes the ticket meanwhile.
-function Read-Next([string] $file) {
+# takes the ticket meanwhile. -Forced: only a ticket that the owner also forced (`force` in the file, the arrow on the
+# worker's card): the worker takes that one past the blockers, the areas and the stop line.
+function Read-Next([string] $file, [switch] $Forced) {
     try {
-        return [int](Get-Content $file -Raw -ErrorAction Stop | ConvertFrom-Json).ticket
+        $next = Get-Content $file -Raw -ErrorAction Stop | ConvertFrom-Json
+        if (-not $Forced -or $next.force) {
+            return [int]$next.ticket
+        }
     } catch {
     }
     return 0
+}
+
+# Why a ticket queued as a worker's next waits, for the worker and for its card: an open blocker, or an area that a
+# ticket in flight holds ($busy). '' when neither holds it.
+function Get-NextWait($ticket, $open, $busy) {
+    $blockers = @(Get-Blockers $ticket $open)
+    if ($blockers.Count -gt 0) {
+        return "blocked by #$($blockers -join ', #')"
+    }
+    $clash = Get-Clashes @($ticket.labels | ForEach-Object { $_.name } | Where-Object { $_ -like 'area:*' -or $_ -like 'repo:*' }) $busy
+    if ($clash.Count -gt 0) {
+        return "$(($clash | ForEach-Object { $_ -replace '^area:', '' }) -join ', ') busy"
+    }
+    return ''
 }
 
 # The ticket a worker takes for Now, from the open tickets: $wanted while it is queued (a priority, not waiting on the

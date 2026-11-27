@@ -28,8 +28,8 @@ environment: plugins add them.
 
 - **The front desk:** a `ticket` skill in your project that turns what you describe into a complete ticket, reports the
   queue and passes your answers on.
-- **Blockers, Now and Force:** hold a ticket until another closes, give a ticket to a worker right away, or start one
-  past the limits.
+- **Blockers, Queue next and Force:** hold a ticket until another closes, give a ticket to a worker as its next, or
+  start one past the limits, after the worker's run or in its place.
 - **Other repos:** a `repo:<Name>` label builds a ticket in another repo of yours.
 
 ### Workers

@@ -306,23 +306,27 @@ function workerCard(worker) {
        <div class="meta">${badges([...repo, ...(worker.areas || []), worker.size, runModel(worker), worker.heldOn && `held on ${worker.heldOn}`])}</div>${progressBar(worker)}`
     : `<span class="free">${esc(worker.out?.text || worker.error || 'Free')}</span>`;
 
-  // Force moves the next ticket into the free slot now, also one the queue would not give it. Now (the Queue tab)
-  // also waits for a run in progress: that run ends at its next checkpoint. Queue next (the same dialog) gives the
-  // worker its next ticket and leaves its run alone: the slot is marked, and Cancel takes it back.
+  // Force (the arrow) gives the worker its next ticket past what holds it back: at once on a free worker; in a run, a
+  // ticket after that run or in its place, as the owner answers (the click). A PR's job only goes into a free slot.
+  // Queue next (the Queue tab) gives the worker its next ticket and forces nothing: the slot is marked, and Cancel
+  // takes it back, forced or not.
   const next = worker.next;
   const waits = worker.forced && (!worker.run || (worker.now && worker.now !== worker.ticket));
   const queued = !waits && next?.kind === 'queued';
+  const after = queued && next.forced;
   let force = '';
   if (waits) force = `<button data-unforce="${id}">Cancel</button>`;
-  else if (queued) force = `<button data-unnext="${id}">Cancel</button>`;
   else if (next) {
-    const can = worker.status === 'active' && !worker.run && !['down', 'signedout', 'setup', 'setup-failed', 'error'].includes(worker.activity);
-    force = `<button class="round" data-force="${id}" title="${can ? 'Take it now' : 'Its slot is not free'}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`;
+    const can = worker.status === 'active' && (!worker.run || ['ticket', 'queued'].includes(next.kind))
+      && !['down', 'signedout', 'setup', 'setup-failed', 'error'].includes(worker.activity);
+    force = `${queued ? `<button data-unnext="${id}">Cancel</button>` : ''}${after && !worker.run ? ''
+      : `<button class="round" data-force="${id}" title="${can ? 'Take it now' : 'Its slot is not free'}" aria-label="Take it now"${can ? '' : ' disabled'}>${icon('up')}</button>`}`;
   }
   const kind = next && { answered: 'your answers', 'needs-rebase': 'a rebase', now: 'now', queued: 'queued next' }[next.kind];
+  const takes = waits ? `at its next ${worker.run ? 'checkpoint' : 'poll'}` : after ? (worker.run ? 'after its run' : 'at its next poll') : '';
   const nextBody = next
     ? `<a class="title${next.available ? '' : ' off'}" href="${esc(next.url)}" target="_blank">${esc(next.title)}</a>
-       <div class="meta">${badges([kind, ...(next.areas || []), next.size, next.complexity])}${waits ? `<span class="why">takes it at its next ${worker.run ? 'checkpoint' : 'poll'}</span>`
+       <div class="meta">${badges([kind, ...(next.areas || []), next.size, next.complexity])}${takes ? `<span class="why">takes it ${takes}</span>`
     : next.available ? '' : `<span class="why">${icon('lock')}${esc(next.why)}</span>`}</div>`
     : `<span class="free">${worker.status === 'disabled' ? 'None' : 'Nothing queued'}</span>`;
 
@@ -500,10 +504,11 @@ function prioritySelect(row) {
   return `<select data-priority="${row.number}" aria-label="Priority">${options.join('')}</select>`;
 }
 
-// Now: the worker that does the ticket at once is the server's pick (row.now), or another of its list that the owner
-// chooses in the dialog (row.now.able); without one, the button says why.
-const nowButton = (row) => (row.now
-  ? `<button data-now="${row.number}"${row.now.worker ? '' : ` disabled title="${esc(row.now.why)}"`}>Now</button>` : '');
+// Next: the worker that gets the ticket as its next is the server's pick (row.next), or another of its list that the
+// owner chooses in the dialog (row.next.able); without one, the button says why. A ticket that a worker has (Queue
+// next: `pinned`; else a Now from its card) gets Cancel in its place.
+const nextButton = (row) => (row.taken ? `<button data-${row.pinned ? 'unnext' : 'unforce'}="${esc(row.taken)}">Cancel</button>`
+  : row.next ? `<button data-next="${row.number}"${row.next.worker ? '' : ` disabled title="${esc(row.next.why)}"`}>Next</button>` : '');
 // Drop: only a parked row has `blocks` (the tickets that wait on it), and only a parked row gets the cross.
 const dropButton = (row) => (row.blocks
   ? `<button class="x" data-drop="${row.number}" title="Drop this ticket" aria-label="Drop ${esc(row.title)}">${icon('x')}</button>` : '');
@@ -514,7 +519,7 @@ function ticketRow(row) {
   const reason = row.reason ? `<span class="why${ready ? ' good' : ''}">${icon(ready ? 'next' : 'lock')}${esc(row.reason)}</span>` : '';
   const card = `ticket:${row.number}`;
   return `<div class="row${busyClass(card)}"${busyAttr(card)}><div class="what"><a href="${esc(row.url)}" target="_blank">${esc(row.title)}</a>
-    <div class="meta">${mark()}${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${nowButton(row)}${dropButton(row)}${prioritySelect(row)}</div>`;
+    <div class="meta">${mark()}${badges([row.repo, ...(row.areas || []), row.size, row.complexity])}${estimate}${reason}</div></div>${nextButton(row)}${dropButton(row)}${prioritySelect(row)}</div>`;
 }
 
 
@@ -708,8 +713,9 @@ function info(s) {
       <li>A ticket with a priority (P0, P1, P2) waits in the ${setting('Queue', 'queue')}: the higher priority first,
         then the larger size, then the older ticket. With no priority it is Parked.</li>
       <li>A free worker first answers and rebases its own PRs, then takes the first queued ticket its account has room
-        for. <b>Now</b> gives a ticket to a worker you pick: <b>Do it now</b> ends the worker's run at its next
-        checkpoint and goes past the stop line; <b>Queue next</b> lets the run finish and makes the ticket its next.</li>
+        for. <b>Next</b> on a queued ticket makes it the next ticket of a worker you pick, where it waits as any ticket
+        does; the arrow on a worker's card takes its next ticket past areas, blockers and the stop line, after its run
+        or in its place.</li>
       <li>Two tickets of the same area never run at the same time, and one "Blocked by" others waits until they close.</li>
       <li>A run ends in a PR, a question for you, or held at a limit. The merged PR closes its ticket; its follow-ups
         join the queue or wait under Questions.</li>
@@ -1430,36 +1436,58 @@ document.addEventListener('click', async (e) => {
     $('how').close();
     await statusTo(project, data.worker, data.to, data.how);
   } else if (data.force) {
-    const next = workerOf(states[project], data.force)?.next;
-    if (next && !next.available && !(await ask(`Take "${next.title}" now?`,
-      `The queue holds it back: ${next.why}. The run goes past the stop line and uses the room kept under it.`, 'Take it'))) return;
-    await act(project, { action: 'force', worker: data.force }, { keys: [`worker:${data.force}`], apply: (s) => { workerOf(s, data.force).forced = true; } });
-  } else if (data.now) {
-    const number = Number(data.now);
+    const worker = workerOf(states[project], data.force);
+    const next = worker?.next;
+    if (!next) return;
+    // One fact a line: the worker's run, and what holds the ticket back. What the buttons do is on Details.
+    const text = [worker.run && `${worker.activity === 'running' ? 'In a run' : 'Run held'}: ${worker.title}`,
+      !next.available && next.why].filter(Boolean).join('\n');
+    // In a run: after it, or in its place (only a run that works: a held one goes first). A free worker takes it at once.
+    let how = '';
+    if (worker.run) {
+      const values = await ask(next.title, text, 'After this run', { also: worker.activity === 'running' ? 'Replace now' : '' });
+      if (!values) return;
+      how = values.also ? 'replace' : 'after';
+    } else if (!next.available && !(await ask(next.title, text, 'Take it now'))) return;
+    await act(project, { action: 'force', worker: data.force, number: next.number, how }, {
+      keys: [`worker:${data.force}`],
+      apply: (s) => {
+        const w = workerOf(s, data.force);
+        if (how === 'replace') Object.assign(w, { forced: true, now: next.number, next: { ...w.next, kind: 'now' } });
+        else if (['ticket', 'queued'].includes(w.next?.kind)) Object.assign(w.next, { kind: 'queued', forced: true, available: true, why: '' });
+        else w.forced = true;
+      },
+    });
+  } else if (data.next) {
+    const number = Number(data.next);
     const row = rowOf(states[project], number);
-    const pick = row?.now;
+    const pick = row?.next;
     if (!pick?.worker) return;
     // Every worker that can take it, the server's pick first. Each runs the ticket on the model of its own mapping.
     const able = pick.able?.length ? pick.able : [pick];
     const named = (p) => workerLabel(workerOf(states[project], p.worker) || { id: p.worker });
-    // Only the worker's status and the areas another ticket still holds; what the buttons do is on Details. The list
+    // Only the worker's status and the areas another ticket still holds; what the button does is on Details. The list
     // names the worker; alone, the text does.
-    const how = (p) => [able.length > 1 ? '' : named(p), p.stops ? `In a run: ${p.title}` : 'Free',
+    const status = (p) => {
+      const w = workerOf(states[project], p.worker);
+      if (p.stops) return `In a run: ${p.title}`;
+      return ['room', 'limit'].includes(w?.activity) ? 'At its usage limit' : w?.run ? 'Run held' : 'Free';
+    };
+    const how = (p) => [able.length > 1 ? '' : named(p), status(p),
       p.busy?.length ? `${p.busy.join(', ')} busy` : ''].filter(Boolean).join('\n');
     const runOn = (p) => within(project, () => runModel(takeOf(states[project], p.worker, row.complexity) || {}));
     const fields = able.length > 1 ? `<label>Worker<select name="worker">${able.map((p, i) => `<option value="${esc(p.worker)}"${i ? '' : ' selected'}>${
       esc([named(p), runOn(p)].filter(Boolean).join(' · '))}</option>`).join('')}</select></label>` : '';
-    const asked = ask(row.title, how(pick), 'Do it now', { fields, also: 'Queue next' });
+    const asked = ask(row.title, how(pick), 'Queue next', { fields });
     // The text is of the worker that the list shows.
     $('ask-fields').querySelector('select')?.addEventListener('change', (ev) => { $('ask-text').textContent = how(able.find((p) => p.worker === ev.target.value)); });
     const values = await asked;
     if (!values) return;
     const chosen = able.find((p) => p.worker === values.worker) || pick;
-    // Queue next: the worker takes it after its run, as its next ticket (docs/QUEUE.md, Queue next).
-    const next = !!values.also;
-    await act(project, { action: 'now', number, worker: chosen.worker, next }, {
+    // The worker's next new ticket (docs/QUEUE.md, Queue next).
+    await act(project, { action: 'next', number, worker: chosen.worker }, {
       keys: [`ticket:${number}`],
-      apply: (s) => { const r = rowOf(s, number); if (r) Object.assign(r, { taken: chosen.worker, now: null, reason: `worker ${chosen.worker} does it ${next ? 'next' : 'now'}` }); },
+      apply: (s) => { const r = rowOf(s, number); if (r) Object.assign(r, { taken: chosen.worker, pinned: true, next: null, reason: `worker ${chosen.worker} does it next` }); },
       done: (s) => !rowOf(s, number) || !!rowOf(s, number).taken,
     });
   } else if (data.drop) {
@@ -1476,7 +1504,7 @@ document.addEventListener('click', async (e) => {
       done: (s) => !s.parked.some((r) => r.number === number),
     });
   } else if (data.unnext) {
-    await act(project, { action: 'unnext', worker: data.unnext }, { keys: [`worker:${data.unnext}`], apply: (s) => { workerOf(s, data.unnext).next = null; } });
+    await act(project, { action: 'unnext', worker: data.unnext }, { keys: [`worker:${data.unnext}`], apply: (s) => { const w = workerOf(s, data.unnext); if (w.next?.kind === 'queued') w.next = null; } });
   } else if (data.unforce) {
     await act(project, { action: 'unforce', worker: data.unforce }, { keys: [`worker:${data.unforce}`], apply: (s) => { workerOf(s, data.unforce).forced = false; } });
   } else if (data.answer) {
