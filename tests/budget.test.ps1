@@ -330,6 +330,13 @@ Remove-Item $file
 # A probe when a run ends: only with a provider that has a probe and reads no usage from a run's log.
 Assert-Same "$(Test-ProbeAfterRun $false $true) $(Test-ProbeAfterRun $true $true) $(Test-ProbeAfterRun $false $false) $(Test-ProbeAfterRun $true $false)" 'True False False False' 'the usage is read again after a run whose log holds none'
 
+# When an account has room again: the latest reset of its windows at their ceiling; 0 with none, so a run that the
+# service's own shortage ended waits its 30 minutes, not for a reset.
+$full = @{ short = @{ used = 1.0; ceiling = 0.95; resetsAt = 500 }; long = @{ used = 0.3; ceiling = 1.0; resetsAt = 900 } }
+$room = @{ short = @{ used = 0.5; ceiling = 0.95; resetsAt = 500 }; long = @{ used = 0.3; ceiling = 1.0; resetsAt = 900 } }
+$both = @{ short = @{ used = 0.95; ceiling = 0.95; resetsAt = 500 }; long = @{ used = 1.0; ceiling = 1.0; resetsAt = 900 } }
+Assert-Same "$(Get-RoomAt $full) $(Get-RoomAt $room) $(Get-RoomAt $both)" '500 0 900' 'the reset that gives an account room again'
+
 # The provider's windows (Set-Windows): the account's own shortest first, the one that keeps, the ones of some models.
 Assert-Same "$(@($WindowSeconds.Keys) -join ',') $ShortWindow $LongWindow $KeepWindow $(@($ModelWindows.Keys) -join ',')" 'short,long short long long deep' 'the windows of the test provider'
 Assert-Same "$(Get-ModelWindow 'deep-1')|$(Get-ModelWindow 'main-1')|$(Get-ModelWindow '')" 'deep||' 'the window that covers a model'

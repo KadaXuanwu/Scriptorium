@@ -253,7 +253,7 @@ A hook that throws on a log never loses a run's end: the run then counts as one 
 | `Session` | the session, to resume it; `''` when the log names none |
 | `Ended` | the log has a result. Not: the process died |
 | `Error` | the result is an error |
-| `Kind` | why an error is not the ticket's failure: `model` (the plan lacks the model), `subscription`, `login`, `limit` (the plan's usage limit), `window` (the limit of a window of some models, named in `Window`), `start` (the run did no work, for a cause the provider cannot name), or `''` for the run's own failure |
+| `Kind` | why an error is not the ticket's failure: `model` (the plan lacks the model), `subscription`, `login`, `limit` (the plan's usage limit: the run is held until the reset that its last usage reading names; with no reading in its log, until the account's windows at their ceiling reset, as the probe reads them, else for 30 minutes), `window` (the limit of a window of some models, named in `Window`), `start` (the run did no work, for a cause the provider cannot name), or `''` for the run's own failure |
 | `Window` | with `Kind` `window`: the name of the window that refused, as `models.json` names it. A name that `models.json` does not give to a window of some models counts as the plan's limit |
 | `Capped` | the run reached its cap |
 | `Worked` | the run did work. A run refused at its first request did none and starts fresh |
