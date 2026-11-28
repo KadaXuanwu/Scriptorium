@@ -60,6 +60,13 @@ function Get-RoomAt($budget) {
         ForEach-Object { [long]$budget[$_].resetsAt } | Measure-Object -Maximum).Maximum
 }
 
+# The reset that a run held by the plan's limit names itself: the first of $resets ahead of $now, 0 with none. In
+# order: the reset of its last usage reading, then the one of its refusal's text (docs/PLUGINS.md, ReadRun, ResetsAt).
+# It goes before the windows' (Get-RoomAt): it needs no probe.
+function Get-NamedReset([long] $now, [long[]] $resets) {
+    return [long](@($resets | Where-Object { $_ -gt $now }) | Select-Object -First 1)
+}
+
 # A provider's usage reading (docs/PLUGINS.md, ReadUsage, ReadProbe) as the queue keeps it, read at $now: each window's
 # share used and reset, and whether the plan refused the request. The refusal of a window of some models is not
 # `refused` but `modelRefused`, that window's name: it stops only those models. Only the windows that the provider's

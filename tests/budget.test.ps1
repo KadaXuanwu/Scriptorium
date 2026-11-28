@@ -338,6 +338,9 @@ $full = @{ short = @{ used = 1.0; ceiling = 0.95; resetsAt = 500 }; long = @{ us
 $room = @{ short = @{ used = 0.5; ceiling = 0.95; resetsAt = 500 }; long = @{ used = 0.3; ceiling = 1.0; resetsAt = 900 } }
 $both = @{ short = @{ used = 0.95; ceiling = 0.95; resetsAt = 500 }; long = @{ used = 1.0; ceiling = 1.0; resetsAt = 900 } }
 Assert-Same "$(Get-RoomAt $full) $(Get-RoomAt $room) $(Get-RoomAt $both)" '500 0 900' 'the reset that gives an account room again'
+# The reset that the run itself names goes before the windows': its reading's, else its refusal's; one that is past
+# is none.
+Assert-Same "$(Get-NamedReset 100 @(0, 700)) $(Get-NamedReset 100 @(500, 700)) $(Get-NamedReset 100 @(50, 100)) $(Get-NamedReset 100 @(0, 0))" '700 500 0 0' 'the reset that a held run names'
 
 # The provider's windows (Set-Windows): the account's own shortest first, the one that keeps, the ones of some models.
 Assert-Same "$(@($WindowSeconds.Keys) -join ',') $ShortWindow $LongWindow $KeepWindow $(@($ModelWindows.Keys) -join ',')" 'short,long short long long deep' 'the windows of the test provider'

@@ -392,9 +392,11 @@ after each window reset.
 
 A run that the plan's own limit cuts off before its checkpoint is paused, not parked: `<copy>/.queue/paused.json` keeps
 its session, a comment on the ticket says when it resumes, and after the reset the script resumes that same session,
-with its context and uncommitted work. Close the ticket to drop it. The reset is the one the run's last reading names.
-With a provider whose logs hold no usage, it is the latest reset of the account's windows at their ceiling, from the
-probe when the run ended; with no such window (the service's own shortage), the script tries again after 30 minutes.
+with its context and uncommitted work. Close the ticket to drop it. The reset is the one the run's last reading names,
+else the one that its refusal names, where the provider reads it ([PLUGINS.md](PLUGINS.md), ReadRun, `ResetsAt`).
+With a provider that gives neither, it is the latest reset of the account's windows at their ceiling, from the
+probe when the run ended; with no such window (the service's own shortage, a probe that failed), the script tries
+again after 30 minutes, each time with a comment.
 
 ## A model's limit
 

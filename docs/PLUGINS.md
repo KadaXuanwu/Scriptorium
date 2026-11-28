@@ -164,6 +164,13 @@ A plugin reads no other variable of the base and calls no function of it.
 - `Start`, `GetRun`: the worker starts no run, shows the error on its card and tries again at its next look.
 - `Close`: the worker writes the error to its log, and the other plugins still close.
 - `EndRun`: the worker writes the error to its log and goes on.
+- A provider's `ReadProbe` or `Probe`: the probe counts as one that failed. The worker writes `probe error` to its
+  log, and the account keeps its last reading, which the page goes on showing (A provider, Traps).
+
+`Start` runs on whatever the copy holds, also on work that a run left unfinished and that does not build: a run cut
+off mid-edit, a ticket taken from its worker. Seen: an editor that opened on such a copy asked a question that
+nobody was there to answer, and the worker stood still. A `Start` that needs a person throws with what it waits
+for, so the card says it; where the environment can open past such a state, open it so.
 
 ## The playbook
 
@@ -253,8 +260,9 @@ A hook that throws on a log never loses a run's end: the run then counts as one 
 | `Session` | the session, to resume it; `''` when the log names none |
 | `Ended` | the log has a result. Not: the process died |
 | `Error` | the result is an error |
-| `Kind` | why an error is not the ticket's failure: `model` (the plan lacks the model), `subscription`, `login`, `limit` (the plan's usage limit: the run is held until the reset that its last usage reading names; with no reading in its log, until the account's windows at their ceiling reset, as the probe reads them, else for 30 minutes), `window` (the limit of a window of some models, named in `Window`), `start` (the run did no work, for a cause the provider cannot name), or `''` for the run's own failure |
+| `Kind` | why an error is not the ticket's failure: `model` (the plan lacks the model), `subscription`, `login`, `limit` (the plan's usage limit: the run is held until the reset that its last usage reading names, else until `ResetsAt`; with neither, until the account's windows at their ceiling reset, as the probe reads them, else for 30 minutes), `window` (the limit of a window of some models, named in `Window`), `start` (the run did no work, for a cause the provider cannot name), or `''` for the run's own failure |
 | `Window` | with `Kind` `window`: the name of the window that refused, as `models.json` names it. A name that `models.json` does not give to a window of some models counts as the plan's limit |
+| `ResetsAt` | with `Kind` `limit`: when that limit resets, a Unix time, where the refusal's words name it ("resets in 3h20m"). Left out or 0: the refusal names none. The hold then needs no probe (Traps) |
 | `Capped` | the run reached its cap |
 | `Worked` | the run did work. A run refused at its first request did none and starts fresh |
 | `Text` | the result's words, for the page and for a comment |
@@ -264,7 +272,8 @@ A hook that throws on a log never loses a run's end: the run then counts as one 
 **A usage reading,** from `ReadUsage`, `ReadProbe` and `Probe`:
 `@{ Windows = @{ <name> = @{ Used; ResetsAt } }; Refused; RefusedResetsAt }`. `Used` is the share of the window, from 0
 to 1 and over; `ResetsAt` a Unix time. `Refused` is the name of the window whose limit refused the request, `''` for
-none. A name that `models.json` does not give to a window of some models counts as the account's.
+none. A name that `models.json` does not give to a window of some models counts as the account's. A window whose
+`ResetsAt` is 0 or past counts as one with no use: give that for a window that the plan does not count now.
 
 ### Its own settings
 
@@ -334,6 +343,24 @@ A window:
 
 The names of the windows are the keys of an owner's saved stop lines and pick-up limits and of the usage records, so a
 provider keeps them.
+
+### Traps
+
+Each was seen with a provider on a real queue.
+
+- **A report changes its shape at a limit.** Read every field of the tool's output as one that can be missing. Seen:
+  with one window used up, the tool gave another window as not counted, with no reset, and a `ReadProbe` that parsed
+  the reset threw at every probe. The base then had no reading of the full window, at the one moment it needed it.
+  Capture the tool's output at a used-up limit and keep it as a test.
+- **A run that the plan's limit ended needs its reset.** With none, the base resumes it every 30 minutes, each time
+  with a comment on the ticket and a push to the owner. A provider's sources, best first: a usage reading in the
+  run's log (`ReadUsage`, `RefusedResetsAt`), the refusal's own words (`ReadRun`, `ResetsAt`), then the probe. Give
+  each one that the tool has: the probe alone fails with the report it reads.
+- **A long window needs pick-up limits of the provider's.** The base gives its own only to the shortest window, and
+  an account's own limits count only in a window that has defaults (`Get-PickUp` in `limits.ps1`), so the owner
+  cannot add them on the page. Without them a large ticket starts just under the stop line, the plan's limit cuts
+  its run off, and the held run keeps its ticket and its areas until that window resets, which can be days. Measure
+  what a ticket of each size takes of the window, and set the limits so that one more fits.
 
 ### Its manifest
 
