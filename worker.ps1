@@ -164,7 +164,7 @@ function Save-Budget($budget) {
     $script:budget = @{}
     foreach ($window in $windows) {
         $script:budget[$window] = @{
-            used = $budget[$window].used; ceiling = $budget[$window].ceiling; resetsAt = (Get-Now) + $budget[$window].left
+            used = $budget[$window].used; ceiling = $budget[$window].ceiling; stop = $budget[$window].stop; resetsAt = (Get-Now) + $budget[$window].left
         }
     }
 }
@@ -735,7 +735,7 @@ function Get-RunModel([string] $complexity, $settings, [string] $account, [strin
 }
 
 # What the workers may spend of an account's windows (limits.ps1): per window its share used, the ceiling, the
-# pick-up limit of each ticket size and the seconds left before it resets. Each human use the register gives the
+# stop line (`stop`), the pick-up limit of each ticket size and the seconds left before it resets. Each human use the register gives the
 # account keeps room under the stop line of the window that keeps (limits.ps1, $KeepWindow): its share for the time left.
 function Get-Budget([string] $account, $usage) {
     $settings = Read-Settings
@@ -756,7 +756,7 @@ function Get-Budget([string] $account, $usage) {
         }
         # The account's own stop line (queue app, Accounts), else the default.
         $stopAt = if ($entry -and $entry.StopAt) { $entry.StopAt.$window } else { $null }
-        $budget[$window] = @{ used = $used; ceiling = Get-Ceiling $reserve $window $stopAt; left = $left
+        $budget[$window] = @{ used = $used; ceiling = Get-Ceiling $reserve $window $stopAt; stop = Get-Ceiling 0.0 $window $stopAt; left = $left
             pickUp = Get-PickUp $(if ($entry) { $entry.PickUp }) $window }
     }
     return $budget
@@ -1508,11 +1508,11 @@ function Invoke-Worker($job, [string] $log, $paused) {
 # held session goes, the claim goes, a comment says where the work is, and the copy goes back to main's code, so the
 # plugins' next Start does not open on work that does not build. $true when the ticket went back. $false, with a
 # line in the log, when the work is not safe on GitHub: the run is then held as before.
-function Send-Back($job, [long] $resetsAt, [double] $hours) {
+function Send-Back($job, [long] $fullUntil, [double] $hours) {
     $branch = "t$($job.Ticket)"
     $dir = Get-JobDir (Get-JobRepo $job)
     try {
-        $commit = Save-TicketWork $dir $branch "WIP #$($job.Ticket): the unfinished work of a run that the plan's usage limit ended"
+        $commit = Save-TicketWork $dir $branch "WIP #$($job.Ticket): the unfinished work of a run that its account's usage limit ended"
     } catch {
         Write-Log "#$($job.Ticket) is held, not handed back: $_"
         return $false
@@ -1526,17 +1526,17 @@ function Send-Back($job, [long] $resetsAt, [double] $hours) {
         }
     } catch {
     }
-    $until = [DateTimeOffset]::FromUnixTimeSeconds($resetsAt).LocalDateTime.ToString('ddd d MMM HH:mm')
+    $until = [DateTimeOffset]::FromUnixTimeSeconds($fullUntil).LocalDateTime.ToString('ddd d MMM HH:mm')
     # From here nothing throws: a held session and a ticket back in the queue must not both stay.
     Remove-Item $pausedFile -ErrorAction SilentlyContinue
     & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
-    Send-Comment $job ("handed back to the queue: the plan's usage limit holds this worker's account until $until, longer than the $hours hours of ``handBack``. " +
+    Send-Comment $job ("handed back to the queue: this worker's account is at its usage limit until $until, longer than the $hours hours of ``handBack``. " +
         "$work$progress The next run starts fresh: the session is not kept.")
     & git -C $dir checkout -q --detach origin/main | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Log "the copy $dir stays on ${branch}: git could not put it on origin/main"
     }
-    Write-Log "handed back #$($job.Ticket): held until $until, longer than $hours hours$(if ($commit) { "; its work is on $branch ($($commit.Substring(0, 8)))" })"
+    Write-Log "handed back #$($job.Ticket): its account is full until $until, longer than $hours hours$(if ($commit) { "; its work is on $branch ($($commit.Substring(0, 8)))" })"
     return $true
 }
 
@@ -1577,15 +1577,18 @@ function Suspend-Job($job, $end) {
         # Not zero: the queue app reads a ticket with a reset time as a run in flight.
         $resetsAt = Get-Now
     }
-    # A ticket that the plan's limit would hold for longer than the owner's `handBack` hours goes back to the queue
-    # with its work pushed (Send-Back), so the ticket and its areas do not wait with the account. An error here must
-    # not lose the session: the run is held.
+    # A ticket that the plan's limit or the workers' stop line would hold for longer than the owner's `handBack` hours
+    # goes back to the queue with its work pushed (Send-Back), so the ticket and its areas do not wait with the
+    # account. An error here must not lose the session: the run is held.
+    # shortcut: a run at the stop line is compacted before this (Invoke-Worker), for nothing when it is handed back;
+    # decide before the compaction if that use ever counts.
     try {
         $hours = [double](Read-Settings).handBack
         if ($hours -gt 0) {
             $account = Get-Account $end.ConfigDir
             Save-Budget (Get-Budget $account (Read-AllUsage)[$account])
-            if ((Test-HandBack $end ([string]$job.Kind) $resetsAt (Get-RoomAt $script:budget) (Get-Now) $hours) -and (Send-Back $job $resetsAt $hours)) {
+            $fullUntil = Get-FullUntil $script:budget
+            if ((Test-HandBack $end ([string]$job.Kind) $resetsAt $fullUntil (Get-Now) $hours) -and (Send-Back $job $fullUntil $hours)) {
                 return
             }
         }

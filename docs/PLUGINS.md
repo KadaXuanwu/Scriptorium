@@ -356,11 +356,13 @@ Each was seen with a provider on a real queue.
   with a comment on the ticket and a push to the owner. A provider's sources, best first: a usage reading in the
   run's log (`ReadUsage`, `RefusedResetsAt`), the refusal's own words (`ReadRun`, `ResetsAt`), then the probe. Give
   each one that the tool has: the probe alone fails with the report it reads.
-- **A long window needs pick-up limits of the provider's.** The base gives its own only to the shortest window, and
-  an account's own limits count only in a window that has defaults (`Get-PickUp` in `limits.ps1`), so the owner
-  cannot add them on the page. Without them a large ticket starts just under the stop line, the plan's limit cuts
-  its run off, and the held run keeps its ticket and its areas until that window resets, which can be days. Measure
-  what a ticket of each size takes of the window, and set the limits so that one more fits.
+- **A long window holds a ticket for long.** A large ticket starts just under the window's stop line, the limit ends
+  its run, and the held run keeps its ticket and its areas until that window resets, which can be days. The owner's
+  guard is the project's `handBack` ([QUEUE.md](QUEUE.md), The usage limit): the ticket goes back to the queue. Say so
+  in the plugin's README. A provider can also give the window pick-up limits of its own (`pickUp`): the base gives its
+  own only to the shortest window, and an account's own limits count only in a window that has defaults (`Get-PickUp`
+  in `limits.ps1`), so the owner cannot add them on the page. They keep a large ticket from starting late in the
+  window, and leave room unused that a small one would fill.
 
 ### Its manifest
 
