@@ -53,6 +53,13 @@ function Split-FollowUps([string] $prBody, [string] $fallbackTitle, [string] $se
     return @($tickets)
 }
 
+# The open questions a PR body asks the owner: the items of its Open questions section that have a Questions part.
+# One without asks nothing (notes on what the PR built: seen filed as a question with nothing to answer), so the
+# merger files none for it, and its text stays in the merged PR.
+function Split-OpenQuestions([string] $prBody, [string] $fallbackTitle) {
+    return @(Split-FollowUps $prBody $fallbackTitle 'Open questions' | Where-Object { (Get-FollowUpView $_.body).questions })
+}
+
 # A follow-up's generation: its ticket's plus one; a ticket the front desk filed is 0.
 # shortcut: a follow-up from before the Generation line has none and counts as 1.
 function Get-FollowUpGeneration([string] $ticketBody) {
