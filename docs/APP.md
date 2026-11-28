@@ -349,13 +349,17 @@ Recent merges in every repo; recent runs with model, duration and cost.
 
 ### Details
 
-Each project's colour, then the info text. An older address `#info` opens this tab. No push opens it.
+Each project's settings, then the info text. An older address `#info` opens this tab. No push opens it.
 
 **The colour:** one head for each project, in the order of the projects: the project's mark and its colour (`color`).
 The colour field picks one, and saves at once in the project's `.queue/settings.json` ([QUEUE.md](QUEUE.md),
 Settings); Default colour goes back to the colour from the project's name. The mark, a worker's project choice and
 the Queue's select, set to the project, show this colour. With one project on the PC there is no head: nothing shows
 a colour. The models of a complexity are each worker's, in its Config (Workers).
+
+**Hand back:** under each project's head, the hours a usage limit may hold a ticket before it goes back to the queue
+(`handBack`; [QUEUE.md](QUEUE.md), The usage limit, Handed back). The field saves at once in the project's
+`.queue/settings.json`. Empty or 0: a ticket waits for its account's reset.
 
 **The info:** what the queue does and what to expect, for someone who does not know it, in plain sections: In short,
 What needs you, How a ticket goes through, Who builds what, Complexities, Limits, In the background, GitHub and The
@@ -398,7 +402,7 @@ queue and page server ([README.md](../README.md), Limits); the page loads them a
   project's name, in its project's colour (Details). A worker's mark is its project choice (Workers, The project
   choice).
 - **Accounts** are the PC's: one list, with the workers of every project on it, each account from a project that
-  has a provider for its coding tool. **Details** has the colour of each
+  has a provider for its coding tool. **Details** has the settings of each
   project, and one info text: the common part once, and the plugins for each project.
 - **How:** the page stays at its address and loads each other project's state, steps and pictures from that project's
   own server, and it sends each action to the server of the item's project. A page on the PC uses the project's

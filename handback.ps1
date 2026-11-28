@@ -1,18 +1,20 @@
-# Hand back (docs/QUEUE.md, The usage limit): a ticket whose run the plan's limit would hold for long goes back to the
+# Hand back (docs/QUEUE.md, The usage limit): a ticket whose run a usage limit would hold for long goes back to the
 # queue, with its work on its branch on GitHub. Dot-sourced by worker.ps1, checked by tests/handback.test.ps1.
 
-# Whether a run that the plan's limit ended hands its ticket back instead of being held: a ticket (a PR's job stays
-# its worker's), held for the plan's own limit ($end, what Invoke-Worker returns: not for the workers' line, a pause,
-# its account or a model's window), `handBack` set ($hours above 0), and both the hold's reset ($resetsAt) and the
-# account's room ($roomAt: budget.ps1, Get-RoomAt, 0 with no full window) more than $hours after $now.
-# The room counts because a dispatcher reads only the windows: with no full window in the account's reading its
-# workers would take the ticket again at once, be refused and hand it back, with a comment each time. That run is held.
-function Test-HandBack($end, [string] $kind, [long] $resetsAt, [long] $roomAt, [long] $now, [double] $hours) {
-    if ($kind -ne 'ticket' -or $hours -le 0 -or -not $end.Limited -or $end.LoggedOut -or $end.AtLimit -or $end.Stopped -or $end.ModelOut) {
+# Whether a run that a usage limit ended hands its ticket back instead of being held: a ticket (a PR's job stays its
+# worker's), held for the plan's own limit or at the workers' stop line ($end, what Invoke-Worker returns: not for a
+# pause, its account or a model's window), `handBack` set ($hours above 0), and the account full until more than
+# $hours after $now ($fullUntil: budget.ps1, Get-FullUntil, 0 with no window at its stop line). For the plan's limit
+# the hold's own reset ($resetsAt) is that far away too; a run at the stop line has none.
+# The account must be full because a dispatcher reads only the windows: with room in the account's reading, or room
+# soon (a window at its ceiling under the stop line, as its guards' reserve shrinks), its workers would take the ticket
+# again, stop again and hand it back, with a comment each time. That run is held.
+function Test-HandBack($end, [string] $kind, [long] $resetsAt, [long] $fullUntil, [long] $now, [double] $hours) {
+    if ($kind -ne 'ticket' -or $hours -le 0 -or $end.LoggedOut -or $end.Stopped -or $end.ModelOut -or -not ($end.Limited -or $end.AtLimit)) {
         return $false
     }
     $far = $now + [long]($hours * 3600)
-    return $resetsAt -gt $far -and $roomAt -gt $far
+    return $fullUntil -gt $far -and ($end.AtLimit -or $resetsAt -gt $far)
 }
 
 # Puts what the checkout $dir holds of a ticket's run on the ticket's branch $branch on GitHub: every change that is

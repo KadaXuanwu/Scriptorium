@@ -952,6 +952,11 @@ function Invoke-Action($request) {
             Send-Wake (Join-Path $mainQueue 'wake-merger')
             return "away: $(if ($request.on) { 'on' } else { 'off' })"
         }
+        'hand-back' {
+            # The hours a usage limit may hold a ticket before it goes back to the queue (state.ps1, Set-HandBack).
+            Save-Settings (Set-HandBack (Read-SettingsToEdit) $request.value)
+            return "hand back: $($request.value)"
+        }
         'color' {
             # The project's colour on the page (state.ps1, Set-ProjectColor).
             Save-Settings (Set-ProjectColor (Read-SettingsToEdit) ([string]$request.value))

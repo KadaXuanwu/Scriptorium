@@ -9,18 +9,26 @@ function Assert-Equal($actual, $expected, [string] $what) {
     }
 }
 
-# Test-HandBack: a ticket, held for the plan's own limit, `handBack` set, and both the hold's reset and the account's
-# room further away than it. $now is 1000 and `handBack` 2 hours, so "far" is after 8200.
+# Test-HandBack: a ticket, held for the plan's own limit or at the workers' stop line, `handBack` set, and the account
+# full for longer than it; for the plan's limit the hold's reset is that far too. $now is 1000 and `handBack` 2 hours,
+# so "far" is after 8200.
 $limited = @{ Limited = $true }
-$case = { param($end, $kind, $resetsAt, $roomAt, $hours) Test-HandBack $end $kind $resetsAt $roomAt 1000 $hours }
+$atLine = @{ AtLimit = $true }
+$case = { param($end, $kind, $resetsAt, $fullUntil, $hours) Test-HandBack $end $kind $resetsAt $fullUntil 1000 $hours }
 Assert-Equal (& $case $limited 'ticket' 9000 9000 2) $true 'a long hold of a ticket'
 Assert-Equal (& $case $limited 'ticket' 9000 9000 0) $false 'handBack left out'
 Assert-Equal (& $case $limited 'ticket' 8200 9000 2) $false 'a hold of exactly that length'
-Assert-Equal (& $case $limited 'ticket' 9000 0 2) $false 'no full window in the reading: its workers would take the ticket again'
+Assert-Equal (& $case $limited 'ticket' 9000 0 2) $false 'no window at its stop line in the reading: its workers would take the ticket again'
 Assert-Equal (& $case $limited 'ticket' 9000 5000 2) $false 'the account has room sooner'
 Assert-Equal (& $case $limited 'answered' 9000 9000 2) $false 'a PR''s job stays its worker''s'
-Assert-Equal (& $case @{ Limited = $false; AtLimit = $true } 'ticket' 9000 9000 2) $false 'held at the workers'' line'
-foreach ($mark in 'LoggedOut', 'AtLimit', 'Stopped') {
+# A run at the stop line has no reset of its own (the script gives it 30 minutes): the account's full window decides.
+Assert-Equal (& $case $atLine 'ticket' 2800 9000 2) $true 'held at the workers'' line, its account full for long'
+Assert-Equal (& $case $atLine 'ticket' 2800 5000 2) $false 'held at the workers'' line of a short window'
+Assert-Equal (& $case $atLine 'ticket' 2800 0 2) $false 'held at a ceiling under the stop line: its guards free room before the reset'
+Assert-Equal (& $case $atLine 'ticket' 2800 9000 0) $false 'held at the workers'' line, handBack left out'
+Assert-Equal (& $case $atLine 'rebase' 2800 9000 2) $false 'a PR''s job at the workers'' line'
+Assert-Equal (& $case @{ } 'ticket' 9000 9000 2) $false 'a run that no limit ended'
+foreach ($mark in 'LoggedOut', 'Stopped') {
     Assert-Equal (& $case @{ Limited = $true; $mark = $true } 'ticket' 9000 9000 2) $false "a limited run that is $mark"
 }
 Assert-Equal (& $case @{ Limited = $true; ModelOut = 'deep' } 'ticket' 9000 9000 2) $false 'a model''s window'

@@ -485,13 +485,16 @@ function drawConfigOf(worker) {
 
 // ---- Details: the settings
 
-// A project's settings that are the same for all its workers (docs/APP.md, Details): its colour, drawn in its scope.
-// The colour shows only on the marks, so a PC with one project has no block. A worker's models are its own (its
-// Config).
+// A project's settings that are the same for all its workers (docs/APP.md, Details), drawn in its scope: its colour
+// and its hand-back hours. The colour shows only on the marks, so a PC with one project has no colour. A worker's
+// models are its own (its Config).
 function settingsBlock() {
-  return names.length > 1 ? `<section class="settings"><div class="settings-head${busyClass('color')}"${busyAttr('color')}><h2>${mark()}</h2>
+  const color = names.length > 1 ? `<div class="settings-head${busyClass('color')}"${busyAttr('color')}><h2>${mark()}</h2>
     <input type="color" value="${colorOf(scope)}" data-color="${esc(scope)}" aria-label="Colour of ${esc(scope)}">
-    ${ownColor(state) ? '<button data-color-reset>Default colour</button>' : ''}</div></section>` : '';
+    ${ownColor(state) ? '<button data-color-reset>Default colour</button>' : ''}</div>` : '';
+  return `<section class="settings">${color}<div class="settings-head${busyClass('handBack')}"${busyAttr('handBack')}>
+    <label class="compact">Hand back after <input type="number" inputmode="decimal" min="0" step="1" value="${state.handBack || ''}" placeholder="never" data-hand-back aria-label="Hours a usage limit may hold a ticket of ${esc(scope)} before it goes back to the queue"> hours at a limit</label></div>
+    <div class="hint">A ticket that a usage limit would hold for longer goes back to the queue, with its work pushed. Empty: it waits for the reset.</div></section>`;
 }
 
 // ---- Questions
@@ -1941,6 +1944,14 @@ document.addEventListener('change', async (e) => {
       keys: [`mapping:${data.worker}:`],
       apply: (s) => { const w = workerOf(s, data.worker); w.mapping = { ...w.mapping, advisor: model }; },
       done: (s) => workerOf(s, data.worker)?.mapping?.advisor === model,
+    });
+  } else if (data.handBack !== undefined) {
+    e.target.blur();
+    const value = Math.max(0, Number(e.target.value) || 0);
+    await act(project, { action: 'hand-back', value }, {
+      keys: ['handBack'],
+      apply: (s) => { s.handBack = value; },
+      done: (s) => (s.handBack || 0) === value,
     });
   } else if (data.color) {
     e.target.blur();

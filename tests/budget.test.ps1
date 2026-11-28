@@ -338,6 +338,11 @@ $full = @{ short = @{ used = 1.0; ceiling = 0.95; resetsAt = 500 }; long = @{ us
 $room = @{ short = @{ used = 0.5; ceiling = 0.95; resetsAt = 500 }; long = @{ used = 0.3; ceiling = 1.0; resetsAt = 900 } }
 $both = @{ short = @{ used = 0.95; ceiling = 0.95; resetsAt = 500 }; long = @{ used = 1.0; ceiling = 1.0; resetsAt = 900 } }
 Assert-Same "$(Get-RoomAt $full) $(Get-RoomAt $room) $(Get-RoomAt $both)" '500 0 900' 'the reset that gives an account room again'
+# Until when an account is full whatever its guards free: only a window at its stop line counts, not one at a ceiling
+# that a reserve keeps under it; a budget with no stop line (none saved) counts as not full.
+$kept = @{ short = @{ used = 0.5; ceiling = 0.95; stop = 0.95; resetsAt = 500 }; long = @{ used = 0.8; ceiling = 0.75; stop = 1.0; resetsAt = 900 } }
+$atStop = @{ short = @{ used = 0.96; ceiling = 0.95; stop = 0.95; resetsAt = 500 }; long = @{ used = 0.98; ceiling = 0.98; stop = 0.98; resetsAt = 900 } }
+Assert-Same "$(Get-RoomAt $kept) $(Get-FullUntil $kept) $(Get-FullUntil $atStop) $(Get-FullUntil $full)" '900 0 900 0' 'until when an account is full to its stop line'
 # The reset that the run itself names goes before the windows': its reading's, else its refusal's; one that is past
 # is none.
 Assert-Same "$(Get-NamedReset 100 @(0, 700)) $(Get-NamedReset 100 @(500, 700)) $(Get-NamedReset 100 @(50, 100)) $(Get-NamedReset 100 @(0, 0))" '700 500 0 0' 'the reset that a held run names'

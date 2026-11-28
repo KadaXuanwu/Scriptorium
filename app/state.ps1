@@ -444,6 +444,20 @@ function Set-AdvisorModel($settings, $models, [string] $model) {
     return $settings
 }
 
+# The project's `handBack` (docs/QUEUE.md, Settings): the hours a usage limit may hold a ticket before it goes back to
+# the queue. 0 or '' removes it: every such run is then held until its reset.
+function Set-HandBack($settings, $value) {
+    $hours = 0.0
+    if ("$value" -and -not ([double]::TryParse([string]$value, 'Float', [cultureinfo]::InvariantCulture, [ref]$hours) -and $hours -ge 0 -and $hours -lt [double]::PositiveInfinity)) {
+        throw "'$value' is no number of hours"
+    }
+    $settings.PSObject.Properties.Remove('handBack')
+    if ($hours -gt 0) {
+        Set-JsonProperty $settings 'handBack' $hours
+    }
+    return $settings
+}
+
 # The project's colour on the page (docs/QUEUE.md, Settings, `color`): `#rrggbb`, saved in lower case; '' removes it,
 # and the page gives the project a colour from its name again.
 function Set-ProjectColor($settings, [string] $value) {
@@ -1494,6 +1508,10 @@ function New-Snapshot($data) {
     }
 
     $color = [string]$(if ($data.settings) { $data.settings.color })
+    $handBack = 0.0
+    if ($data.settings) {
+        [void][double]::TryParse([string]$data.settings.handBack, 'Float', [cultureinfo]::InvariantCulture, [ref]$handBack)
+    }
     $snapshot = @{
         now = $now; appUrl = $data.appUrl; slug = $data.slug; workers = $workers; accounts = $accounts; login = $data.login; github = [bool]$data.gh
         # The coding tools of the workers and the accounts ($tools above, each one's `view`), by provider name.
@@ -1524,6 +1542,8 @@ function New-Snapshot($data) {
         })
         # The project's colour on the page (`color`): only a valid one, as a hand edit of the file skips the action.
         color = $(if ($color -match '^#[0-9a-fA-F]{6}\z') { $color.ToLowerInvariant() } else { '' })
+        # The project's `handBack` hours (docs/QUEUE.md, The usage limit); 0 with none, or with one that is no number.
+        handBack = $(if ($handBack -gt 0 -and $handBack -lt [double]::PositiveInfinity) { $handBack } else { 0 })
         # The owner is away (docs/QUEUE.md, No blocking): the PC's switch, the same in every project's snapshot.
         away = [bool]$(if ($data.settings) { $data.settings.away })
         # The settings' `model`, which goes over every worker's mapping for every run on the default provider; ''
