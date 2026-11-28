@@ -145,7 +145,8 @@ the model you ran on, read `PLAYBOOK-limit.md`.
    - `## Open questions`: the open questions (What to ask), one `###` each, or None. When the PR merges, the merger files
      each as a ticket labelled `open-question`, shown under the page's Questions. The owner keeps the default (the
      ticket closes, and nothing runs) or changes it (the ticket is queued with the answer, and its run changes the built
-     default). The next run has only this text:
+     default). Only an item with a `**Questions:**` part is filed: a note that asks nothing is no open question, so
+     write it in the PR's text above. The next run has only this text:
 
      ```
      ### <title: the decision, in the product's words>

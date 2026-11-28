@@ -73,7 +73,7 @@ involved.
 | `answered` | On a PR: the owner answered a held PR, or the merger found an owner's comment without 👀 or a question without a banner picture. Its worker applies them, then it merges |
 | `needs-rebase` | On a PR: it conflicts with main; its worker rebases it |
 | `follow-up` | A draft ticket that the merger filed from a merged PR's Follow-up section (one for each `###`), with questions for the owner. No worker takes it until the owner answers it (the page, Questions). One without questions is filed `P1` instead |
-| `open-question` | A question that the merger filed from a merged PR's Open questions section (one for each `###`, `size:S`); the product has its default already. The owner keeps the default (closed) or changes it (queued `P1` with the answer) under the page's Questions |
+| `open-question` | A question that the merger filed from a merged PR's Open questions section (one for each `###` that has a Questions part, `size:S`); the product has its default already. The owner keeps the default (closed) or changes it (queued `P1` with the answer) under the page's Questions |
 
 A line `Blocked by #3, #5` in a ticket's body holds it until those close, unless the owner forces it onto a worker (Queue next, Now). A run must end in a PR, a question or a
 pause (for the usage limit, or for an account that is out). The worker script parks anything else as `needs-owner`,

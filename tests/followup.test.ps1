@@ -27,6 +27,12 @@ Assert-Equal "$($tickets[0].title)|$($tickets[0].body)" 'Follow-up: Export|The e
 # The Open questions section splits the same way, and neither section takes the other's tickets.
 $pr = "## Open questions`n`n### Page size`n**Questions:**`n1. Keep 20 rows? Default: yes.`n`n## Follow-up`n`n### Search box`nx"
 Assert-Equal ((@(Split-FollowUps $pr 'x' 'Open questions') | ForEach-Object { $_.title }) -join ',') 'Page size' 'open questions section'
+# Only an item that asks is an open question: notes under the heading, with or without a title, and a Questions part
+# that says None are not filed.
+$asks = { param($body) (@(Split-OpenQuestions $body 'x') | ForEach-Object { $_.title }) -join ',' }
+Assert-Equal (& $asks $pr) 'Page size' 'an open question that asks'
+Assert-Equal (& $asks "## Open questions`n`n- **The hunt costs more.** It scores every place.`n- **A wall's fill runs longer.**`n") '' 'notes with no heading'
+Assert-Equal (& $asks "## Open questions`n`n### Cost`nThe hunt costs more.`n`n### Rows`n- **Summary:** Keep 20 rows?`n- **Questions:**`n1. Keep 20 rows? Default: yes.`n`n### Later`n**Questions:** None.") 'Rows' 'of three items, the one that asks'
 Assert-Equal ((@(Split-FollowUps $pr 'x') | ForEach-Object { $_.title }) -join ',') 'Search box' 'follow-up section beside it'
 
 # Labels: a Repo line replaces the original ticket's repo label; this repo's name drops it; none keeps it.

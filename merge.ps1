@@ -60,7 +60,8 @@ $wakeWorkers = Join-Path $Project '.queue/wake-workers'
 # queue app. Its `**Size:**`, `**Complexity:**`, `**Area:**` and `**Repo:**` lines give its labels (Get-FollowUpLabels);
 # without a line it has no size or complexity label (M, medium) and keeps the original ticket's areas and repo.
 # The Open questions section is filed the same way, each labelled open-question: the PR built its default, so the
-# ticket waits in the queue app's Q&A until the owner keeps the default (closed) or changes it (queued).
+# ticket waits in the queue app's Q&A until the owner keeps the default (closed) or changes it (queued). An item
+# there with no Questions part asks nothing, and is not filed (followup.ps1, Split-OpenQuestions).
 # $held: the one ticket to file in place of the body's sections, for a held PR that merges while the owner is away
 # (away.ps1, Get-HeldTicket).
 function New-FollowUp($pr, [string] $where, [int] $ticket, $held = $null) {
@@ -68,8 +69,11 @@ function New-FollowUp($pr, [string] $where, [int] $ticket, $held = $null) {
         $tickets = @($held)
     } else {
         $tickets = @(Split-FollowUps ([string]$pr.body) "Follow-up: $($pr.title)" | ForEach-Object { $_.state = $null; $_ })
-        $tickets += @(Split-FollowUps ([string]$pr.body) "Open question: $($pr.title)" 'Open questions' |
-            ForEach-Object { $_.state = 'open-question'; $_ })
+        $tickets += @(Split-OpenQuestions ([string]$pr.body) "Open question: $($pr.title)" | ForEach-Object { $_.state = 'open-question'; $_ })
+        $notes = @(Split-FollowUps ([string]$pr.body) 'x' 'Open questions').Count - @($tickets | Where-Object { $_.state }).Count
+        if ($notes -gt 0) {
+            Add-Content $log "$(Get-Date -Format s) $notes of the Open questions of $where#$($pr.number) ask nothing (no Questions part): not filed" -Encoding utf8
+        }
     }
     if ($tickets.Count -eq 0) {
         return
