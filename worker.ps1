@@ -22,6 +22,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'areas.ps1')
 . (Join-Path $PSScriptRoot 'comments.ps1')
 . (Join-Path $PSScriptRoot 'away.ps1')
+. (Join-Path $PSScriptRoot 'handback.ps1')
 
 $Project = Resolve-Project $Project
 $config = Read-Project $Project
@@ -1502,6 +1503,43 @@ function Invoke-Worker($job, [string] $log, $paused) {
     }
 }
 
+# Hands a ticket back to the queue instead of holding its run (handback.ps1, Test-HandBack; docs/QUEUE.md, The usage
+# limit). In this order, so that no step loses the work: its work goes to its branch on GitHub (Save-TicketWork), the
+# held session goes, the claim goes, a comment says where the work is, and the copy goes back to main's code, so the
+# plugins' next Start does not open on work that does not build. $true when the ticket went back. $false, with a
+# line in the log, when the work is not safe on GitHub: the run is then held as before.
+function Send-Back($job, [long] $resetsAt, [double] $hours) {
+    $branch = "t$($job.Ticket)"
+    $dir = Get-JobDir (Get-JobRepo $job)
+    try {
+        $commit = Save-TicketWork $dir $branch "WIP #$($job.Ticket): the unfinished work of a run that the plan's usage limit ended"
+    } catch {
+        Write-Log "#$($job.Ticket) is held, not handed back: $_"
+        return $false
+    }
+    $work = if ($commit) { "Its work so far is on branch ``$branch`` ($($commit.Substring(0, 8))): not finished and not checked." } else { 'It had no work to keep.' }
+    $progress = ''
+    try {
+        $note = Get-Content $progressFile -Raw -ErrorAction Stop | ConvertFrom-Json
+        if ([int]$note.ticket -eq [int]$job.Ticket) {
+            $progress = " Its last progress note: done: $($note.done); next: $($note.next)."
+        }
+    } catch {
+    }
+    $until = [DateTimeOffset]::FromUnixTimeSeconds($resetsAt).LocalDateTime.ToString('ddd d MMM HH:mm')
+    # From here nothing throws: a held session and a ticket back in the queue must not both stay.
+    Remove-Item $pausedFile -ErrorAction SilentlyContinue
+    & gh issue edit $job.Ticket --remove-label $me -R $repo | Out-Null
+    Send-Comment $job ("handed back to the queue: the plan's usage limit holds this worker's account until $until, longer than the $hours hours of ``handBack``. " +
+        "$work$progress The next run starts fresh: the session is not kept.")
+    & git -C $dir checkout -q --detach origin/main | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "the copy $dir stays on ${branch}: git could not put it on origin/main"
+    }
+    Write-Log "handed back #$($job.Ticket): held until $until, longer than $hours hours$(if ($commit) { "; its work is on $branch ($($commit.Substring(0, 8)))" })"
+    return $true
+}
+
 # Cut off by the plan's usage limit or by its account (out: Get-Out), or ended at a checkpoint for the workers' limit
 # or the owner's pause: keep the session to resume later, instead of parking the job. An account that is out is the
 # owner's to fix in the queue app (Accounts), not the ticket's: no comment, and the run resumes when the account
@@ -1538,6 +1576,21 @@ function Suspend-Job($job, $end) {
     if ($end.Stopped -or $end.ModelOut) {
         # Not zero: the queue app reads a ticket with a reset time as a run in flight.
         $resetsAt = Get-Now
+    }
+    # A ticket that the plan's limit would hold for longer than the owner's `handBack` hours goes back to the queue
+    # with its work pushed (Send-Back), so the ticket and its areas do not wait with the account. An error here must
+    # not lose the session: the run is held.
+    try {
+        $hours = [double](Read-Settings).handBack
+        if ($hours -gt 0) {
+            $account = Get-Account $end.ConfigDir
+            Save-Budget (Get-Budget $account (Read-AllUsage)[$account])
+            if ((Test-HandBack $end ([string]$job.Kind) $resetsAt (Get-RoomAt $script:budget) (Get-Now) $hours) -and (Send-Back $job $resetsAt $hours)) {
+                return
+            }
+        }
+    } catch {
+        Write-Log "hand-back error: $_"
     }
     @{
         Kind = $job.Kind; Ticket = $job.Ticket; Title = $job.Title; Pr = $job.Pr; Repo = (Get-JobRepo $job); Size = $job.Size; Complexity = $job.Complexity; Session = $end.Session; Cost = $end.Cost
