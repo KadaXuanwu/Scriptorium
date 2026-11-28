@@ -19,12 +19,20 @@ function ConvertTo-NativeArg([string] $text) {
     return $text -replace '"', '\"'
 }
 
+# A ticket's text with each label of the playbook at the start of its line: a run may write the labels as list items
+# (`- **Summary:** ...`), and every reader here finds a label only at the start of a line. Seen: the page showed such a
+# question without its question, and the merger asked for no banner. Only the playbook's own labels, on a line with
+# no indent: a list under Questions may start its items in bold.
+function Remove-LabelMarkers([string] $text) {
+    return $text -replace '(?m)^[-*+][ \t]+(?=\*\*(?:Summary|Now|Should|Where|Repo|Size|Complexity|Area|Start here|Scope|Done when|Decisions|Questions):?\*\*)', ''
+}
+
 # The tickets a PR body's Follow-up section (or $section: Open questions) asks for: one per `### <title>` heading, each
 # @{ title; body }. Text before the first heading belongs to the first ticket; a section without headings is one ticket
 # named $fallbackTitle.
 function Split-FollowUps([string] $prBody, [string] $fallbackTitle, [string] $section = 'Follow-up') {
     $match = [regex]::Match($prBody, "(?ms)^##\s*$([regex]::Escape($section))\s*\r?\n(.*?)(?=^##\s|\z)")
-    $text = if ($match.Success) { $match.Groups[1].Value.Trim() } else { '' }
+    $text = if ($match.Success) { Remove-LabelMarkers $match.Groups[1].Value.Trim() } else { '' }
     if (-not $text -or (Test-NoneText $text)) {
         return @()
     }
@@ -106,6 +114,8 @@ function Get-FollowUpLabels([string[]] $ticketLabels, [string] $body, [string[]]
 # else the body's first sentence), its open questions (the `**Questions:**` part, '' for none) and the details the
 # page folds away: the body without those two, so nothing shows twice.
 function Get-FollowUpView([string] $body) {
+    # A ticket filed before the merger took the markers off still has them.
+    $body = Remove-LabelMarkers $body
     $summary = ''
     # The paragraph ends at a blank line, the next label or a heading: workers wrap their text at about 120 characters.
     $summaryMatch = [regex]::Match($body, '(?ms)^\*\*Summary:?\*\*:?[ \t]*(.+?)[ \t]*(?=\r?\n[ \t]*(?:\r?\n|\*\*[^*\r\n]+\*\*|#)|\z)')
