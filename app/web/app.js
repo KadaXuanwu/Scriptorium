@@ -369,7 +369,7 @@ function workerCard(worker) {
     <div class="worker-tools"><label>${icon('accounts')}<select data-assign="${id}" aria-label="Account of worker ${id}">${options}</select></label>
       ${config}<button data-steps="${id}">${icon('steps')}Steps</button></div>
     <div class="slot now"><span class="slot-label">Now</span><div class="slot-body">${now}</div></div>
-    <div class="slot next${queued ? ' queued' : ''}"><span class="slot-label">Next</span><div class="slot-body">${nextBody}</div>${force}</div></article>`;
+    <div class="slot next${queued ? ' queued' : ''}${after ? ' forced' : ''}"><span class="slot-label">Next</span><div class="slot-body">${nextBody}</div>${force}</div></article>`;
 }
 
 // A worker's config, the dialog its Config button opens (docs/APP.md, Workers, Config): its mapping (docs/QUEUE.md, A

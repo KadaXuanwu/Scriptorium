@@ -331,7 +331,9 @@ textarea:focus, input:focus { border-color: var(--accent); outline: none; }
 .slot { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--raised); }
 .slot.next { background: transparent; border: 1px dashed var(--line); }
 /* The ticket the owner queued as the worker's next (Queue next). */
-.slot.next.queued { position: relative; border: 1px solid var(--accent); }
+/* The border marks the Queue tab's Queue next; one the arrow forced has none. */
+.slot.next.queued { position: relative; }
+.slot.next.queued:not(.forced) { border: 1px solid var(--accent); }
 /* The arrow stands in the slot's bottom right corner. The cross that takes a Queue next back sits on the border, at
    the top right corner: out of the flow, so it takes no room from the ticket, and with the card's ground, so it
    breaks the line. */

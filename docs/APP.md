@@ -151,7 +151,8 @@ Each card has two slots:
 - **Next:** the ticket it takes when the slot is free, in the dispatcher's order: its own PR to answer or rebase, its
   own ticket, the ticket that **Queue next** gave it (Queue), then the first queued ticket whose area is free and
   whose size its account takes now, one ticket for each worker. If the queue holds it back, it still shows the best
-  one, with a lock and the reason. A ticket of Queue next is tagged `queued next`, in a slot with a solid border.
+  one, with a lock and the reason. A ticket of Queue next is tagged `queued next`, in a slot with a solid border;
+  one the arrow forced has no border.
   On a passive worker a new ticket says "waits for the arrow": the worker takes it only then.
 - **Force** (the arrow in the Next slot) gives the worker that ticket past what holds it back: its blockers, the
   areas, the pick-up limits and the stop line ([QUEUE.md](QUEUE.md), Queue next).
