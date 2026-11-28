@@ -60,6 +60,14 @@ function Get-RoomAt($budget) {
         ForEach-Object { [long]$budget[$_].resetsAt } | Measure-Object -Maximum).Maximum
 }
 
+# Until when an account is full whatever its guards free: the latest reset of its windows at or over their stop line
+# (`stop`), 0 with none. Not the ceiling (Get-RoomAt): a window at its ceiling under the stop line has room again as
+# its guards' reserve shrinks, long before it resets.
+function Get-FullUntil($budget) {
+    return [long](@($budget.Keys) | Where-Object { $null -ne $budget[$_].stop -and $budget[$_].used -ge $budget[$_].stop } |
+        ForEach-Object { [long]$budget[$_].resetsAt } | Measure-Object -Maximum).Maximum
+}
+
 # The reset that a run held by the plan's limit names itself: the first of $resets ahead of $now, 0 with none. In
 # order: the reset of its last usage reading, then the one of its refusal's text (docs/PLUGINS.md, ReadRun, ResetsAt).
 # It goes before the windows' (Get-RoomAt): it needs no probe.

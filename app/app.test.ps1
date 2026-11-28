@@ -291,6 +291,16 @@ foreach ($bad in 'red', '#abc', "#a0b1c2`nx", '') {
 }
 $plain = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @() }
 Assert-Equal "'$($plain.color)' '$($plain.settingsModel)' $($plain.advisor.model)" "'' '' deep-1" 'no settings'
+# Details: the project's hand-back hours (docs/QUEUE.md, The usage limit). 0 or nothing removes them, and the page
+# shows only a number above 0.
+$back = { param($value) $set = Set-HandBack ('{"handBack":3,"color":"#a0b1c2"}' | ConvertFrom-Json) $value; "$(@($set.PSObject.Properties | ForEach-Object { $_.Name }) -join '+')=$($set.handBack)" }
+Assert-Equal "$(& $back 6) $(& $back '1.5') $(& $back 0) $(& $back '')" 'color+handBack=6 color+handBack=1.5 color= color=' 'the hand-back hours as the page sets them'
+foreach ($bad in -1, 'soon', '1e999') {
+    $threw = try { [void](& $back $bad); $false } catch { $true }
+    Assert-Equal $threw $true "no hours for the hand-back: '$bad'"
+}
+$shown = { param($value) (New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = @{ handBack = $value } }).handBack }
+Assert-Equal "$(& $shown 6) $(& $shown '2.5') $(& $shown 0) $(& $shown -3) $(& $shown 'soon') $($plain.handBack)" '6 2.5 0 0 0 0' 'the hand-back hours on the page'
 # The PC's No blocking switch (docs/QUEUE.md, No blocking).
 $gone = New-Snapshot @{ now = 10; slug = 'o/r'; runs = @(); workers = @(); settings = ('{"away":true}' | ConvertFrom-Json) }
 Assert-Equal "$($plain.away) $($gone.away)" 'False True' 'the No blocking switch'
