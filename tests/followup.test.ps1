@@ -65,6 +65,19 @@ $view = Get-FollowUpView "The log keeps errors per request. The report doesn't p
 Assert-Equal $view.summary 'The log keeps errors per request.' 'first sentence without a Summary line'
 Assert-Equal $view.details "The report doesn't print them.`n`nFollow-up from u (ticket #4)." 'details leave out the first sentence'
 Assert-Equal $view.questions '' 'no questions'
+
+# Labels written as list items read like labels at the start of their line: the merger files them without the
+# markers, the page reads a ticket that still has them, and the banner check sees the question.
+$listed = "## Open questions`n`n### Page size`n`n- **Summary:** The list shows 20 rows.`n- **Questions:** Keep 20 rows, or 50?`n" +
+    "  - **Fifty:** more to scroll.`n- **Where:** ``list.cfg``.`n`n## Follow-up`n`nNone."
+$item = @(Split-FollowUps $listed 'x' 'Open questions')[0]
+Assert-Equal $item.body "**Summary:** The list shows 20 rows.`n**Questions:** Keep 20 rows, or 50?`n  - **Fifty:** more to scroll.`n**Where:** ``list.cfg``." 'a filed ticket has no markers before its labels'
+$view = Get-FollowUpView "- **Summary:** The list shows 20 rows.`n- **Questions:** Keep 20 rows, or 50?`n- **Where:** ``list.cfg``.`n`n**Generation:** 1."
+Assert-Equal "$($view.summary)|$($view.questions)|$($view.details)" "The list shows 20 rows.|Keep 20 rows, or 50?|**Where:** ``list.cfg``.`n`n**Generation:** 1." 'a ticket with listed labels'
+Assert-Equal ((Get-BannerlessQuestions $listed) -join ',') 'Page size' 'a listed question with no banner'
+# A list under Questions keeps its items, also one that starts in bold at the line's start.
+$view = Get-FollowUpView "**Summary:** The list shows 20 rows.`n**Questions:** Which size?`n- **Twenty:** as built.`n- **Fifty:** more to scroll.`n**Where:** ``list.cfg``."
+Assert-Equal $view.questions "Which size?`n- **Twenty:** as built.`n- **Fifty:** more to scroll." 'a bold list under Questions stays whole'
 Assert-Equal (Get-FollowUpView "**Summary:** x`n**Questions:** None.").questions '' 'questions: none'
 Assert-Equal (Get-FollowUpView "**Summary:** x`n**Questions:** None (Ask or queue).").questions '' 'questions: none with a note'
 Assert-Equal (Get-FollowUpView "**Summary:** x`n**Questions:**`n![b](https://x/b.png?raw=true)`nNone.").questions '' 'questions: none under a banner'
