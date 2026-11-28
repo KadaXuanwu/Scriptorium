@@ -362,6 +362,9 @@ between runs.
 - `merger.ghConfigDir`: the same for the merger, which then merges as that bot.
 - `plugins.<name>`: settings of a plugin for this PC, over its entry in `scriptorium.json` ([PLUGINS.md](PLUGINS.md)).
 - `ntfy.topic`, `ntfy.server`: the page's pushes ([APP.md](APP.md), Notifications).
+- `handBack`: hours, for example `{ "handBack": 12 }`. A ticket's run that the plan's limit would hold for longer
+  goes back to the queue with its work pushed (The usage limit, Handed back). Left out or 0: every such run is held
+  until its reset.
 - `workers.<id>` (the PC's): `ghConfigDir` for that worker only, `enabled`, `passive`, `complexity`, `mapping` and `name`
   (the worker's name on the page only; [APP.md](APP.md), Workers, Names).
 - `workers.<id>.complexity`: the worker's complexity switches, for example `{ "design": false }`: it takes no ticket of
@@ -397,6 +400,29 @@ else the one that its refusal names, where the provider reads it ([PLUGINS.md](P
 With a provider that gives neither, it is the latest reset of the account's windows at their ceiling, from the
 probe when the run ended; with no such window (the service's own shortage, a probe that failed), the script tries
 again after 30 minutes, each time with a comment.
+
+**Handed back.** A held run keeps its ticket, and the ticket its areas, until the reset: with a long window that can
+be days, while workers on other accounts stand free. With `handBack` set (Settings), a ticket's run that the plan's
+limit would hold for more than that many hours is not held. The script hands the ticket back
+([handback.ps1](../handback.ps1)):
+
+1. It commits what the run's checkout holds on the ticket's branch (`t<N>`) and pushes it: the changed and the new
+   files, and the commits not pushed. Never by force.
+2. It drops the session, takes the `worker:N` label off and comments where the work is, with the run's last progress
+   note.
+3. It puts the copy on main's code, so the plugins' next `Start` does not open on work that does not build.
+
+Any worker whose account has room then starts the ticket fresh from that branch and comment. The rules around it:
+
+- **Only when the account's reading shows it full** for that long (a window at its ceiling whose reset is as far
+  away). A dispatcher reads only the windows: without a full one, this account's workers would take the ticket again
+  at once and be refused again. That run is held as before.
+- **Only when the work is safe on GitHub.** Changes on another branch than the ticket's, a commit that a hook of the
+  repo refuses or a push that GitHub refuses: the run is held as before, and the worker's log says why.
+- **Not handed back:** a PR's job (it stays its worker's), a run held at the workers' stop line or for a pause (its
+  work is pushed already, and Replace now frees it), a run held for its account or for a model's window.
+- **What it costs:** the session is gone, so the fresh run reads the work again. With every worker on the one account
+  nothing is gained: leave `handBack` out there.
 
 ## A model's limit
 
@@ -528,7 +554,8 @@ in a run ([APP.md](APP.md), Workers). The server writes the ticket to that worke
   when it was held (`Test-HeldAtCheckpoint` in [areas.ps1](../areas.ps1)). The Now run then uses the room kept under
   the stop line. The script does not look at the Now's ticket first.
 - **Any other held run** was cut off mid-work: by the plan's own limit, by a model's window or by its account. It
-  goes first, the page offers no Replace now for it, and a Now behind it ends.
+  goes first, the page offers no Replace now for it, and a Now behind it ends. One that the plan's limit would hold
+  for long can go back to the queue by itself (The usage limit, Handed back).
 - **The Now run** is a forced run: it does not stop at the workers' ceiling.
 - **The model:** the server reads neither the window of the ticket's model on the account (A model's limit) nor the
   models that its plan refused (`access.json`).
