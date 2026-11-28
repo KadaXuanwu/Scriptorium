@@ -1485,6 +1485,8 @@ function Invoke-Worker($job, [string] $log, $paused) {
         Limited = $runEnd.Limited
         Refusal = $runEnd.Refusal
         RefusalText = $runEnd.RefusalText
+        # When the limit that ended the run resets, where its refusal names it; else 0.
+        ResetsAt = [long]$read.ResetsAt
         Holds = $marks.Holds
         LoggedOut = $false
         # The cap that the run reached, else 0.
@@ -1508,15 +1510,20 @@ function Invoke-Worker($job, [string] $log, $paused) {
 function Suspend-Job($job, $end) {
     # Not zero for a run held for its account: the queue app reads a ticket with a reset time as a run in flight.
     $resetsAt = (Get-Now) + $(if ($end.LoggedOut) { 0 } else { 1800 })
-    if (-not $end.LoggedOut -and $end.Usage -and $end.Usage.refusedResetsAt -gt (Get-Now)) {
-        $resetsAt = $end.Usage.refusedResetsAt
+    # The reset that the run itself names: its last usage reading's, else its refusal's (ReadRun, ResetsAt).
+    $named = if ($end.LoggedOut) { 0 } else {
+        Get-NamedReset (Get-Now) @([long]$(if ($end.Usage) { $end.Usage.refusedResetsAt }), [long]$(if ($end.Limited) { $end.ResetsAt }))
+    }
+    if ($named) {
+        $resetsAt = $named
     } elseif (-not $end.LoggedOut -and $end.Limited -and -not $end.Usage) {
-        # The plan's limit ended a run whose log holds no usage (budget.ps1, Test-ProbeAfterRun), so no reading names
-        # the reset: it is that of the account's full windows, from the probe when the run ended. Without it the run
-        # resumed blind every 30 minutes, each time with a comment. With no full window (the service's own shortage,
-        # a probe that failed): the 30 minutes. An error here must not lose the session: the 30 minutes too.
+        # The plan's limit ended a run whose log holds no usage (budget.ps1, Test-ProbeAfterRun) and whose refusal
+        # names no reset: it is that of the account's full windows, from the probe when the run ended. Without it the
+        # run resumed blind every 30 minutes, each time with a comment. With no full window (the service's own
+        # shortage, a probe that failed): the 30 minutes. An error here must not lose the session: the 30 minutes too.
         # shortcut: a window whose stop line is 100 % counts as full only at a reading of exactly 100 %; one refused
-        # just under it waits the 30 minutes again and again. Take the reset from the refusal's text if that is seen.
+        # just under it waits the 30 minutes again and again. Seen with a probe that failed: a provider whose refusal
+        # names its reset gives it in ReadRun, which needs neither.
         try {
             $account = Get-Account $end.ConfigDir
             Save-Budget (Get-Budget $account (Read-AllUsage)[$account])
